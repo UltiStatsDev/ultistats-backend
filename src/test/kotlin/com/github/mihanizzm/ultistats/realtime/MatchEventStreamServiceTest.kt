@@ -2,6 +2,7 @@ package com.github.mihanizzm.ultistats.realtime
 
 import com.github.mihanizzm.ultistats.dto.response.realtime.ConnectedRealtimeResponse
 import com.github.mihanizzm.ultistats.dto.response.realtime.EventLogChangedRealtimeResponse
+import com.github.mihanizzm.ultistats.dto.response.realtime.MatchFinishedRealtimeResponse
 import com.github.mihanizzm.ultistats.dto.response.realtime.MatchRealtimeOperation
 import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.service.MatchService
@@ -13,6 +14,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import java.io.IOException
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.test.assertIs
 
 @Suppress("NonAsciiCharacters")
@@ -56,16 +60,114 @@ class MatchEventStreamServiceTest {
         assertIs<MatchEventStreamResult.NotFound>(service.subscribe(MISSING_MATCH_ID))
     }
 
+    @Test
+    fun `два подписчика получают изменение а отключенный больше не вызывается`() {
+        `when`(matchService.get(MATCH_ID)).thenReturn(activeMatch(MATCH_ID))
+        val first = factory.enqueue()
+        val second = factory.enqueue()
+        service.subscribe(MATCH_ID)
+        service.subscribe(MATCH_ID)
+        first.disconnect()
+
+        service.eventLogChanged(MATCH_ID, MatchRealtimeOperation.UPDATED, EVENT_ID)
+
+        assertThat(first.events).hasSize(1)
+        assertThat(second.events.map { it.name }).containsExactly("connected", "event-log-changed")
+    }
+
+    @Test
+    fun `heartbeat удаляет только сломанное соединение`() {
+        `when`(matchService.get(MATCH_ID)).thenReturn(activeMatch(MATCH_ID))
+        val healthy = factory.enqueue()
+        val broken = factory.enqueue(failOnComment = true)
+        service.subscribe(MATCH_ID)
+        service.subscribe(MATCH_ID)
+
+        service.heartbeat()
+        service.eventLogChanged(MATCH_ID, MatchRealtimeOperation.CREATED, EVENT_ID)
+
+        assertThat(healthy.comments).containsExactly("heartbeat")
+        assertThat(healthy.events.last().name).isEqualTo("event-log-changed")
+        assertThat(broken.events).hasSize(1)
+    }
+
+    @Test
+    fun `finished отправляется один раз завершает подписки и очищает матч`() {
+        `when`(matchService.get(MATCH_ID)).thenReturn(activeMatch(MATCH_ID))
+        val connection = factory.enqueue()
+        service.subscribe(MATCH_ID)
+
+        service.finishMatch(MATCH_ID)
+        service.finishMatch(MATCH_ID)
+
+        assertThat(connection.events.map { it.name }).containsExactly("connected", "match-finished")
+        assertThat(connection.completed).isTrue()
+    }
+
+    @Test
+    fun `изменение во время инициализации отправляется после connected`() {
+        `when`(matchService.get(MATCH_ID)).thenReturn(activeMatch(MATCH_ID))
+        val connectedStarted = CountDownLatch(1)
+        val releaseConnected = CountDownLatch(1)
+        val eventSendAttempted = CountDownLatch(1)
+        val connection = factory.enqueue(
+            connectedStarted = connectedStarted,
+            releaseConnected = releaseConnected,
+            eventSendAttempted = eventSendAttempted,
+        )
+        val executor = Executors.newFixedThreadPool(2)
+
+        try {
+            val subscription = executor.submit<MatchEventStreamResult> { service.subscribe(MATCH_ID) }
+            assertThat(connectedStarted.await(2, TimeUnit.SECONDS)).isTrue()
+
+            val broadcast = executor.submit {
+                service.eventLogChanged(MATCH_ID, MatchRealtimeOperation.UPDATED, EVENT_ID)
+            }
+            eventSendAttempted.await(1, TimeUnit.SECONDS)
+            releaseConnected.countDown()
+
+            assertIs<MatchEventStreamResult.Opened>(subscription.get(2, TimeUnit.SECONDS))
+            broadcast.get(2, TimeUnit.SECONDS)
+            assertThat(connection.events.map { it.name }).containsExactly("connected", "event-log-changed")
+        } finally {
+            releaseConnected.countDown()
+            executor.shutdownNow()
+            assertThat(executor.awaitTermination(2, TimeUnit.SECONDS)).isTrue()
+        }
+    }
+
+    @Test
+    fun `завершение матча при повторной проверке отправляет finished после connected`() {
+        `when`(matchService.get(MATCH_ID)).thenReturn(activeMatch(MATCH_ID), finishedMatch(MATCH_ID))
+        val connection = factory.enqueue()
+
+        assertIs<MatchEventStreamResult.Opened>(service.subscribe(MATCH_ID))
+
+        assertThat(connection.events).containsExactly(
+            SentEvent("connected", ConnectedRealtimeResponse(MATCH_ID), 2_000),
+            SentEvent("match-finished", MatchFinishedRealtimeResponse(MATCH_ID), null),
+        )
+        assertThat(connection.completed).isTrue()
+    }
+
     private fun activeMatch(id: UUID) = Match(
         id = id,
         teamIds = listOf(TEAM_ID, OTHER_TEAM_ID),
         startedAt = Instant.parse("2026-09-02T10:00:00Z"),
     )
 
+    private fun finishedMatch(id: UUID) = activeMatch(id).copy(
+        endedAt = Instant.parse("2026-09-02T12:00:00Z"),
+    )
+
     private data class SentEvent(val name: String, val data: Any, val reconnectTimeMs: Long?)
 
     private class FakeConnection(
         private val failOnComment: Boolean = false,
+        private val connectedStarted: CountDownLatch? = null,
+        private val releaseConnected: CountDownLatch? = null,
+        private val eventSendAttempted: CountDownLatch? = null,
     ) : MatchEventConnection {
         override val emitter = SseEmitter(0)
         val events = mutableListOf<SentEvent>()
@@ -76,6 +178,15 @@ class MatchEventStreamServiceTest {
         private var error: (Throwable) -> Unit = {}
 
         override fun send(name: String, data: Any, reconnectTimeMs: Long?) {
+            if (name == "connected") {
+                connectedStarted?.countDown()
+                check(releaseConnected?.await(2, TimeUnit.SECONDS) != false) {
+                    "connected send was not released"
+                }
+            }
+            if (name == "event-log-changed") {
+                eventSendAttempted?.countDown()
+            }
             events += SentEvent(name, data, reconnectTimeMs)
         }
 
@@ -116,8 +227,17 @@ class MatchEventStreamServiceTest {
     private class FakeConnectionFactory : MatchEventConnectionFactory {
         private val queued = ArrayDeque<FakeConnection>()
 
-        fun enqueue(failOnComment: Boolean = false): FakeConnection =
-            FakeConnection(failOnComment).also(queued::addLast)
+        fun enqueue(
+            failOnComment: Boolean = false,
+            connectedStarted: CountDownLatch? = null,
+            releaseConnected: CountDownLatch? = null,
+            eventSendAttempted: CountDownLatch? = null,
+        ): FakeConnection = FakeConnection(
+            failOnComment = failOnComment,
+            connectedStarted = connectedStarted,
+            releaseConnected = releaseConnected,
+            eventSendAttempted = eventSendAttempted,
+        ).also(queued::addLast)
 
         override fun create(timeoutMs: Long): MatchEventConnection = queued.removeFirst()
     }
