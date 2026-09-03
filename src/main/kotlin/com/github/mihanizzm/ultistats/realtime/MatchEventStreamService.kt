@@ -34,7 +34,9 @@ class MatchEventStreamService(
 
         val connection = connectionFactory.create(0)
         val subscriber = Subscriber(connection) { dead -> removeSubscriber(matchId, dead) }
-        subscribersByMatch.computeIfAbsent(matchId) { ConcurrentHashMap.newKeySet() }.add(subscriber)
+        subscribersByMatch.compute(matchId) { _, subscribers ->
+            (subscribers ?: ConcurrentHashMap.newKeySet()).apply { add(subscriber) }
+        }
         connection.onCompletion(subscriber::markDead)
         connection.onTimeout(subscriber::markDead)
         connection.onError { subscriber.markDead() }
@@ -100,19 +102,19 @@ class MatchEventStreamService(
         private val pending = ArrayDeque<NamedMessage>()
         private var initialized = false
         private var completed = false
-        private var finishAfterInitialization = false
+        private var finishing = false
 
         fun initialize(connected: NamedMessage): Boolean = lock.withLock {
             if (completed) return false
             if (!sendNow(connected)) return false
             initialized = true
             while (pending.isNotEmpty() && !completed) sendNow(pending.removeFirst())
-            if (finishAfterInitialization && !completed) completeNow()
+            if (finishing && !completed) completeNow()
             !completed
         }
 
         fun send(message: NamedMessage): Unit = lock.withLock {
-            if (completed) return
+            if (completed || finishing) return
             if (!initialized) pending.addLast(message) else sendNow(message)
         }
 
@@ -121,10 +123,10 @@ class MatchEventStreamService(
         }
 
         fun finish(message: NamedMessage): Unit = lock.withLock {
-            if (completed) return
+            if (completed || finishing) return
+            finishing = true
             if (!initialized) {
                 pending.addLast(message)
-                finishAfterInitialization = true
             } else if (sendNow(message)) {
                 completeNow()
             }

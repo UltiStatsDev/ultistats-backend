@@ -14,6 +14,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import java.io.IOException
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -76,6 +77,44 @@ class MatchEventStreamServiceTest {
     }
 
     @Test
+    fun `регистрация не теряется при одновременном удалении последнего подписчика`() {
+        `when`(matchService.get(MATCH_ID)).thenReturn(activeMatch(MATCH_ID))
+        val first = factory.enqueue()
+        service.subscribe(MATCH_ID)
+        val registry = subscriberRegistry()
+        val firstSubscriber = registry.getValue(MATCH_ID).single()
+        val addStarted = CountDownLatch(1)
+        val releaseAdd = CountDownLatch(1)
+        val removeStarted = CountDownLatch(1)
+        registry[MATCH_ID] = BlockingMutableSet(
+            initial = firstSubscriber,
+            addStarted = addStarted,
+            releaseAdd = releaseAdd,
+            removeStarted = removeStarted,
+        )
+        val second = factory.enqueue()
+        val executor = Executors.newFixedThreadPool(2)
+
+        try {
+            val subscription = executor.submit<MatchEventStreamResult> { service.subscribe(MATCH_ID) }
+            assertThat(addStarted.await(2, TimeUnit.SECONDS)).isTrue()
+            val disconnection = executor.submit { first.disconnect() }
+            removeStarted.await(1, TimeUnit.SECONDS)
+            releaseAdd.countDown()
+
+            assertIs<MatchEventStreamResult.Opened>(subscription.get(2, TimeUnit.SECONDS))
+            disconnection.get(2, TimeUnit.SECONDS)
+            service.eventLogChanged(MATCH_ID, MatchRealtimeOperation.UPDATED, EVENT_ID)
+
+            assertThat(second.events.map { it.name }).containsExactly("connected", "event-log-changed")
+        } finally {
+            releaseAdd.countDown()
+            executor.shutdownNow()
+            assertThat(executor.awaitTermination(2, TimeUnit.SECONDS)).isTrue()
+        }
+    }
+
+    @Test
     fun `heartbeat удаляет только сломанное соединение`() {
         `when`(matchService.get(MATCH_ID)).thenReturn(activeMatch(MATCH_ID))
         val healthy = factory.enqueue()
@@ -102,6 +141,36 @@ class MatchEventStreamServiceTest {
 
         assertThat(connection.events.map { it.name }).containsExactly("connected", "match-finished")
         assertThat(connection.completed).isTrue()
+    }
+
+    @Test
+    fun `finished до инициализации отбрасывает дубликат и последующие изменения`() {
+        `when`(matchService.get(MATCH_ID)).thenReturn(activeMatch(MATCH_ID))
+        val registrationStarted = CountDownLatch(1)
+        val releaseRegistration = CountDownLatch(1)
+        val connection = factory.enqueue(
+            registrationStarted = registrationStarted,
+            releaseRegistration = releaseRegistration,
+        )
+        val executor = Executors.newSingleThreadExecutor()
+
+        try {
+            val subscription = executor.submit<MatchEventStreamResult> { service.subscribe(MATCH_ID) }
+            assertThat(registrationStarted.await(2, TimeUnit.SECONDS)).isTrue()
+
+            service.finishMatch(MATCH_ID)
+            service.finishMatch(MATCH_ID)
+            service.eventLogChanged(MATCH_ID, MatchRealtimeOperation.UPDATED, EVENT_ID)
+            releaseRegistration.countDown()
+
+            assertIs<MatchEventStreamResult.Opened>(subscription.get(2, TimeUnit.SECONDS))
+            assertThat(connection.events.map { it.name }).containsExactly("connected", "match-finished")
+            assertThat(connection.completed).isTrue()
+        } finally {
+            releaseRegistration.countDown()
+            executor.shutdownNow()
+            assertThat(executor.awaitTermination(2, TimeUnit.SECONDS)).isTrue()
+        }
     }
 
     @Test
@@ -161,13 +230,47 @@ class MatchEventStreamServiceTest {
         endedAt = Instant.parse("2026-09-02T12:00:00Z"),
     )
 
+    @Suppress("UNCHECKED_CAST")
+    private fun subscriberRegistry(): ConcurrentHashMap<UUID, MutableSet<Any>> {
+        val field = MatchEventStreamService::class.java.getDeclaredField("subscribersByMatch")
+        field.isAccessible = true
+        return field.get(service) as ConcurrentHashMap<UUID, MutableSet<Any>>
+    }
+
     private data class SentEvent(val name: String, val data: Any, val reconnectTimeMs: Long?)
+
+    private class BlockingMutableSet(
+        initial: Any,
+        private val addStarted: CountDownLatch,
+        private val releaseAdd: CountDownLatch,
+        private val removeStarted: CountDownLatch,
+    ) : AbstractMutableSet<Any>() {
+        private val delegate = mutableSetOf(initial)
+
+        override val size: Int
+            get() = delegate.size
+
+        override fun add(element: Any): Boolean {
+            addStarted.countDown()
+            check(releaseAdd.await(2, TimeUnit.SECONDS)) { "subscriber add was not released" }
+            return delegate.add(element)
+        }
+
+        override fun iterator(): MutableIterator<Any> = delegate.iterator()
+
+        override fun remove(element: Any): Boolean {
+            removeStarted.countDown()
+            return delegate.remove(element)
+        }
+    }
 
     private class FakeConnection(
         private val failOnComment: Boolean = false,
         private val connectedStarted: CountDownLatch? = null,
         private val releaseConnected: CountDownLatch? = null,
         private val eventSendAttempted: CountDownLatch? = null,
+        private val registrationStarted: CountDownLatch? = null,
+        private val releaseRegistration: CountDownLatch? = null,
     ) : MatchEventConnection {
         override val emitter = SseEmitter(0)
         val events = mutableListOf<SentEvent>()
@@ -215,6 +318,10 @@ class MatchEventStreamServiceTest {
 
         override fun onError(callback: (Throwable) -> Unit) {
             error = callback
+            registrationStarted?.countDown()
+            check(releaseRegistration?.await(2, TimeUnit.SECONDS) != false) {
+                "registration was not released"
+            }
         }
 
         fun disconnect() = completion()
@@ -232,11 +339,15 @@ class MatchEventStreamServiceTest {
             connectedStarted: CountDownLatch? = null,
             releaseConnected: CountDownLatch? = null,
             eventSendAttempted: CountDownLatch? = null,
+            registrationStarted: CountDownLatch? = null,
+            releaseRegistration: CountDownLatch? = null,
         ): FakeConnection = FakeConnection(
             failOnComment = failOnComment,
             connectedStarted = connectedStarted,
             releaseConnected = releaseConnected,
             eventSendAttempted = eventSendAttempted,
+            registrationStarted = registrationStarted,
+            releaseRegistration = releaseRegistration,
         ).also(queued::addLast)
 
         override fun create(timeoutMs: Long): MatchEventConnection = queued.removeFirst()
