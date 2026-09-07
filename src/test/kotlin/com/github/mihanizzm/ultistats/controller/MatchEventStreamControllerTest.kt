@@ -123,7 +123,10 @@ class MatchEventStreamControllerTest {
             .andReturn()
 
         val body = awaitFinishedSseContent(result.response, match.id)
-        assertThat(body.indexOf("event:connected")).isLessThan(body.indexOf("event:match-finished"))
+        val connectedEvent = "event:connected"
+        val finishedEvent = "event:match-finished"
+        assertThat(body).contains(connectedEvent, finishedEvent)
+        assertThat(body.indexOf(connectedEvent)).isLessThan(body.indexOf(finishedEvent))
         mockMvc.perform(asyncDispatch(result))
             .andExpect(request().asyncNotStarted())
     }
