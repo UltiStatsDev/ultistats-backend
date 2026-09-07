@@ -1,14 +1,17 @@
 package com.github.mihanizzm.ultistats.controller
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.github.mihanizzm.ultistats.fixture.MatchEventTestFixture
 import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.model.Player
 import com.github.mihanizzm.ultistats.model.Team
 import com.github.mihanizzm.ultistats.realtime.MatchEventStreamService
+import com.github.mihanizzm.ultistats.service.EventService
 import com.github.mihanizzm.ultistats.service.MatchService
 import com.github.mihanizzm.ultistats.service.PlayerService
 import com.github.mihanizzm.ultistats.service.TeamPlayerService
 import com.github.mihanizzm.ultistats.service.TeamService
+import com.github.mihanizzm.ultistats.service.result.MatchCommandResult
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -18,6 +21,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.mock.web.MockHttpServletResponse
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
@@ -26,12 +30,16 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.request
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.time.Duration
+import java.time.Instant
 import java.util.UUID
+import kotlin.test.assertIs
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @Suppress("NonAsciiCharacters")
 class MatchEventStreamControllerTest {
+    private val matchEventFixture by lazy { MatchEventTestFixture(matchService, eventService) }
+
     @Autowired
     lateinit var mockMvc: MockMvc
 
@@ -40,6 +48,9 @@ class MatchEventStreamControllerTest {
 
     @Autowired
     lateinit var matchService: MatchService
+
+    @Autowired
+    lateinit var eventService: EventService
 
     @Autowired
     lateinit var teamService: TeamService
@@ -97,6 +108,27 @@ class MatchEventStreamControllerTest {
     }
 
     @Test
+    fun `SSE поток завершенного матча отправляет connected затем match-finished и завершается`() {
+        val match = createMatch()
+        assertIs<MatchCommandResult.Success<Match>>(matchService.startMatch(match.id, MATCH_STARTED_AT))
+        matchEventFixture.recordCompletedPoint(match.id, MATCH_ENDED_AT.minusSeconds(1))
+        assertIs<MatchCommandResult.Success<Match>>(matchService.endMatch(match.id, MATCH_ENDED_AT))
+
+        val result = mockMvc.perform(
+            get("/api/v1/matches/${match.id}/events/stream")
+                .accept(MediaType.TEXT_EVENT_STREAM),
+        )
+            .andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+            .andReturn()
+
+        val body = awaitFinishedSseContent(result.response, match.id)
+        assertThat(body.indexOf("event:connected")).isLessThan(body.indexOf("event:match-finished"))
+        mockMvc.perform(asyncDispatch(result))
+            .andExpect(request().asyncNotStarted())
+    }
+
+    @Test
     fun `OpenAPI документирует SSE поток и ProblemDetail`() {
         mockMvc.perform(get("/v3/api-docs"))
             .andExpect(status().isOk)
@@ -139,9 +171,29 @@ class MatchEventStreamControllerTest {
         return response.contentAsString
     }
 
+    private fun awaitFinishedSseContent(response: MockHttpServletResponse, matchId: UUID): String {
+        val connected = "event:connected"
+        val finished = "event:match-finished"
+        val deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos()
+        do {
+            val content = response.contentAsString
+            if (content.contains(connected) && content.contains(finished) && content.contains(matchId.toString())) {
+                return content
+            }
+            Thread.sleep(10)
+        } while (System.nanoTime() < deadline)
+
+        return response.contentAsString
+    }
+
     private fun connectedMatchId(content: String): String = objectMapper.readTree(
         content.lineSequence()
             .filter { it.startsWith("data:") }
             .joinToString("\n") { it.removePrefix("data:") },
     ).path("matchId").asText()
+
+    companion object {
+        private val MATCH_STARTED_AT = Instant.parse("2026-09-02T10:00:00Z")
+        private val MATCH_ENDED_AT = MATCH_STARTED_AT.plusSeconds(60)
+    }
 }

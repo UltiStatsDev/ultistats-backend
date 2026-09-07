@@ -2,10 +2,12 @@ package com.github.mihanizzm.ultistats.realtime
 
 import com.github.mihanizzm.ultistats.MatchAbstractTest
 import com.github.mihanizzm.ultistats.dto.response.realtime.MatchRealtimeOperation
+import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.model.events.OnePlayerEvent
 import com.github.mihanizzm.ultistats.model.events.TwoPlayerEvent
 import com.github.mihanizzm.ultistats.service.result.EventCommandResult
+import com.github.mihanizzm.ultistats.service.result.MatchCommandResult
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.any
@@ -100,6 +102,36 @@ class MatchRealtimeTransactionIntegrationTest : MatchAbstractTest() {
     }
 
     @Test
+    fun `После commit завершения матча закрывается SSE поток`() {
+        recordCompletedPoint()
+        clearInvocations(streamService)
+
+        assertIs<MatchCommandResult.Success<Match>>(matchService.endMatch(MATCH.id, MATCH_ENDED_AT))
+
+        verify(streamService, timeout(1_000).times(1)).finishMatch(MATCH.id)
+    }
+
+    @Test
+    fun `Rollback завершения матча не закрывает SSE поток`() {
+        recordCompletedPoint()
+        clearInvocations(streamService)
+
+        transactionTemplate.executeWithoutResult { status ->
+            assertIs<MatchCommandResult.Success<Match>>(matchService.endMatch(MATCH.id, MATCH_ENDED_AT))
+            status.setRollbackOnly()
+        }
+
+        verify(streamService, after(200).never()).finishMatch(matching(MATCH.id))
+    }
+
+    @Test
+    fun `Отклоненное завершение матча не закрывает SSE поток`() {
+        assertIs<MatchCommandResult.Conflict>(matchService.endMatch(MATCH.id, MATCH_ENDED_AT))
+
+        verify(streamService, after(200).never()).finishMatch(matching(MATCH.id))
+    }
+
+    @Test
     fun `Отклоненная последовательность не публикует изменение event log`() {
         val pass = TwoPlayerEvent(PLAYERS_1[0].id, PLAYERS_1[1].id, EVENT_AT, EventType.PASS)
 
@@ -132,6 +164,27 @@ class MatchRealtimeTransactionIntegrationTest : MatchAbstractTest() {
 
     private fun validPull() = OnePlayerEvent(PLAYERS_2[0].id, EVENT_AT, EventType.PULL)
 
+    private fun recordCompletedPoint() {
+        assertIs<EventCommandResult.Success>(eventService.create(validPull(), MATCH.id))
+        assertIs<EventCommandResult.Success>(
+            eventService.create(
+                OnePlayerEvent(PLAYERS_1[0].id, EVENT_AT.plusSeconds(1), EventType.PICKUP),
+                MATCH.id,
+            ),
+        )
+        assertIs<EventCommandResult.Success>(
+            eventService.create(
+                TwoPlayerEvent(
+                    PLAYERS_1[0].id,
+                    PLAYERS_1[1].id,
+                    EVENT_AT.plusSeconds(2),
+                    EventType.GOAL,
+                ),
+                MATCH.id,
+            ),
+        )
+    }
+
     private fun anyOperation(): MatchRealtimeOperation =
         any(MatchRealtimeOperation::class.java) ?: MatchRealtimeOperation.CREATED
 
@@ -141,5 +194,6 @@ class MatchRealtimeTransactionIntegrationTest : MatchAbstractTest() {
 
     companion object {
         private val EVENT_AT = Instant.parse("2026-09-02T10:00:00Z")
+        private val MATCH_ENDED_AT = EVENT_AT.plusSeconds(3)
     }
 }
