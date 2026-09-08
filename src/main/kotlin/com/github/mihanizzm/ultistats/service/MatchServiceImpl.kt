@@ -9,6 +9,7 @@ import com.github.mihanizzm.ultistats.model.MatchTeam
 import com.github.mihanizzm.ultistats.model.TeamScore
 import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.model.events.TwoPlayerEvent
+import com.github.mihanizzm.ultistats.realtime.MatchRealtimePublisher
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataEventRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchParticipantRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchRepository
@@ -39,6 +40,7 @@ class MatchServiceImpl(
     private val teamRepository: SpringDataTeamRepository,
     private val lifecyclePolicy: MatchLifecyclePolicy,
     private val sequencePolicy: EventSequencePolicy,
+    private val realtimePublisher: MatchRealtimePublisher,
 ) : MatchService {
     override fun get(matchId: UUID): Match? =
         matchRepository.findByIdAndDeletedAtIsNull(matchId)?.hydrate(includeEvents = true)
@@ -148,7 +150,9 @@ class MatchServiceImpl(
         }
 
         matchRepository.save(match.copy(endedAt = timestamp))
-        return MatchCommandResult.Success(readHydratedForUpdate(matchId))
+        val finished = readHydratedForUpdate(matchId)
+        realtimePublisher.matchFinished(matchId)
+        return MatchCommandResult.Success(finished)
     }
 
     @Transactional(Transactional.TxType.MANDATORY)

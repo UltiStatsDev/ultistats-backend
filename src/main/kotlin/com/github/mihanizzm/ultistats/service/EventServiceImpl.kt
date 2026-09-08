@@ -1,10 +1,12 @@
 package com.github.mihanizzm.ultistats.service
 
+import com.github.mihanizzm.ultistats.dto.response.realtime.MatchRealtimeOperation
 import com.github.mihanizzm.ultistats.model.EventEntity
 import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.model.MatchStatus
 import com.github.mihanizzm.ultistats.model.events.Event
 import com.github.mihanizzm.ultistats.model.events.StoredEvent
+import com.github.mihanizzm.ultistats.realtime.MatchRealtimePublisher
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataEventRepository
 import com.github.mihanizzm.ultistats.service.result.EventCommandResult
 import com.github.mihanizzm.ultistats.validation.match.MatchLifecycleDecision
@@ -25,6 +27,7 @@ class EventServiceImpl(
     private val matchService: MatchService,
     private val lifecyclePolicy: MatchLifecyclePolicy,
     private val sequencePolicy: EventSequencePolicy,
+    private val realtimePublisher: MatchRealtimePublisher,
 ) : EventService {
     @Transactional
     override fun create(event: Event, matchId: UUID): EventCommandResult {
@@ -38,6 +41,7 @@ class EventServiceImpl(
         val entity = EventEntity.fromDomain(UUID.randomUUID(), matchId, (lastInSequence?.sequenceNumber ?: 0) + 1, event)
         eventRepository.save(entity)
         matchService.recalculateScore(matchId)
+        realtimePublisher.eventLogChanged(matchId, MatchRealtimeOperation.CREATED, entity.id)
         return EventCommandResult.Success(entity.toStored())
     }
 
@@ -65,6 +69,7 @@ class EventServiceImpl(
         val updated = EventEntity.fromDomain(existing.id, matchId, existing.sequenceNumber, event)
         eventRepository.save(updated)
         matchService.recalculateScore(matchId)
+        realtimePublisher.eventLogChanged(matchId, MatchRealtimeOperation.UPDATED, updated.id)
         return EventCommandResult.Success(updated.toStored())
     }
 
@@ -81,6 +86,7 @@ class EventServiceImpl(
 
         eventRepository.save(existing.copy(deletedAt = Instant.now()))
         matchService.recalculateScore(matchId)
+        realtimePublisher.eventLogChanged(matchId, MatchRealtimeOperation.DELETED, existing.id)
         return EventCommandResult.Deleted
     }
 

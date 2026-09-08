@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>UltiStats OBS diagnostics</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            background: transparent;
+            color: #e6e6e6;
+        }
+
+        body {
+            margin: 0;
+            padding: 1rem;
+            background: rgba(12, 12, 12, 0.88);
+        }
+
+        main {
+            max-width: 72rem;
+            margin: 0 auto;
+        }
+
+        h1, h2 {
+            font-size: 1rem;
+            margin: 0 0 0.5rem;
+        }
+
+        section {
+            border: 1px solid #4c4c4c;
+            border-radius: 0.25rem;
+            padding: 0.75rem;
+            margin-top: 0.75rem;
+        }
+
+        dl {
+            display: grid;
+            grid-template-columns: max-content 1fr;
+            gap: 0.25rem 1rem;
+            margin: 0;
+        }
+
+        dt { color: #a6a6a6; }
+        dd { margin: 0; overflow-wrap: anywhere; }
+        pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+    </style>
+</head>
+<body>
+<main>
+    <h1>UltiStats OBS diagnostics</h1>
+    <dl>
+        <dt>Match ID</dt>
+        <dd id="match-id">not loaded</dd>
+        <dt>Connection</dt>
+        <dd id="connection-state">initializing</dd>
+    </dl>
+
+    <section>
+        <h2>Connection log</h2>
+        <pre id="diagnostic-log"></pre>
+    </section>
+    <section>
+        <h2>Reconciled changes</h2>
+        <pre id="changes">No reconciled changes.</pre>
+    </section>
+    <section>
+        <h2>Current event log</h2>
+        <pre id="event-log">No event log loaded.</pre>
+    </section>
+</main>
+
+<script>
+(() => {
+    const canonicalUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const matchId = new URLSearchParams(window.location.search).get("matchId");
+    const matchIdElement = document.getElementById("match-id");
+    const connectionState = document.getElementById("connection-state");
+    const diagnosticLog = document.getElementById("diagnostic-log");
+    const changesElement = document.getElementById("changes");
+    const eventLog = document.getElementById("event-log");
+
+    let baseline = null;
+    let eventSource = null;
+    let syncRequested = false;
+    let renderChangesRequested = false;
+    let syncLoopPromise = null;
+
+    const byId = events => new Map(events.map(event => [event.id, event]));
+    const sameEvent = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+
+    function diff(previous, current) {
+        const changes = [];
+        for (const [id, event] of current) {
+            if (!previous.has(id)) changes.push({ operation: "CREATED", event });
+            else if (!sameEvent(previous.get(id), event)) {
+                changes.push({ operation: "UPDATED", before: previous.get(id), event });
+            }
+        }
+        for (const [id, event] of previous) {
+            if (!current.has(id)) changes.push({ operation: "DELETED", event });
+        }
+        return changes;
+    }
+
+    function setState(state) {
+        connectionState.textContent = state;
+    }
+
+    function log(name, details) {
+        const suffix = details === undefined ? "" : ` ${JSON.stringify(details)}`;
+        const line = `${new Date().toISOString()} ${name}${suffix}`;
+        diagnosticLog.textContent = diagnosticLog.textContent
+            ? `${diagnosticLog.textContent}\n${line}`
+            : line;
+    }
+
+    function errorMessage(error) {
+        return error instanceof Error ? error.message : String(error);
+    }
+
+    function setError(context, error) {
+        const message = `${context}: ${errorMessage(error)}`;
+        log("error", message);
+        setState(`error: ${message}`);
+    }
+
+    function renderDiff(changes) {
+        changesElement.textContent = changes.length === 0
+            ? "No reconciled changes."
+            : JSON.stringify(changes, null, 2);
+    }
+
+    function scheduleSync(renderChanges) {
+        syncRequested = true;
+        renderChangesRequested ||= renderChanges;
+        if (syncLoopPromise === null) {
+            syncLoopPromise = runSyncLoop().finally(() => { syncLoopPromise = null; });
+        }
+        return syncLoopPromise;
+    }
+
+    async function runSyncLoop() {
+        while (syncRequested) {
+            const renderChanges = renderChangesRequested;
+            syncRequested = false;
+            renderChangesRequested = false;
+            const response = await fetch(`/api/v1/matches/${encodeURIComponent(matchId)}/events`, { cache: "no-store" });
+            if (!response.ok) throw new Error(`events request failed: ${response.status}`);
+            const events = await response.json();
+            const current = byId(events);
+            if (baseline !== null && renderChanges) renderDiff(diff(baseline, current));
+            baseline = current;
+            eventLog.textContent = JSON.stringify(events, null, 2);
+        }
+    }
+
+    async function preflightMatch() {
+        const response = await fetch(`/api/v1/matches/${encodeURIComponent(matchId)}`, { cache: "no-store" });
+        if (!response.ok) throw new Error(`match request failed: ${response.status}`);
+    }
+
+    function registerStreamListeners() {
+        eventSource.addEventListener("connected", async event => {
+            try {
+                log("connected", JSON.parse(event.data));
+                setState("connected");
+                await scheduleSync(baseline !== null);
+            } catch (error) {
+                setError("connected handler failed", error);
+            }
+        });
+
+        eventSource.addEventListener("event-log-changed", event => {
+            try {
+                log("event-log-changed", JSON.parse(event.data));
+                void scheduleSync(baseline !== null).catch(error => {
+                    setError("event-log-changed handler failed", error);
+                });
+            } catch (error) {
+                setError("event-log-changed handler failed", error);
+            }
+        });
+
+        eventSource.addEventListener("match-finished", async event => {
+            try {
+                log("match-finished", JSON.parse(event.data));
+                eventSource.close();
+                await scheduleSync(baseline !== null);
+                setState("finished");
+            } catch (error) {
+                setError("match-finished handler failed", error);
+            }
+        });
+
+        eventSource.onerror = () => {
+            if (eventSource.readyState !== EventSource.CLOSED) setState("reconnecting");
+        };
+    }
+
+    async function start() {
+        matchIdElement.textContent = matchId ?? "missing";
+        if (matchId === null || !canonicalUuid.test(matchId)) {
+            throw new Error("matchId must be a canonical UUID");
+        }
+
+        setState("validating match");
+        await preflightMatch();
+        setState("connecting");
+        eventSource = new EventSource(`/api/v1/matches/${encodeURIComponent(matchId)}/events/stream`);
+        registerStreamListeners();
+    }
+
+    void start().catch(error => setError("unable to start diagnostics", error));
+})();
+</script>
+</body>
+</html>
