@@ -6,6 +6,7 @@ import com.github.mihanizzm.ultistats.dto.request.CreateTeamRequest
 import com.github.mihanizzm.ultistats.dto.request.TeamFilterRequest
 import com.github.mihanizzm.ultistats.dto.request.UpdateTeamRequest
 import com.github.mihanizzm.ultistats.dto.response.PhotoUrlResponse
+import com.github.mihanizzm.ultistats.dto.response.PlayerTeamMembershipResponse
 import com.github.mihanizzm.ultistats.dto.response.TeamDetailResponse
 import com.github.mihanizzm.ultistats.dto.response.TeamListItemResponse
 import com.github.mihanizzm.ultistats.dto.response.TeamPlayerResponse
@@ -74,10 +75,11 @@ class TeamFacade(
         return true
     }
 
-    fun putPlayer(teamId: UUID, playerId: UUID, number: Int?): TeamPlayerResponse? {
+    fun putPlayer(teamId: UUID, playerId: UUID, number: Int?): PlayerTeamMembershipResponse? {
         require(number == null || number >= 0) { "Player number cannot be negative" }
-        if (teamService.get(teamId) == null || playerService.get(playerId) == null) return null
-        return TeamPlayerResponse.from(teamPlayerService.add(teamId, playerId, number))
+        val team = teamService.get(teamId) ?: return null
+        if (playerService.get(playerId) == null) return null
+        return PlayerTeamMembershipResponse.from(teamPlayerService.add(teamId, playerId, number), team)
     }
 
     fun removePlayer(teamId: UUID, playerId: UUID): Boolean {
