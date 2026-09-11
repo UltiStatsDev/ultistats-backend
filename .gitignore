@@ -49,3 +49,6 @@ CLAUDE.md
 
 ### Persistence Data ###
 data/
+
+### Git worktrees ###
+/.worktrees/
