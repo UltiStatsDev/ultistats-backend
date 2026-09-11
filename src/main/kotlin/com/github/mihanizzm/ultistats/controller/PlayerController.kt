@@ -8,7 +8,7 @@ import com.github.mihanizzm.ultistats.dto.request.UpdatePlayerRequest
 import com.github.mihanizzm.ultistats.dto.response.PhotoUrlResponse
 import com.github.mihanizzm.ultistats.dto.response.PlayerDetailResponse
 import com.github.mihanizzm.ultistats.dto.response.PlayerListItemResponse
-import com.github.mihanizzm.ultistats.dto.response.TeamPlayerResponse
+import com.github.mihanizzm.ultistats.dto.response.PlayerTeamMembershipResponse
 import com.github.mihanizzm.ultistats.facade.PlayerFacade
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -67,7 +67,7 @@ class PlayerController(
 
     @GetMapping("/{playerId}/teams")
     @Operation(summary = "Получить членства игрока в командах")
-    fun getTeams(@PathVariable playerId: UUID): ResponseEntity<List<TeamPlayerResponse>> =
+    fun getTeams(@PathVariable playerId: UUID): ResponseEntity<List<PlayerTeamMembershipResponse>> =
         playerFacade.getMemberships(playerId)?.let { ResponseEntity.ok(it) }
             ?: ResponseEntity.notFound().build()
 

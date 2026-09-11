@@ -8,11 +8,12 @@ import com.github.mihanizzm.ultistats.dto.request.UpdatePlayerRequest
 import com.github.mihanizzm.ultistats.dto.response.PhotoUrlResponse
 import com.github.mihanizzm.ultistats.dto.response.PlayerDetailResponse
 import com.github.mihanizzm.ultistats.dto.response.PlayerListItemResponse
-import com.github.mihanizzm.ultistats.dto.response.TeamPlayerResponse
+import com.github.mihanizzm.ultistats.dto.response.PlayerTeamMembershipResponse
 import com.github.mihanizzm.ultistats.model.Player
 import com.github.mihanizzm.ultistats.service.LocalFileStorageService
 import com.github.mihanizzm.ultistats.service.PlayerService
 import com.github.mihanizzm.ultistats.service.TeamPlayerService
+import com.github.mihanizzm.ultistats.service.TeamService
 import com.github.mihanizzm.ultistats.util.SortingUtils.applySorting
 import org.springframework.stereotype.Component
 import org.springframework.web.multipart.MultipartFile
@@ -22,6 +23,7 @@ import java.util.UUID
 class PlayerFacade(
     private val playerService: PlayerService,
     private val teamPlayerService: TeamPlayerService,
+    private val teamService: TeamService,
     private val localFileStorageService: LocalFileStorageService,
 ) {
     companion object {
@@ -40,12 +42,12 @@ class PlayerFacade(
     }
 
     fun getById(id: UUID): PlayerDetailResponse? = playerService.get(id)?.let {
-        PlayerDetailResponse.from(it, teamPlayerService.getByPlayerId(id))
+        PlayerDetailResponse.from(it, getMembershipResponses(id))
     }
 
-    fun getMemberships(id: UUID): List<TeamPlayerResponse>? {
+    fun getMemberships(id: UUID): List<PlayerTeamMembershipResponse>? {
         if (playerService.get(id) == null) return null
-        return teamPlayerService.getByPlayerId(id).map(TeamPlayerResponse::from)
+        return getMembershipResponses(id)
     }
 
     fun create(request: CreatePlayerRequest): PlayerDetailResponse {
@@ -61,7 +63,7 @@ class PlayerFacade(
             lastName = request.lastName ?: existing.lastName,
         )
         playerService.update(updated)
-        return PlayerDetailResponse.from(updated, teamPlayerService.getByPlayerId(id))
+        return PlayerDetailResponse.from(updated, getMembershipResponses(id))
     }
 
     fun delete(id: UUID): Boolean {
@@ -86,5 +88,19 @@ class PlayerFacade(
         val oldUrl = player.photoUrl
         playerService.update(player.copy(photoUrl = null))
         return PhotoUrlResponse(oldUrl)
+    }
+
+    private fun getMembershipResponses(playerId: UUID): List<PlayerTeamMembershipResponse> {
+        val memberships = teamPlayerService.getByPlayerId(playerId)
+        val teamsById = teamService.getAllInListIncludingDeleted(memberships.map { it.teamId })
+            .associateBy { it.id }
+        return memberships.map { membership ->
+            PlayerTeamMembershipResponse.from(
+                membership,
+                requireNotNull(teamsById[membership.teamId]) {
+                    "Team ${membership.teamId} referenced by player membership does not exist"
+                },
+            )
+        }
     }
 }
