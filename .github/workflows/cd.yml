@@ -1,0 +1,112 @@
+name: Deploy production
+
+on:
+  push:
+    branches: [master]
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/ultistatsdev/ultistats-backend
+
+jobs:
+  build-and-publish:
+    name: Build, test, and publish image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Validate deployment safety
+        run: |
+          bash deploy/tests/validate-compose.sh
+          bash deploy/tests/deploy_test.sh
+          bash deploy/tests/validate-workflow.sh
+
+      - name: Build and test
+        run: ./gradlew build --no-daemon
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/ultistatsdev/ultistats-backend:${{ github.sha }}
+            ghcr.io/ultistatsdev/ultistats-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy immutable image
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      contents: read
+    env:
+      PROD_HOST: ${{ secrets.PROD_HOST }}
+      PROD_USER: ${{ secrets.PROD_USER }}
+      IMAGE: ghcr.io/ultistatsdev/ultistats-backend:${{ github.sha }}
+    steps:
+      - name: Check out deployment files
+        uses: actions/checkout@v4
+
+      - name: Configure verified SSH access
+        shell: bash
+        env:
+          PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$PROD_SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 0600 ~/.ssh/deploy_key
+          printf '%s\n' "$PROD_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/known_hosts
+          printf '%s\n' \
+            'Host production' \
+            "  HostName $PROD_HOST" \
+            "  User $PROD_USER" \
+            '  IdentityFile ~/.ssh/deploy_key' \
+            '  IdentitiesOnly yes' \
+            > ~/.ssh/config
+          chmod 0600 ~/.ssh/config
+
+      - name: Install deployment files and deploy
+        shell: bash
+        run: |
+          staging_directory="/opt/ultistats/incoming-${GITHUB_SHA}"
+          ssh production "mkdir -p '$staging_directory'"
+          scp deploy/compose.prod.yml deploy/deploy.sh "production:$staging_directory/"
+          ssh production \
+            "install -m 0644 '$staging_directory/compose.prod.yml' /opt/ultistats/compose.prod.yml && \
+             install -m 0755 '$staging_directory/deploy.sh' /opt/ultistats/deploy.sh && \
+             rmdir '$staging_directory' && \
+             /opt/ultistats/deploy.sh '$IMAGE' '$GITHUB_SHA'"

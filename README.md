@@ -113,6 +113,92 @@ http://<ultistats-host>:8080/obs-diagnostic.html?matchId=<uuid>
 
 ---
 
+## Production deployment
+
+После merge в `master` workflow `.github/workflows/cd.yml`:
+
+1. собирает и тестирует приложение на Java 21;
+2. публикует Linux AMD64 image в private GHCR с тегами commit SHA и `latest`;
+3. копирует на сервер только `deploy/compose.prod.yml` и `deploy/deploy.sh`;
+4. создаёт PostgreSQL dump;
+5. разворачивает SHA-tagged image и проверяет `/v3/api-docs` через Caddy;
+6. возвращает предыдущий application image, если health check не проходит.
+
+Перед dump скрипт требует минимум 1 GiB свободного места и хранит не более 10 автоматических `pre-*.dump` файлов. Порог и retention можно переопределить серверными переменными `DEPLOY_MIN_FREE_KB` и `DEPLOY_BACKUP_RETENTION`.
+
+Авторитетная версия production — полный SHA-тег вида:
+
+```text
+ghcr.io/ultistatsdev/ultistats-backend:<40-character-commit-sha>
+```
+
+`latest` предназначен только для удобства и не используется для деплоя или rollback.
+
+### GitHub Environment
+
+В репозитории нужен Environment `production` с секретами:
+
+| Секрет | Значение |
+|--------|----------|
+| `PROD_HOST` | DNS-имя или IP production VM |
+| `PROD_USER` | SSH-пользователь (`appuser`) |
+| `PROD_SSH_PRIVATE_KEY` | приватная часть отдельного deploy-only SSH-ключа |
+| `PROD_SSH_KNOWN_HOSTS` | заранее проверенная строка host key для production VM |
+
+Workflow использует встроенный `GITHUB_TOKEN` только для публикации image. Registry token сервера в GitHub Actions не передаётся.
+
+### Однократная подготовка VM
+
+Публичную часть отдельного deploy-ключа добавьте в `/home/appuser/.ssh/authorized_keys`. Сверьте fingerprint SSH host key по доверенному каналу и сохраните соответствующую строку `known_hosts` в `PROD_SSH_KNOWN_HOSTS`.
+
+На VM создайте `/opt/ultistats/.env` с правами `0600`:
+
+```dotenv
+POSTGRES_PASSWORD=<existing-production-password>
+APP_IMAGE=ghcr.io/ultistatsdev/ultistats-backend:<currently-deployed-sha>
+```
+
+Приватный GHCR image VM скачивает по отдельному token с минимальным `read:packages` scope:
+
+```bash
+printf '%s' "$GHCR_READ_TOKEN" | docker login ghcr.io \
+  --username <github-user> \
+  --password-stdin
+```
+
+Не добавляйте token в `.env`, Compose или репозиторий. После login он хранится в Docker credentials пользователя `appuser`.
+
+Production layout:
+
+```text
+/opt/ultistats/
+├── .env
+├── Caddyfile
+├── compose.prod.yml
+├── deploy.sh
+├── DEPLOYED_REVISION
+└── backups/
+```
+
+Swagger production: `http://158.160.219.91/swagger-ui.html`. Машина публикует только Caddy на порту 80; приложение и PostgreSQL доступны лишь во внутренних Docker networks.
+
+### Ручной rollback
+
+Для возврата на известный исправный commit:
+
+```bash
+ssh appuser@158.160.219.91
+/opt/ultistats/deploy.sh \
+  ghcr.io/ultistatsdev/ultistats-backend:<previous-40-character-sha> \
+  <previous-40-character-sha>
+```
+
+Скрипт перед rollback также создаёт свежий dump и проверяет API. Он пересоздаёт только контейнер приложения и не пересоздаёт PostgreSQL.
+
+Важно: rollback Docker image не отменяет уже применённую Flyway migration. Новые миграции должны быть обратно совместимы с предыдущей версией приложения. Восстановление БД из dump выполняется только вручную после остановки приложения, потому что это деструктивная операция.
+
+---
+
 ## Потенциальные будущие разработки
 
 - Интеграция с API Ultisport.
