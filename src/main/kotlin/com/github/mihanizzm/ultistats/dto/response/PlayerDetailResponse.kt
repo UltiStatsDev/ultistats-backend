@@ -1,7 +1,6 @@
 package com.github.mihanizzm.ultistats.dto.response
 
 import com.github.mihanizzm.ultistats.model.Player
-import com.github.mihanizzm.ultistats.model.TeamPlayer
 import java.util.UUID
 
 data class PlayerDetailResponse(
@@ -9,15 +8,15 @@ data class PlayerDetailResponse(
     val firstName: String,
     val lastName: String,
     val photoUrl: String?,
-    val memberships: List<TeamPlayerResponse>,
+    val memberships: List<PlayerTeamMembershipResponse>,
 ) {
     companion object {
-        fun from(player: Player, memberships: List<TeamPlayer>) = PlayerDetailResponse(
+        fun from(player: Player, memberships: List<PlayerTeamMembershipResponse>) = PlayerDetailResponse(
             id = player.id,
             firstName = player.firstName,
             lastName = player.lastName,
             photoUrl = player.photoUrl,
-            memberships = memberships.map(TeamPlayerResponse::from),
+            memberships = memberships,
         )
     }
 }

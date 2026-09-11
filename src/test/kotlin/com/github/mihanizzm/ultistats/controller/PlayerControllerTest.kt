@@ -6,6 +6,7 @@ import com.github.mihanizzm.ultistats.model.Team
 import com.github.mihanizzm.ultistats.service.PlayerService
 import com.github.mihanizzm.ultistats.service.TeamPlayerService
 import com.github.mihanizzm.ultistats.service.TeamService
+import org.hamcrest.Matchers.containsInAnyOrder
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -58,11 +59,14 @@ class PlayerControllerTest {
         teamPlayerService.add(team2.id, player.id, 17)
 
         mockMvc.perform(get("/api/v1/players/${player.id}"))
-            .andExpect(status().isOk).andExpect(jsonPath("$.memberships.length()").value(2))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.memberships.length()").value(2))
+            .andExpect(jsonPath("$.memberships[*].teamName").value(containsInAnyOrder("One", "Two")))
         mockMvc.perform(get("/api/v1/players/${player.id}/teams"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$[0].playerId").value(player.id.toString()))
             .andExpect(jsonPath("$[1].playerId").value(player.id.toString()))
+            .andExpect(jsonPath("$[*].teamName").value(containsInAnyOrder("One", "Two")))
     }
 
     @Test
