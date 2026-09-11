@@ -31,6 +31,7 @@ require_text 'IdentitiesOnly yes'
 require_text 'deploy/compose.prod.yml'
 require_text 'deploy/deploy.sh'
 require_text '/opt/ultistats/deploy.sh'
+require_text "rm -f '\$staging_directory/compose.prod.yml' '\$staging_directory/deploy.sh'"
 require_text 'bash deploy/tests/validate-compose.sh'
 require_text 'bash deploy/tests/deploy_test.sh'
 require_text 'bash deploy/tests/validate-workflow.sh'

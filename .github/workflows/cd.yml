@@ -108,5 +108,6 @@ jobs:
           ssh production \
             "install -m 0644 '$staging_directory/compose.prod.yml' /opt/ultistats/compose.prod.yml && \
              install -m 0755 '$staging_directory/deploy.sh' /opt/ultistats/deploy.sh && \
+             rm -f '$staging_directory/compose.prod.yml' '$staging_directory/deploy.sh' && \
              rmdir '$staging_directory' && \
              /opt/ultistats/deploy.sh '$IMAGE' '$GITHUB_SHA'"
