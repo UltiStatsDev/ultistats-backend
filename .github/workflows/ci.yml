@@ -45,5 +45,11 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Validate deployment safety
+        run: |
+          bash deploy/tests/validate-compose.sh
+          bash deploy/tests/deploy_test.sh
+          bash deploy/tests/validate-workflow.sh
+
       - name: Build and test
         run: ./gradlew build
