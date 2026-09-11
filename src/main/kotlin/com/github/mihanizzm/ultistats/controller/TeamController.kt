@@ -7,6 +7,7 @@ import com.github.mihanizzm.ultistats.dto.request.TeamFilterRequest
 import com.github.mihanizzm.ultistats.dto.request.UpdateTeamRequest
 import com.github.mihanizzm.ultistats.dto.request.UpsertTeamPlayerRequest
 import com.github.mihanizzm.ultistats.dto.response.PhotoUrlResponse
+import com.github.mihanizzm.ultistats.dto.response.PlayerTeamMembershipResponse
 import com.github.mihanizzm.ultistats.dto.response.TeamDetailResponse
 import com.github.mihanizzm.ultistats.dto.response.TeamListItemResponse
 import com.github.mihanizzm.ultistats.dto.response.TeamPlayerResponse
@@ -93,7 +94,7 @@ class TeamController(
         @PathVariable teamId: UUID,
         @PathVariable playerId: UUID,
         @RequestBody request: UpsertTeamPlayerRequest,
-    ): ResponseEntity<TeamPlayerResponse> = try {
+    ): ResponseEntity<PlayerTeamMembershipResponse> = try {
         teamFacade.putPlayer(teamId, playerId, request.number)
             ?.let { ResponseEntity.ok(it) }
             ?: ResponseEntity.notFound().build()

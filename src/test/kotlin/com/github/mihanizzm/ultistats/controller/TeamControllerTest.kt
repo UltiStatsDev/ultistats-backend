@@ -49,6 +49,7 @@ class TeamControllerTest {
         mockMvc.perform(put(url).contentType(MediaType.APPLICATION_JSON).content("""{"number":7}"""))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.teamId").value(team.id.toString()))
+            .andExpect(jsonPath("$.teamName").value("Team"))
             .andExpect(jsonPath("$.playerId").value(player.id.toString()))
             .andExpect(jsonPath("$.number").value(7))
         mockMvc.perform(put(url).contentType(MediaType.APPLICATION_JSON).content("""{"number":17}"""))
