@@ -7,6 +7,9 @@ services:
       - DATABASE_URL=jdbc:postgresql://postgres:5432/ultistats
       - DATABASE_USERNAME=ultistats
       - DATABASE_PASSWORD=ultistats
+      - APP_STORAGE_ROOT=/app/uploads
+    volumes:
+      - uploads_data:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -31,3 +34,4 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:

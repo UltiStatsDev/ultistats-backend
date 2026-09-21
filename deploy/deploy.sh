@@ -58,6 +58,30 @@ wait_until_healthy() {
     return 1
 }
 
+current_app_container() {
+    docker ps \
+        --filter label=com.docker.compose.project=ultistats \
+        --filter label=com.docker.compose.service=app \
+        --format '{{.ID}}' | head -n 1
+}
+
+legacy_uploads_state() {
+    local container_id="$1"
+
+    docker exec "$container_id" sh -c \
+        'set -eu
+        if [ ! -d /app/uploads ]; then
+            printf "missing\n"
+            exit 0
+        fi
+        first_entry="$(find /app/uploads -mindepth 1 -maxdepth 1 -print -quit)"
+        if [ -n "$first_entry" ]; then
+            printf "nonempty\n"
+        else
+            printf "empty\n"
+        fi'
+}
+
 write_image_to_env() {
     local image="$1"
     local temporary_env="$env_file.tmp.$$"
@@ -87,7 +111,58 @@ prune_old_backups() {
 
     for ((index = 0; index < remove_count; index++)); do
         rm -- "${backup_files[$index]}"
+        rm -f -- "${backup_files[$index]%.dump}-uploads.tar"
     done
+}
+
+bootstrap_uploads_volume() {
+    local uploads_backup_file="$1"
+    local restore_status
+
+    [[ -s "$uploads_backup_file" ]] || return 0
+
+    log "bootstrapping persistent uploads storage from $uploads_backup_file"
+    if APP_IMAGE="$target_image" compose run --rm --no-deps -T \
+        --user root \
+        --entrypoint sh \
+        app -c '
+            set -eu
+            first_entry="$(find /app/uploads -mindepth 1 -maxdepth 1 -print -quit)"
+            if [ -n "$first_entry" ]; then
+                exit 42
+            fi
+            cleanup() {
+                find /app/uploads -mindepth 1 -delete || true
+            }
+            if ! tar -xf - -C /app/uploads; then
+                cleanup
+                exit 1
+            fi
+            if ! chown -R appuser:appgroup /app/uploads; then
+                cleanup
+                exit 1
+            fi
+        ' < "$uploads_backup_file"; then
+        return 0
+    else
+        restore_status=$?
+    fi
+
+    if ((restore_status == 42)); then
+        log 'persistent uploads storage is not empty; keeping its existing files'
+        return 0
+    fi
+
+    return "$restore_status"
+}
+
+rollback() {
+    local reason="$1"
+
+    log "$reason; rolling back to $previous_image"
+    APP_IMAGE="$previous_image" compose up -d --no-deps app
+    wait_until_healthy || fail 'new image failed and rollback is unhealthy'
+    fail "$reason; previous image restored"
 }
 
 mkdir -p "$backup_directory"
@@ -97,11 +172,10 @@ available_kb="$(df -Pk "$backup_directory" | awk 'NR == 2 { print $4 }')"
 ((available_kb >= minimum_free_kb)) \
     || fail "less than ${minimum_free_kb} KiB is available for a database backup"
 backup_file="$backup_directory/pre-$(date -u +%Y%m%dT%H%M%SZ)-${target_revision}.dump"
+uploads_backup_file="${backup_file%.dump}-uploads.tar"
+uploads_state=''
 
-app_container_id="$(docker ps \
-    --filter label=com.docker.compose.project=ultistats \
-    --filter label=com.docker.compose.service=app \
-    --format '{{.ID}}' | head -n 1)"
+app_container_id="$(current_app_container)"
 [[ -n "$app_container_id" ]] || fail 'current application container was not found'
 previous_image="$(docker inspect --format '{{.Config.Image}}' "$app_container_id")"
 [[ -n "$previous_image" ]] || fail 'current application image could not be determined'
@@ -113,17 +187,34 @@ APP_IMAGE="$previous_image" compose exec -T postgres pg_dump \
     --format=custom > "$backup_file"
 chmod 600 "$backup_file"
 [[ -s "$backup_file" ]] || fail 'database backup is empty; refusing to deploy'
+
+if ! uploads_state="$(legacy_uploads_state "$app_container_id")"; then
+    fail 'could not inspect current uploads storage; refusing to deploy'
+fi
+case "$uploads_state" in
+    nonempty)
+        log "creating uploads backup at $uploads_backup_file"
+        docker cp "$app_container_id:/app/uploads/." - > "$uploads_backup_file"
+        chmod 600 "$uploads_backup_file"
+        [[ -s "$uploads_backup_file" ]] || fail 'uploads backup is empty; refusing to deploy'
+        ;;
+    empty | missing)
+        log "current uploads storage is $uploads_state; no uploads backup is needed"
+        ;;
+    *)
+        fail "unexpected current uploads state: $uploads_state"
+        ;;
+esac
 prune_old_backups
 
 log "pulling $target_image"
 APP_IMAGE="$target_image" compose pull app
+bootstrap_uploads_volume "$uploads_backup_file" \
+    || fail 'uploads restoration failed; current application container was kept'
 APP_IMAGE="$target_image" compose up -d --no-deps app
 
 if ! wait_until_healthy; then
-    log "new application is unhealthy; rolling back to $previous_image"
-    APP_IMAGE="$previous_image" compose up -d --no-deps app
-    wait_until_healthy || fail 'new image failed and rollback is unhealthy'
-    fail 'new image failed its health check; previous image restored'
+    rollback 'new image failed its health check'
 fi
 
 write_image_to_env "$target_image"

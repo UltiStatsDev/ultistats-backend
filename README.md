@@ -16,7 +16,7 @@
 Приложение использует PostgreSQL как единственное хранилище данных. Самый простой запуск — через Docker Compose:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 После запуска:
@@ -26,13 +26,17 @@ docker-compose up -d
 Остановка:
 
 ```bash
-docker-compose down
+docker compose down
 ```
 
-Чтобы удалить данные PostgreSQL volume:
+Обычный `docker compose down`, перезапуск и пересоздание контейнера сохраняют
+данные PostgreSQL и загруженные фотографии в именованных volumes
+`postgres_data` и `uploads_data`.
+
+Чтобы безвозвратно удалить базу данных и загруженные фотографии:
 
 ```bash
-docker-compose down -v
+docker compose down -v
 ```
 
 ---
@@ -64,6 +68,72 @@ docker run -d --name ultistats-postgres \
 | `DATABASE_URL` | `jdbc:postgresql://localhost:5432/ultistats` | JDBC URL |
 | `DATABASE_USERNAME` | `ultistats` | Имя пользователя |
 | `DATABASE_PASSWORD` | `ultistats` | Пароль |
+| `APP_STORAGE_ROOT` | `uploads` | Директория загруженных файлов |
+
+---
+
+## Резервное копирование данных матча
+
+Для согласованной резервной копии остановите только приложение, оставив
+PostgreSQL запущенным. Для локального Compose имя сервиса приложения —
+`ultistats`:
+
+```bash
+mkdir -p backups
+docker compose stop ultistats
+docker compose exec -T postgres \
+  pg_dump --username ultistats --dbname ultistats --format custom \
+  > backups/ultistats.dump
+```
+
+Узнайте фактическое имя uploads volume и сохраните его содержимое:
+
+```bash
+APP_CONTAINER="$(docker compose ps --all -q ultistats)"
+UPLOADS_VOLUME="$(docker inspect "$APP_CONTAINER" \
+  --format '{{range .Mounts}}{{if eq .Destination "/app/uploads"}}{{.Name}}{{end}}{{end}}')"
+test -n "$UPLOADS_VOLUME"
+docker run --rm \
+  --volume "$UPLOADS_VOLUME:/data:ro" \
+  --volume "$PWD/backups:/backup" \
+  alpine:3.20 \
+  tar -czf /backup/uploads.tar.gz -C /data .
+docker compose start ultistats
+```
+
+Для production выполняйте те же действия из `/opt/ultistats`, заменив команды
+`docker compose` на `docker compose --env-file .env -f compose.prod.yml`, а имя
+сервиса `ultistats` — на `app`. Перед изменением production deployment уже
+создаёт PostgreSQL dump и tar-снимок непустой директории `/app/uploads` в
+`/opt/ultistats/backups`.
+
+### Восстановление
+
+Восстановление заменяет текущее состояние и должно выполняться только при
+остановленном приложении. Сначала сохраните дополнительную резервную копию.
+
+```bash
+docker compose stop ultistats
+docker compose exec -T postgres \
+  pg_restore --clean --if-exists --exit-on-error --no-owner \
+  --username ultistats --dbname ultistats \
+  < backups/ultistats.dump
+
+APP_CONTAINER="$(docker compose ps --all -q ultistats)"
+UPLOADS_VOLUME="$(docker inspect "$APP_CONTAINER" \
+  --format '{{range .Mounts}}{{if eq .Destination "/app/uploads"}}{{.Name}}{{end}}{{end}}')"
+test -n "$UPLOADS_VOLUME"
+docker run --rm \
+  --volume "$UPLOADS_VOLUME:/data" \
+  --volume "$PWD/backups:/backup:ro" \
+  alpine:3.20 \
+  sh -c 'find /data -mindepth 1 -delete && tar -xzf /backup/uploads.tar.gz -C /data'
+docker compose start ultistats
+```
+
+Для production используйте тот же вариант команды Compose и сервис `app`, что
+и при резервном копировании. После восстановления проверьте Swagger, получение
+фотографий через `/uploads/**` и данные завершённого матча.
 
 ---
 
@@ -120,11 +190,18 @@ http://<ultistats-host>:8080/obs-diagnostic.html?matchId=<uuid>
 1. собирает и тестирует приложение на Java 21;
 2. публикует Linux AMD64 image в private GHCR с тегами commit SHA и `latest`;
 3. копирует на сервер только `deploy/compose.prod.yml` и `deploy/deploy.sh`;
-4. создаёт PostgreSQL dump;
-5. разворачивает SHA-tagged image и проверяет `/v3/api-docs` через Caddy;
-6. возвращает предыдущий application image, если health check не проходит.
+4. создаёт PostgreSQL dump и резервную копию загруженных файлов;
+5. до замены application-контейнера переносит старые файлы в новый persistent
+   volume, затем разворачивает SHA-tagged image и проверяет `/v3/api-docs` через
+   Caddy;
+6. при ошибке переноса сохраняет текущий контейнер, а при ошибке health check
+   возвращает предыдущий application image.
 
-Перед dump скрипт требует минимум 1 GiB свободного места и хранит не более 10 автоматических `pre-*.dump` файлов. Порог и retention можно переопределить серверными переменными `DEPLOY_MIN_FREE_KB` и `DEPLOY_BACKUP_RETENTION`.
+Перед резервным копированием скрипт требует минимум 1 GiB свободного места и
+хранит не более 10 комплектов `pre-*.dump` и соответствующих
+`pre-*-uploads.tar`. При повторных деплоях непустой uploads volume не
+перезаписывается. Порог и retention можно переопределить серверными переменными
+`DEPLOY_MIN_FREE_KB` и `DEPLOY_BACKUP_RETENTION`.
 
 Авторитетная версия production — полный SHA-тег вида:
 

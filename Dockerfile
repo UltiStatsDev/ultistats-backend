@@ -28,8 +28,8 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 # Copy JAR from builder stage
 COPY --from=builder /app/build/libs/*.jar app.jar
 
-# Change ownership
-RUN chown -R appuser:appgroup /app
+# Prepare persistent storage mount point and change ownership
+RUN mkdir -p /app/uploads && chown -R appuser:appgroup /app
 
 USER appuser
 

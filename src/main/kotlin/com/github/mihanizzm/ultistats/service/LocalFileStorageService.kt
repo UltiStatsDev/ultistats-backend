@@ -1,20 +1,22 @@
 package com.github.mihanizzm.ultistats.service
 
 import FileStorageService
+import com.github.mihanizzm.ultistats.config.StorageProperties
 import org.springframework.context.annotation.Primary
 import org.springframework.stereotype.Service
 import org.springframework.web.multipart.MultipartFile
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.Paths
 import java.util.UUID
 
 
 @Service
 @Primary
-class LocalFileStorageService : FileStorageService {
-    private val root: Path = Paths.get("uploads")
+class LocalFileStorageService(
+    storageProperties: StorageProperties,
+) : FileStorageService {
+    private val root: Path = storageProperties.root.toAbsolutePath().normalize()
 
     override fun upload(file: MultipartFile?): String? {
         try {
