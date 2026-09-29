@@ -22,42 +22,67 @@ class EventFactory(
     private val matchParticipantRepository: SpringDataMatchParticipantRepository,
     private val matchTeamRepository: SpringDataMatchTeamRepository,
 ) {
-    fun createFromRequest(request: CreateEventRequest, matchId: UUID): Event? {
+    fun createFromRequest(request: CreateEventRequest, matchId: UUID): Event? =
+        when (val result = createValidatedFromRequest(request, matchId)) {
+            is EventCreationResult.Success -> result.event
+            is EventCreationResult.Invalid -> null
+        }
+
+    fun createValidatedFromRequest(request: CreateEventRequest, matchId: UUID): EventCreationResult {
         val teamByParticipantId = matchParticipantRepository.findAllByMatchId(matchId)
             .associate { it.participantId to it.teamId }
         return when (request) {
             is OnePlayerEventRequest -> {
-                if (
-                    request.type.category != EventCategory.ONE_PLAYER ||
-                    request.participantId !in teamByParticipantId
-                ) return null
-                OnePlayerEvent(request.participantId, request.occurredAt, request.type)
+                if (request.type.category != EventCategory.ONE_PLAYER) {
+                    return invalid("Event type ${request.type} is not valid for a one-player request")
+                }
+                if (request.participantId !in teamByParticipantId) {
+                    return invalid("Participant ${request.participantId} is not part of match $matchId")
+                }
+                EventCreationResult.Success(OnePlayerEvent(request.participantId, request.occurredAt, request.type))
             }
             is TwoPlayerEventRequest -> {
-                if (request.type.category != EventCategory.TWO_PLAYER) return null
-                if (request.fromParticipantId == request.toParticipantId) return null
-                val fromTeam = teamByParticipantId[request.fromParticipantId] ?: return null
-                val toTeam = teamByParticipantId[request.toParticipantId] ?: return null
+                if (request.type.category != EventCategory.TWO_PLAYER) {
+                    return invalid("Event type ${request.type} is not valid for a two-player request")
+                }
+                if (request.fromParticipantId == request.toParticipantId) {
+                    return invalid("Event participants must be different")
+                }
+                val fromTeam = teamByParticipantId[request.fromParticipantId]
+                    ?: return invalid("Participant ${request.fromParticipantId} is not part of match $matchId")
+                val toTeam = teamByParticipantId[request.toParticipantId]
+                    ?: return invalid("Participant ${request.toParticipantId} is not part of match $matchId")
                 val sameTeamRequired = request.type == EventType.PASS || request.type == EventType.GOAL
-                if (sameTeamRequired != (fromTeam == toTeam)) return null
-                TwoPlayerEvent(
-                    request.fromParticipantId,
-                    request.toParticipantId,
-                    request.occurredAt,
-                    request.type,
+                if (sameTeamRequired != (fromTeam == toTeam)) {
+                    val relation = if (sameTeamRequired) "the same match team" else "opposing match teams"
+                    return invalid("${request.type} requires participants from $relation")
+                }
+                EventCreationResult.Success(
+                    TwoPlayerEvent(
+                        request.fromParticipantId,
+                        request.toParticipantId,
+                        request.occurredAt,
+                        request.type,
+                    ),
                 )
             }
             is TeamEventRequest -> {
-                if (request.type.category != EventCategory.TEAM) return null
+                if (request.type.category != EventCategory.TEAM) {
+                    return invalid("Event type ${request.type} is not valid for a team request")
+                }
                 val teamExists = matchTeamRepository.findAllByMatchIdOrderByPosition(matchId)
                     .any { it.teamId == request.teamId }
-                if (!teamExists) return null
-                TeamEvent(request.teamId, request.occurredAt, request.type)
+                if (!teamExists) return invalid("Team ${request.teamId} is not part of match $matchId")
+                EventCreationResult.Success(TeamEvent(request.teamId, request.occurredAt, request.type))
             }
             is SystemEventRequest -> {
-                if (request.type.category != EventCategory.SYSTEM) return null
-                SystemEvent(request.occurredAt, request.type)
+                if (request.type.category != EventCategory.SYSTEM) {
+                    return invalid("Event type ${request.type} is not valid for a system request")
+                }
+                EventCreationResult.Success(SystemEvent(request.occurredAt, request.type))
             }
         }
     }
+
+    private fun invalid(detail: String) = EventCreationResult.Invalid(detail)
 }
