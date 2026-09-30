@@ -11,7 +11,7 @@ import com.github.mihanizzm.ultistats.dto.response.TeamDetailResponse
 import com.github.mihanizzm.ultistats.dto.response.TeamListItemResponse
 import com.github.mihanizzm.ultistats.dto.response.TeamPlayerResponse
 import com.github.mihanizzm.ultistats.model.Team
-import com.github.mihanizzm.ultistats.service.LocalFileStorageService
+import com.github.mihanizzm.ultistats.service.FileStorageService
 import com.github.mihanizzm.ultistats.service.PlayerService
 import com.github.mihanizzm.ultistats.service.TeamPlayerService
 import com.github.mihanizzm.ultistats.service.TeamService
@@ -25,7 +25,7 @@ class TeamFacade(
     private val teamService: TeamService,
     private val playerService: PlayerService,
     private val teamPlayerService: TeamPlayerService,
-    private val localFileStorageService: LocalFileStorageService,
+    private val fileStorageService: FileStorageService,
 ) {
     companion object {
         val DEFAULT_SORT = SortParam("name")
@@ -89,7 +89,7 @@ class TeamFacade(
 
     fun uploadPhoto(teamId: UUID, file: MultipartFile): PhotoUrlResponse? {
         val team = teamService.get(teamId) ?: return null
-        val url = localFileStorageService.upload(file) ?: return null
+        val url = fileStorageService.upload(file)
         teamService.update(team.copy(photoUrl = url))
         return PhotoUrlResponse(url)
     }
