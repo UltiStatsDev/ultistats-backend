@@ -14,9 +14,14 @@ import com.github.mihanizzm.ultistats.dto.response.TeamPlayerResponse
 import com.github.mihanizzm.ultistats.facade.TeamFacade
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.web.bind.annotation.*
@@ -116,9 +121,21 @@ class TeamController(
     @PostMapping("/{teamId}/uploadPhoto", consumes =
     [MediaType.MULTIPART_FORM_DATA_VALUE])
     @Operation(summary = "Загрузить аватар для команды")
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "400",
+                description = "Файл пустой, слишком большой или не является поддерживаемым изображением",
+                content = [Content(
+                    mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                    schema = Schema(implementation = ProblemDetail::class),
+                )],
+            ),
+        ],
+    )
     fun uploadPhoto(
         @PathVariable teamId: UUID,
-        @RequestBody multipartFile: MultipartFile,
+        @RequestPart("file") multipartFile: MultipartFile,
     ): ResponseEntity<PhotoUrlResponse> =
         teamFacade.uploadPhoto(teamId, multipartFile)
             ?.let { ResponseEntity.status(HttpStatus.CREATED).body(it) }

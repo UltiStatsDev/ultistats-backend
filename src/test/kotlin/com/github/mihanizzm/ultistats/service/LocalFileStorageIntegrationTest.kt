@@ -1,6 +1,9 @@
 package com.github.mihanizzm.ultistats.service
 
+import com.github.mihanizzm.ultistats.model.Player
+import com.github.mihanizzm.ultistats.model.Team
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -13,7 +16,9 @@ import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.util.FileSystemUtils
 import java.nio.file.Files
@@ -30,8 +35,16 @@ class LocalFileStorageIntegrationTest {
     @Autowired
     private lateinit var mockMvc: MockMvc
 
+    @Autowired
+    private lateinit var playerService: PlayerService
+
+    @Autowired
+    private lateinit var teamService: TeamService
+
     @BeforeEach
     fun prepareStorage() {
+        teamService.getAll().forEach { teamService.delete(it.id) }
+        playerService.getAll().forEach { playerService.delete(it.id) }
         FileSystemUtils.deleteRecursively(storageRoot)
         Files.createDirectories(storageRoot)
     }
@@ -42,20 +55,147 @@ class LocalFileStorageIntegrationTest {
     }
 
     @Test
-    fun `файл сохраняется в настроенную директорию`() {
+    fun `подозрительное имя файла не попадает в путь хранения`() {
         val file = MockMultipartFile(
             "file",
-            "photo.jpg",
-            "image/jpeg",
-            "photo-content".toByteArray(),
+            "../../photo.jpg",
+            "image/png",
+            PNG_BYTES,
         )
 
         val url = storage.upload(file)
 
         val storedFiles = Files.list(storageRoot).use { it.toList() }
-        assertThat(url).startsWith("/uploads/")
         assertThat(storedFiles).hasSize(1)
-        assertThat(Files.readString(storedFiles.single())).isEqualTo("photo-content")
+        assertThat(storedFiles.single().fileName.toString())
+            .matches("[0-9a-f-]{36}\\.png")
+        assertThat(url).isEqualTo("/uploads/${storedFiles.single().fileName}")
+        assertThat(Files.readAllBytes(storedFiles.single())).isEqualTo(PNG_BYTES)
+    }
+
+    @Test
+    fun `jpeg png и webp получают расширение по сигнатуре`() {
+        val files = listOf(
+            MockMultipartFile("file", "wrong.bin", "image/jpeg", JPEG_BYTES) to "jpg",
+            MockMultipartFile("file", "wrong.bin", "image/png", PNG_BYTES) to "png",
+            MockMultipartFile("file", "wrong.bin", "image/webp", WEBP_BYTES) to "webp",
+        )
+
+        files.forEach { (file, extension) ->
+            assertThat(storage.upload(file)).matches("/uploads/[0-9a-f-]{36}\\.$extension")
+        }
+    }
+
+    @Test
+    fun `пустой файл отклоняется до записи`() {
+        assertThatThrownBy {
+            storage.upload(MockMultipartFile("file", "empty.png", "image/png", byteArrayOf()))
+        }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("File must not be empty")
+
+        assertThat(Files.list(storageRoot).use { it.toList() }).isEmpty()
+    }
+
+    @Test
+    fun `файл больше 10 MiB отклоняется до записи`() {
+        val oversized = ByteArray(MAX_FILE_SIZE_BYTES + 1)
+        PNG_BYTES.copyInto(oversized)
+
+        assertThatThrownBy {
+            storage.upload(MockMultipartFile("file", "large.png", "image/png", oversized))
+        }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("File exceeds maximum size of 10 MiB")
+
+        assertThat(Files.list(storageRoot).use { it.toList() }).isEmpty()
+    }
+
+    @Test
+    fun `неподдерживаемая сигнатура отклоняется до записи`() {
+        assertThatThrownBy {
+            storage.upload(MockMultipartFile("file", "text.png", "image/png", "not-an-image".toByteArray()))
+        }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("File signature is not supported")
+
+        assertThat(Files.list(storageRoot).use { it.toList() }).isEmpty()
+    }
+
+    @Test
+    fun `content type должен совпадать с сигнатурой`() {
+        assertThatThrownBy {
+            storage.upload(MockMultipartFile("file", "photo.jpg", "image/jpeg", PNG_BYTES))
+        }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessage("File content does not match declared content type image/jpeg")
+
+        assertThat(Files.list(storageRoot).use { it.toList() }).isEmpty()
+    }
+
+    @Test
+    fun `endpoint игрока принимает multipart часть file`() {
+        val player = Player(java.util.UUID.randomUUID(), "Photo", "Player")
+        playerService.create(player)
+
+        mockMvc.perform(
+            multipart("/api/v1/players/${player.id}/uploadPhoto")
+                .file(MockMultipartFile("file", "player.png", "image/png", PNG_BYTES)),
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.url").value(org.hamcrest.Matchers.matchesPattern("/uploads/[0-9a-f-]{36}\\.png")))
+    }
+
+    @Test
+    fun `endpoint команды принимает multipart часть file`() {
+        val team = Team(java.util.UUID.randomUUID(), "Photo Team")
+        teamService.create(team)
+
+        mockMvc.perform(
+            multipart("/api/v1/teams/${team.id}/uploadPhoto")
+                .file(MockMultipartFile("file", "team.webp", "image/webp", WEBP_BYTES)),
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.url").value(org.hamcrest.Matchers.matchesPattern("/uploads/[0-9a-f-]{36}\\.webp")))
+    }
+
+    @Test
+    fun `невалидное изображение возвращает ProblemDetail`() {
+        val player = Player(java.util.UUID.randomUUID(), "Photo", "Player")
+        playerService.create(player)
+
+        mockMvc.perform(
+            multipart("/api/v1/players/${player.id}/uploadPhoto")
+                .file(MockMultipartFile("file", "fake.png", "image/png", "not-an-image".toByteArray())),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(content().contentType("application/problem+json"))
+            .andExpect(jsonPath("$.status").value(400))
+            .andExpect(jsonPath("$.code").value("INVALID_FILE_UPLOAD"))
+            .andExpect(jsonPath("$.title").value("Invalid file upload"))
+            .andExpect(jsonPath("$.detail").value("File signature is not supported"))
+            .andExpect(jsonPath("$.instance").value("/api/v1/players/${player.id}/uploadPhoto"))
+    }
+
+    @Test
+    fun `OpenAPI документирует multipart часть и ошибку загрузки`() {
+        val playerUpload = "$.paths['/api/v1/players/{playerId}/uploadPhoto'].post"
+        val teamUpload = "$.paths['/api/v1/teams/{teamId}/uploadPhoto'].post"
+
+        mockMvc.perform(get("/v3/api-docs"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$playerUpload.requestBody.content['multipart/form-data'].schema.required[0]").value("file"))
+            .andExpect(jsonPath("$playerUpload.requestBody.content['multipart/form-data'].schema.properties.file.format").value("binary"))
+            .andExpect(
+                jsonPath("$playerUpload.responses['400'].content['application/problem+json'].schema['\$ref']")
+                    .value("#/components/schemas/ProblemDetail"),
+            )
+            .andExpect(jsonPath("$teamUpload.requestBody.content['multipart/form-data'].schema.required[0]").value("file"))
+            .andExpect(jsonPath("$teamUpload.requestBody.content['multipart/form-data'].schema.properties.file.format").value("binary"))
+            .andExpect(
+                jsonPath("$teamUpload.responses['400'].content['application/problem+json'].schema['\$ref']")
+                    .value("#/components/schemas/ProblemDetail"),
+            )
     }
 
     @Test
@@ -68,6 +208,18 @@ class LocalFileStorageIntegrationTest {
     }
 
     companion object {
+        private const val MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
+        private val JPEG_BYTES = byteArrayOf(
+            0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(),
+        )
+        private val PNG_BYTES = byteArrayOf(
+            0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+        )
+        private val WEBP_BYTES = byteArrayOf(
+            0x52, 0x49, 0x46, 0x46,
+            0x00, 0x00, 0x00, 0x00,
+            0x57, 0x45, 0x42, 0x50,
+        )
         private val storageRoot: Path = Files.createTempDirectory("ultistats-storage-test-")
 
         @JvmStatic
