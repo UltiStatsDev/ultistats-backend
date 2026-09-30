@@ -17,6 +17,8 @@ class PlayerServiceImpl(
 
     override fun get(playerId: UUID): Player? = playerRepository.findByIdAndDeletedAtIsNull(playerId)
 
+    override fun getForUpdate(playerId: UUID): Player? = playerRepository.findByIdForUpdate(playerId)
+
     override fun create(player: Player) {
         playerRepository.save(player)
     }

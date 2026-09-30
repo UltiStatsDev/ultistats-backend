@@ -95,8 +95,60 @@ class PlayerController(
         if (playerFacade.delete(id)) ResponseEntity.noContent().build()
         else ResponseEntity.notFound().build()
 
+    @PutMapping("/{playerId}/photo", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
+    @Operation(summary = "Создать или заменить фотографию игрока")
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "400",
+                description = "Файл не прошел валидацию",
+                content = [Content(
+                    mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                    schema = Schema(implementation = ProblemDetail::class),
+                )],
+            ),
+            ApiResponse(
+                responseCode = "503",
+                description = "Хранилище файлов недоступно",
+                content = [Content(
+                    mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                    schema = Schema(implementation = ProblemDetail::class),
+                )],
+            ),
+        ],
+    )
+    fun putPhoto(
+        @PathVariable playerId: UUID,
+        @RequestPart("file") multipartFile: MultipartFile,
+    ): ResponseEntity<PhotoUrlResponse> =
+        playerFacade.uploadPhoto(playerId, multipartFile)
+            ?.let { ResponseEntity.ok(it) }
+            ?: ResponseEntity.notFound().build()
+
+    @GetMapping("/{playerId}/photo")
+    @Operation(summary = "Получить фотографию игрока")
+    fun getPhoto(@PathVariable playerId: UUID): ResponseEntity<PhotoUrlResponse> =
+        playerFacade.getPhotoUrl(playerId)
+            ?.let { ResponseEntity.ok(it) }
+            ?: ResponseEntity.notFound().build()
+
+    @DeleteMapping("/{playerId}/photo")
+    @Operation(summary = "Удалить фотографию игрока")
+    @ApiResponse(
+        responseCode = "503",
+        description = "Хранилище файлов недоступно",
+        content = [Content(
+            mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+            schema = Schema(implementation = ProblemDetail::class),
+        )],
+    )
+    fun removePhoto(@PathVariable playerId: UUID): ResponseEntity<Unit> =
+        playerFacade.deletePhotoUrl(playerId)
+            ?.let { ResponseEntity.noContent().build() }
+            ?: ResponseEntity.notFound().build()
+
     @PostMapping("/{playerId}/uploadPhoto", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
-    @Operation(summary = "Загрузить аватар для игрока")
+    @Operation(summary = "Загрузить аватар для игрока", deprecated = true)
     @ApiResponses(
         value = [
             ApiResponse(
@@ -118,14 +170,14 @@ class PlayerController(
             ?: ResponseEntity.notFound().build()
 
     @GetMapping("/{playerId}/photoUrl")
-    @Operation(summary = "Получить URL изображения игрока")
+    @Operation(summary = "Получить URL изображения игрока", deprecated = true)
     fun getPhotoUrl(@PathVariable playerId: UUID): ResponseEntity<PhotoUrlResponse> =
         playerFacade.getPhotoUrl(playerId)
             ?.let { ResponseEntity.ok(it) }
             ?: ResponseEntity.notFound().build()
 
     @DeleteMapping("/{playerId}/photoUrl")
-    @Operation(summary = "Удалить URL изображения игрока")
+    @Operation(summary = "Удалить URL изображения игрока", deprecated = true)
     fun removePhotoUrl(@PathVariable playerId: UUID): ResponseEntity<PhotoUrlResponse> =
         playerFacade.deletePhotoUrl(playerId)
             ?.let { ResponseEntity.ok(it) }

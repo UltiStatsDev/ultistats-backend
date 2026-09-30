@@ -7,6 +7,8 @@ import java.util.UUID
 interface PlayerService {
     fun get(playerId: UUID): Player?
 
+    fun getForUpdate(playerId: UUID): Player?
+
     fun create(player: Player)
 
     fun update(player: Player)

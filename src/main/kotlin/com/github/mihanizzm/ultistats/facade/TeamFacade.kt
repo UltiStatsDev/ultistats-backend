@@ -11,7 +11,7 @@ import com.github.mihanizzm.ultistats.dto.response.TeamDetailResponse
 import com.github.mihanizzm.ultistats.dto.response.TeamListItemResponse
 import com.github.mihanizzm.ultistats.dto.response.TeamPlayerResponse
 import com.github.mihanizzm.ultistats.model.Team
-import com.github.mihanizzm.ultistats.service.FileStorageService
+import com.github.mihanizzm.ultistats.service.PhotoLifecycleService
 import com.github.mihanizzm.ultistats.service.PlayerService
 import com.github.mihanizzm.ultistats.service.TeamPlayerService
 import com.github.mihanizzm.ultistats.service.TeamService
@@ -26,7 +26,7 @@ class TeamFacade(
     private val teamService: TeamService,
     private val playerService: PlayerService,
     private val teamPlayerService: TeamPlayerService,
-    private val fileStorageService: FileStorageService,
+    private val photoLifecycleService: PhotoLifecycleService,
 ) {
     companion object {
         val DEFAULT_SORT = SortParam("name")
@@ -89,19 +89,24 @@ class TeamFacade(
         return teamPlayerService.remove(teamId, playerId)
     }
 
+    @Transactional
     fun uploadPhoto(teamId: UUID, file: MultipartFile): PhotoUrlResponse? {
-        val team = teamService.get(teamId) ?: return null
-        val url = fileStorageService.upload(file)
-        teamService.update(team.copy(photoUrl = url))
+        val team = teamService.getForUpdate(teamId) ?: return null
+        val url = photoLifecycleService.replace(team.photoUrl, file) { photoUrl ->
+            teamService.update(team.copy(photoUrl = photoUrl))
+        }
         return PhotoUrlResponse(url)
     }
 
     fun getPhotoUrl(teamId: UUID): PhotoUrlResponse? = teamService.get(teamId)?.photoUrl?.let(::PhotoUrlResponse)
 
+    @Transactional
     fun deletePhotoUrl(teamId: UUID): PhotoUrlResponse? {
-        val team = teamService.get(teamId) ?: return null
-        val oldUrl = team.photoUrl
-        teamService.update(team.copy(photoUrl = null))
+        val team = teamService.getForUpdate(teamId) ?: return null
+        val oldUrl = team.photoUrl ?: return null
+        photoLifecycleService.delete(oldUrl) { photoUrl ->
+            teamService.update(team.copy(photoUrl = photoUrl))
+        }
         return PhotoUrlResponse(oldUrl)
     }
 }

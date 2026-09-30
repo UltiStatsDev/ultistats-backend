@@ -17,6 +17,8 @@ class TeamServiceImpl(
 
     override fun get(teamId: UUID): Team? = teamRepository.findByIdAndDeletedAtIsNull(teamId)
 
+    override fun getForUpdate(teamId: UUID): Team? = teamRepository.findByIdForUpdate(teamId)
+
     override fun create(team: Team) {
         teamRepository.save(team)
     }
