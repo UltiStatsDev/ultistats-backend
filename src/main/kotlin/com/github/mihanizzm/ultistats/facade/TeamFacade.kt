@@ -17,6 +17,7 @@ import com.github.mihanizzm.ultistats.service.TeamPlayerService
 import com.github.mihanizzm.ultistats.service.TeamService
 import com.github.mihanizzm.ultistats.util.SortingUtils.applySorting
 import org.springframework.stereotype.Component
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
 import java.util.UUID
 
@@ -68,6 +69,7 @@ class TeamFacade(
         return detail(updated)
     }
 
+    @Transactional
     fun delete(id: UUID): Boolean {
         if (teamService.get(id) == null) return false
         teamPlayerService.getByTeamId(id).forEach { teamPlayerService.remove(id, it.playerId) }
