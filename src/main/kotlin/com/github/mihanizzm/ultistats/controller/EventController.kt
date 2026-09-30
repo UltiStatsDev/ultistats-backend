@@ -13,10 +13,13 @@ import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.ExampleObject
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.parameters.RequestBody as OpenApiRequestBody
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
+import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
-import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.annotation.*
 import jakarta.servlet.http.HttpServletRequest
 import java.net.URI
@@ -48,6 +51,18 @@ class EventController(
 
     @PostMapping
     @Operation(summary = "Создать событие")
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "400",
+                description = "Некорректное тело запроса или недопустимые участники события",
+                content = [Content(
+                    mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                    schema = Schema(implementation = ProblemDetail::class),
+                )],
+            ),
+        ],
+    )
     fun create(
         @PathVariable matchId: UUID,
         @OpenApiRequestBody(
@@ -90,7 +105,7 @@ class EventController(
         when (val result = eventFacade.create(matchId, request)) {
             is EventResult.Success -> ResponseEntity.status(HttpStatus.CREATED).body(result.response)
             is EventResult.NotFound -> notFound(matchId, null, servletRequest)
-            is EventResult.BadRequest -> badRequest(servletRequest)
+            is EventResult.BadRequest -> badRequest(result.problem, servletRequest)
             is EventResult.InvalidState -> conflict(result.problem, servletRequest)
             is EventResult.Conflict -> conflict(result.problem, servletRequest)
             else -> ResponseEntity.internalServerError().build<Any>()
@@ -98,6 +113,18 @@ class EventController(
 
     @PatchMapping("/{eventId}")
     @Operation(summary = "Исправить участников события")
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "400",
+                description = "Недопустимое изменение события",
+                content = [Content(
+                    mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                    schema = Schema(implementation = ProblemDetail::class),
+                )],
+            ),
+        ],
+    )
     fun update(
         @PathVariable matchId: UUID,
         @PathVariable eventId: UUID,
@@ -107,7 +134,7 @@ class EventController(
         when (val result = eventFacade.edit(matchId, eventId, request)) {
             is EventResult.Success -> ResponseEntity.ok(result.response)
             is EventResult.NotFound -> notFound(matchId, eventId, servletRequest)
-            is EventResult.BadRequest -> badRequest(servletRequest)
+            is EventResult.BadRequest -> badRequest(result.problem, servletRequest)
             is EventResult.MethodNotAllowed -> ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).build<Any>()
             is EventResult.InvalidState -> conflict(result.problem, servletRequest)
             is EventResult.Conflict -> conflict(result.problem, servletRequest)
@@ -137,12 +164,7 @@ class EventController(
             .body(problem.toProblemDetail(HttpStatus.NOT_FOUND, URI.create(request.requestURI)))
     }
 
-    private fun badRequest(request: HttpServletRequest): ResponseEntity<*> {
-        val problem = MatchProblem(
-            MatchProblemCode.INVALID_REQUEST,
-            "Invalid event request",
-            "The event request is malformed or references invalid match participants",
-        )
+    private fun badRequest(problem: MatchProblem, request: HttpServletRequest): ResponseEntity<*> {
         return ResponseEntity.badRequest()
             .body(problem.toProblemDetail(HttpStatus.BAD_REQUEST, URI.create(request.requestURI)))
     }
@@ -150,7 +172,4 @@ class EventController(
     private fun conflict(problem: MatchProblem, request: HttpServletRequest): ResponseEntity<*> =
         ResponseEntity.status(HttpStatus.CONFLICT)
             .body(problem.toProblemDetail(HttpStatus.CONFLICT, URI.create(request.requestURI)))
-
-    @ExceptionHandler(HttpMessageNotReadableException::class)
-    fun handleUnreadableRequest(request: HttpServletRequest): ResponseEntity<*> = badRequest(request)
 }

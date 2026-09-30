@@ -221,6 +221,29 @@ class EventControllerTest {
             expectedStatus = 400,
             code = "INVALID_REQUEST",
             instance = "/api/v1/matches/${plannedMatch.id}/events/$eventId",
+            title = "Invalid event request",
+            detail = "Event type INCOMPLETE_PASS cannot replace PICKUP",
+        )
+    }
+
+    @Test
+    fun `patch identifies participant outside match`() {
+        val eventId = createAndGetId(validPull())
+        val missingParticipantId = UUID.randomUUID()
+
+        mockMvc.perform(
+            patch("/api/v1/matches/${match.id}/events/$eventId")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(mapOf(
+                    "type" to "PULL",
+                    "participantId" to missingParticipantId,
+                ))),
+        ).andExpectProblem(
+            expectedStatus = 400,
+            code = "INVALID_REQUEST",
+            instance = "/api/v1/matches/${match.id}/events/$eventId",
+            title = "Invalid event request",
+            detail = "Participant $missingParticipantId is not part of match ${match.id}",
         )
     }
 
@@ -357,6 +380,54 @@ class EventControllerTest {
             expectedStatus = 400,
             code = "INVALID_REQUEST",
             instance = "/api/v1/matches/${match.id}/events",
+            title = "Invalid event request",
+            detail = "PASS requires participants from the same match team",
+        )
+    }
+
+    @Test
+    fun `two-player request explains that participants must be different`() {
+        mockMvc.perform(postEvent(mapOf(
+            "type" to "PASS", "occurredAt" to "2026-07-14T10:00:00Z",
+            "fromParticipantId" to player1.id, "toParticipantId" to player1.id,
+        ))).andExpectProblem(
+            expectedStatus = 400,
+            code = "INVALID_REQUEST",
+            instance = "/api/v1/matches/${match.id}/events",
+            title = "Invalid event request",
+            detail = "Event participants must be different",
+        )
+    }
+
+    @Test
+    fun `one-player request identifies participant outside match`() {
+        val missingParticipantId = UUID.randomUUID()
+
+        mockMvc.perform(postEvent(mapOf(
+            "type" to "PULL", "occurredAt" to "2026-07-14T10:00:00Z",
+            "participantId" to missingParticipantId,
+        ))).andExpectProblem(
+            expectedStatus = 400,
+            code = "INVALID_REQUEST",
+            instance = "/api/v1/matches/${match.id}/events",
+            title = "Invalid event request",
+            detail = "Participant $missingParticipantId is not part of match ${match.id}",
+        )
+    }
+
+    @Test
+    fun `team event identifies team outside match`() {
+        val missingTeamId = UUID.randomUUID()
+
+        mockMvc.perform(postEvent(mapOf(
+            "type" to "TIMEOUT_START", "occurredAt" to "2026-07-14T10:00:00Z",
+            "teamId" to missingTeamId,
+        ))).andExpectProblem(
+            expectedStatus = 400,
+            code = "INVALID_REQUEST",
+            instance = "/api/v1/matches/${match.id}/events",
+            title = "Invalid event request",
+            detail = "Team $missingTeamId is not part of match ${match.id}",
         )
     }
 
@@ -377,6 +448,8 @@ class EventControllerTest {
             expectedStatus = 400,
             code = "INVALID_REQUEST",
             instance = "/api/v1/matches/${match.id}/events",
+            title = "Invalid request body",
+            detail = "Request body is malformed or contains unsupported values",
         )
     }
 
@@ -426,6 +499,23 @@ class EventControllerTest {
             .andExpect(jsonPath("$examplesPath.teamEvent.value.type").value("TIMEOUT_START"))
             .andExpect(jsonPath("$examplesPath.teamEvent.value.teamId").exists())
             .andExpect(jsonPath("$examplesPath.systemEvent.value.type").value("HALFTIME_START"))
+    }
+
+    @Test
+    fun `event mutations document bad request ProblemDetail`() {
+        val eventsPath = "$.paths['/api/v1/matches/{matchId}/events']"
+        val eventPath = "$.paths['/api/v1/matches/{matchId}/events/{eventId}']"
+
+        mockMvc.perform(get("/v3/api-docs"))
+            .andExpect(status().isOk)
+            .andExpect(
+                jsonPath("$eventsPath.post.responses['400'].content['application/problem+json'].schema['\$ref']")
+                    .value("#/components/schemas/ProblemDetail"),
+            )
+            .andExpect(
+                jsonPath("$eventPath.patch.responses['400'].content['application/problem+json'].schema['\$ref']")
+                    .value("#/components/schemas/ProblemDetail"),
+            )
     }
 
     @Test
@@ -550,16 +640,6 @@ class EventControllerTest {
             .andExpect(jsonPath("$.participantId").value(unknown.participantId.toString()))
     }
 
-    @Test
-    fun `two-participant event rejects the same participant in both roles`() {
-        mockMvc.perform(postEvent(mapOf(
-            "type" to "PASS",
-            "occurredAt" to "2026-07-14T10:00:00Z",
-            "fromParticipantId" to player1.id,
-            "toParticipantId" to player1.id,
-        ))).andExpect(status().isBadRequest)
-    }
-
     private fun postEvent(body: Map<String, Any>, matchId: UUID = match.id) = post("/api/v1/matches/$matchId/events")
         .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(body))
 
@@ -635,6 +715,8 @@ class EventControllerTest {
         expectedStatus: Int,
         code: String,
         instance: String,
+        title: String? = null,
+        detail: String? = null,
         currentStatus: String? = null,
         currentState: String? = null,
         attemptedEventType: String? = null,
@@ -644,6 +726,8 @@ class EventControllerTest {
         andExpect(jsonPath("$.status").value(expectedStatus))
         andExpect(jsonPath("$.code").value(code))
         andExpect(jsonPath("$.instance").value(instance))
+        title?.let { andExpect(jsonPath("$.title").value(it)) }
+        detail?.let { andExpect(jsonPath("$.detail").value(it)) }
         if (currentStatus == null) {
             andExpect(jsonPath("$.currentStatus").doesNotExist())
         } else {

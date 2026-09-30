@@ -10,6 +10,7 @@ import com.github.mihanizzm.ultistats.dto.request.TwoPlayerEventRequest
 import com.github.mihanizzm.ultistats.dto.request.UpdateEventRequest
 import com.github.mihanizzm.ultistats.dto.response.EventResponse
 import com.github.mihanizzm.ultistats.factory.EventFactory
+import com.github.mihanizzm.ultistats.factory.EventCreationResult
 import com.github.mihanizzm.ultistats.model.events.Event
 import com.github.mihanizzm.ultistats.model.events.OnePlayerEvent
 import com.github.mihanizzm.ultistats.model.events.StoredEvent
@@ -20,6 +21,7 @@ import com.github.mihanizzm.ultistats.service.EventService
 import com.github.mihanizzm.ultistats.service.MatchService
 import com.github.mihanizzm.ultistats.service.result.EventCommandResult
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
+import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
 import org.springframework.stereotype.Component
 import java.util.UUID
 
@@ -28,7 +30,7 @@ sealed class EventResult {
     data class EventList(val events: List<EventResponse>) : EventResult()
     object Deleted : EventResult()
     object NotFound : EventResult()
-    object BadRequest : EventResult()
+    data class BadRequest(val problem: MatchProblem) : EventResult()
     object MethodNotAllowed : EventResult()
     data class InvalidState(val problem: MatchProblem) : EventResult()
     data class Conflict(val problem: MatchProblem) : EventResult()
@@ -53,16 +55,18 @@ class EventFacade(
 
     fun create(matchId: UUID, request: CreateEventRequest): EventResult {
         if (matchService.get(matchId) == null) return EventResult.NotFound
-        val event = eventFactory.createFromRequest(request, matchId) ?: return EventResult.BadRequest
-        return eventService.create(event, matchId).toFacadeResult()
+        return when (val creation = eventFactory.createValidatedFromRequest(request, matchId)) {
+            is EventCreationResult.Success -> eventService.create(creation.event, matchId).toFacadeResult()
+            is EventCreationResult.Invalid -> badRequest(creation.detail)
+        }
     }
 
     fun edit(matchId: UUID, eventId: UUID, request: UpdateEventRequest): EventResult {
         if (matchService.get(matchId) == null) return EventResult.NotFound
         return try {
             eventService.update(eventId, matchId) { stored -> mergeUpdate(stored, request, matchId) }.toFacadeResult()
-        } catch (_: InvalidEventUpdateException) {
-            EventResult.BadRequest
+        } catch (exception: InvalidEventUpdateException) {
+            badRequest(requireNotNull(exception.message))
         } catch (_: UnsupportedEventUpdateException) {
             EventResult.MethodNotAllowed
         }
@@ -73,7 +77,9 @@ class EventFacade(
         request: UpdateEventRequest,
         matchId: UUID,
     ): Event {
-        if (!request.type.canReplace(stored.event.type)) throw InvalidEventUpdateException()
+        if (!request.type.canReplace(stored.event.type)) {
+            throw InvalidEventUpdateException("Event type ${request.type} cannot replace ${stored.event.type}")
+        }
         val merged: CreateEventRequest = when {
             stored.event is OnePlayerEvent && request is OnePlayerEventPatchRequest ->
                 OnePlayerEventRequest(stored.event.type, stored.event.occurredAt, request.participantId)
@@ -87,9 +93,12 @@ class EventFacade(
             stored.event is TeamEvent && request is TeamEventPatchRequest ->
                 TeamEventRequest(stored.event.type, stored.event.occurredAt, request.teamId)
             stored.event is SystemEvent -> throw UnsupportedEventUpdateException()
-            else -> throw InvalidEventUpdateException()
+            else -> throw InvalidEventUpdateException("Event patch shape does not match the stored event")
         }
-        return eventFactory.createFromRequest(merged, matchId) ?: throw InvalidEventUpdateException()
+        return when (val creation = eventFactory.createValidatedFromRequest(merged, matchId)) {
+            is EventCreationResult.Success -> creation.event
+            is EventCreationResult.Invalid -> throw InvalidEventUpdateException(creation.detail)
+        }
     }
 
     fun delete(matchId: UUID, eventId: UUID): EventResult {
@@ -104,7 +113,15 @@ class EventFacade(
         is EventCommandResult.InvalidState -> EventResult.InvalidState(problem)
         is EventCommandResult.Conflict -> EventResult.Conflict(problem)
     }
+
+    private fun badRequest(detail: String) = EventResult.BadRequest(
+        MatchProblem(
+            code = MatchProblemCode.INVALID_REQUEST,
+            title = "Invalid event request",
+            detail = detail,
+        ),
+    )
 }
 
-private class InvalidEventUpdateException : RuntimeException()
+private class InvalidEventUpdateException(message: String) : RuntimeException(message)
 private class UnsupportedEventUpdateException : RuntimeException()
