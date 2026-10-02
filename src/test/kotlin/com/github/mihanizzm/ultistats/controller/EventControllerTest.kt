@@ -47,6 +47,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -482,23 +483,91 @@ class EventControllerTest {
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.TIMEOUT_START").value("#/components/schemas/TeamEventResponse"))
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.HALFTIME_START").value("#/components/schemas/SystemEventResponse"))
             .andExpect(jsonPath("$.components.schemas.CreateEventRequest.discriminator.mapping.length()").value(15))
+            .andExpect(jsonPath("$.components.schemas.UpdateEventRequest.discriminator.mapping.length()").value(13))
+            .andExpect(jsonPath("$.components.schemas.UpdateEventRequest.discriminator.mapping.PICKUP").value("#/components/schemas/OnePlayerEventPatchRequest"))
+            .andExpect(jsonPath("$.components.schemas.UpdateEventRequest.discriminator.mapping.BLOCK_MARKER").value("#/components/schemas/TwoPlayerEventPatchRequest"))
+            .andExpect(jsonPath("$.components.schemas.UpdateEventRequest.discriminator.mapping.TIMEOUT_START").value("#/components/schemas/TeamEventPatchRequest"))
     }
 
     @Test
-    fun `create event OpenAPI request has examples for every request shape`() {
-        val examplesPath = "$.paths['/api/v1/matches/{matchId}/events'].post.requestBody.content['application/json'].examples"
+    fun `create event OpenAPI request has an exact payload example for every event type`() {
+        val document = objectMapper.readTree(
+            mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk)
+                .andReturn().response.contentAsString,
+        )
+        val operation = document["paths"]["/api/v1/matches/{matchId}/events"]["post"]
+        val examples = operation["requestBody"]["content"]["application/json"]["examples"]
+        val commonFields = setOf("type", "occurredAt")
+        val expectedFields = mapOf(
+            "PASS" to commonFields + setOf("fromParticipantId", "toParticipantId"),
+            "GOAL" to commonFields + setOf("fromParticipantId", "toParticipantId"),
+            "INCOMPLETE_PASS" to commonFields + "participantId",
+            "PULL" to commonFields + "participantId",
+            "BRICK" to commonFields + "participantId",
+            "PICKUP" to commonFields + "participantId",
+            "BLOCK" to commonFields + setOf("fromParticipantId", "toParticipantId"),
+            "BLOCK_MARKER" to commonFields + setOf("fromParticipantId", "toParticipantId"),
+            "BLOCK_FIELD" to commonFields + setOf("fromParticipantId", "toParticipantId"),
+            "INTERCEPTION" to commonFields + setOf("fromParticipantId", "toParticipantId"),
+            "CALLAHAN" to commonFields + setOf("fromParticipantId", "toParticipantId"),
+            "TIMEOUT_START" to commonFields + "teamId",
+            "TIMEOUT_END" to commonFields + "teamId",
+            "HALFTIME_START" to commonFields,
+            "HALFTIME_END" to commonFields,
+        )
 
-        mockMvc.perform(get("/v3/api-docs"))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$examplesPath.length()").value(4))
-            .andExpect(jsonPath("$examplesPath.onePlayerEvent.value.type").value("PICKUP"))
-            .andExpect(jsonPath("$examplesPath.onePlayerEvent.value.participantId").exists())
-            .andExpect(jsonPath("$examplesPath.twoPlayerEvent.value.type").value("PASS"))
-            .andExpect(jsonPath("$examplesPath.twoPlayerEvent.value.fromParticipantId").exists())
-            .andExpect(jsonPath("$examplesPath.twoPlayerEvent.value.toParticipantId").exists())
-            .andExpect(jsonPath("$examplesPath.teamEvent.value.type").value("TIMEOUT_START"))
-            .andExpect(jsonPath("$examplesPath.teamEvent.value.teamId").exists())
-            .andExpect(jsonPath("$examplesPath.systemEvent.value.type").value("HALFTIME_START"))
+        assertEquals(expectedFields.keys, examples.fieldNames().asSequence().toSet())
+        expectedFields.forEach { (type, fields) ->
+            val example = examples[type]["value"]
+            assertEquals(type, example["type"].asText())
+            assertEquals(fields, example.fieldNames().asSequence().toSet(), "Unexpected fields in $type example")
+            assertTrue(examples[type]["description"].asText().isNotBlank(), "$type must explain event semantics")
+        }
+        assertTrue(operation["description"].asText().contains("fromParticipantId"))
+        assertTrue(operation["description"].asText().contains("toParticipantId"))
+    }
+
+    @Test
+    fun `event request schemas explain participant roles`() {
+        val document = objectMapper.readTree(
+            mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk)
+                .andReturn().response.contentAsString,
+        )
+        val schemas = document["components"]["schemas"]
+        val onePlayerProperties = schemas["OnePlayerEventRequest"]["allOf"][1]["properties"]
+        val twoPlayerProperties = schemas["TwoPlayerEventRequest"]["allOf"][1]["properties"]
+        val teamProperties = schemas["TeamEventRequest"]["allOf"][1]["properties"]
+
+        assertTrue(onePlayerProperties["participantId"]["description"].asText().isNotBlank())
+        assertTrue(twoPlayerProperties["fromParticipantId"]["description"].asText().contains("бросающ"))
+        assertTrue(twoPlayerProperties["toParticipantId"]["description"].asText().isNotBlank())
+        assertTrue(teamProperties["teamId"]["description"].asText().isNotBlank())
+    }
+
+    @Test
+    fun `update event OpenAPI documents allowed corrections with examples`() {
+        val document = objectMapper.readTree(
+            mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk)
+                .andReturn().response.contentAsString,
+        )
+        val operation = document["paths"]["/api/v1/matches/{matchId}/events/{eventId}"]["patch"]
+        val description = operation["description"].asText()
+        val examples = operation["requestBody"]["content"]["application/json"]["examples"]
+
+        assertTrue(description.contains("occurredAt"))
+        assertTrue(description.contains("HALFTIME_START"))
+        assertTrue(description.contains("BLOCK_MARKER"))
+        assertEquals(
+            setOf("onePlayerEvent", "twoPlayerEvent", "blockTypeCorrection", "teamEvent"),
+            examples.fieldNames().asSequence().toSet(),
+        )
+        assertEquals("PICKUP", examples["onePlayerEvent"]["value"]["type"].asText())
+        assertEquals("PASS", examples["twoPlayerEvent"]["value"]["type"].asText())
+        assertEquals("BLOCK_MARKER", examples["blockTypeCorrection"]["value"]["type"].asText())
+        assertEquals("TIMEOUT_START", examples["teamEvent"]["value"]["type"].asText())
     }
 
     @Test

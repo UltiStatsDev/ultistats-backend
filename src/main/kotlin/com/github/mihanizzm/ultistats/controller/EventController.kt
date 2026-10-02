@@ -50,7 +50,10 @@ class EventController(
     }
 
     @PostMapping
-    @Operation(summary = "Создать событие")
+    @Operation(
+        summary = "Создать событие",
+        description = EventOpenApiDocumentation.CREATE_DESCRIPTION,
+    )
     @ApiResponses(
         value = [
             ApiResponse(
@@ -67,34 +70,100 @@ class EventController(
         @PathVariable matchId: UUID,
         @OpenApiRequestBody(
             required = true,
-            description = """Создание события матча. Поле `type` обязательно и определяет остальные поля запроса.""",
+            description = "Выберите пример нужного EventType. Поле `type` определяет обязательные поля payload.",
             content = [Content(
                 mediaType = "application/json",
                 schema = Schema(implementation = CreateEventRequest::class),
                 examples = [
                     ExampleObject(
-                        name = "onePlayerEvent",
-                        summary = "Событие с одним игроком",
-                        description = "Допустимые type: INCOMPLETE_PASS, PULL, BRICK, PICKUP.",
-                        value = """{"type":"PICKUP","occurredAt":"2026-07-28T12:30:00Z","participantId":"11111111-1111-1111-1111-111111111111"}""",
+                        name = "PASS",
+                        summary = "PASS — успешный пас",
+                        description = "fromParticipantId — бросающий, toParticipantId — принимающий из той же команды.",
+                        value = EventOpenApiDocumentation.PASS_EXAMPLE,
                     ),
                     ExampleObject(
-                        name = "twoPlayerEvent",
-                        summary = "Событие с двумя игроками",
-                        description = "Допустимые type: PASS, GOAL, BLOCK, BLOCK_MARKER, BLOCK_FIELD, INTERCEPTION, CALLAHAN.",
-                        value = """{"type":"PASS","occurredAt":"2026-07-28T12:30:00Z","fromParticipantId":"11111111-1111-1111-1111-111111111111","toParticipantId":"22222222-2222-2222-2222-222222222222"}""",
+                        name = "GOAL",
+                        summary = "GOAL — голевой пас",
+                        description = "fromParticipantId — ассистирующий, toParticipantId — забивший из той же команды.",
+                        value = EventOpenApiDocumentation.GOAL_EXAMPLE,
                     ),
                     ExampleObject(
-                        name = "teamEvent",
-                        summary = "Командное событие",
-                        description = "Допустимые type: TIMEOUT_START, TIMEOUT_END.",
-                        value = """{"type":"TIMEOUT_START","occurredAt":"2026-07-28T12:30:00Z","teamId":"33333333-3333-3333-3333-333333333333"}""",
+                        name = "INCOMPLETE_PASS",
+                        summary = "INCOMPLETE_PASS — незавершённый пас",
+                        description = "participantId — игрок, бросок которого не был доставлен партнёру.",
+                        value = EventOpenApiDocumentation.INCOMPLETE_PASS_EXAMPLE,
                     ),
                     ExampleObject(
-                        name = "systemEvent",
-                        summary = "Системное событие",
-                        description = "Допустимые type: HALFTIME_START, HALFTIME_END.",
-                        value = """{"type":"HALFTIME_START","occurredAt":"2026-07-28T12:30:00Z"}""",
+                        name = "PULL",
+                        summary = "PULL — ввод диска в игру",
+                        description = "participantId — игрок, выполнивший пулл.",
+                        value = EventOpenApiDocumentation.PULL_EXAMPLE,
+                    ),
+                    ExampleObject(
+                        name = "BRICK",
+                        summary = "BRICK — объявленный brick",
+                        description = "participantId — игрок, выполнивший предшествующий пулл.",
+                        value = EventOpenApiDocumentation.BRICK_EXAMPLE,
+                    ),
+                    ExampleObject(
+                        name = "PICKUP",
+                        summary = "PICKUP — подбор свободного диска",
+                        description = "participantId — игрок, который подбирает диск и становится его владельцем.",
+                        value = EventOpenApiDocumentation.PICKUP_EXAMPLE,
+                    ),
+                    ExampleObject(
+                        name = "BLOCK",
+                        summary = "BLOCK — блок без уточнения",
+                        description = "fromParticipantId — бросающий, toParticipantId — защитник из другой команды.",
+                        value = EventOpenApiDocumentation.BLOCK_EXAMPLE,
+                    ),
+                    ExampleObject(
+                        name = "BLOCK_MARKER",
+                        summary = "BLOCK_MARKER — блок маркером",
+                        description = "fromParticipantId — бросающий, toParticipantId — маркировавший его защитник.",
+                        value = EventOpenApiDocumentation.BLOCK_MARKER_EXAMPLE,
+                    ),
+                    ExampleObject(
+                        name = "BLOCK_FIELD",
+                        summary = "BLOCK_FIELD — полевой блок",
+                        description = "fromParticipantId — бросающий, toParticipantId — полевой защитник.",
+                        value = EventOpenApiDocumentation.BLOCK_FIELD_EXAMPLE,
+                    ),
+                    ExampleObject(
+                        name = "INTERCEPTION",
+                        summary = "INTERCEPTION — перехват",
+                        description = "fromParticipantId — бросающий, toParticipantId — перехвативший защитник из другой команды.",
+                        value = EventOpenApiDocumentation.INTERCEPTION_EXAMPLE,
+                    ),
+                    ExampleObject(
+                        name = "CALLAHAN",
+                        summary = "CALLAHAN — перехват с голом",
+                        description = "fromParticipantId — бросающий, toParticipantId — защитник, выполнивший Callahan.",
+                        value = EventOpenApiDocumentation.CALLAHAN_EXAMPLE,
+                    ),
+                    ExampleObject(
+                        name = "TIMEOUT_START",
+                        summary = "TIMEOUT_START — начало таймаута",
+                        description = "teamId — команда, которая начинает таймаут.",
+                        value = EventOpenApiDocumentation.TIMEOUT_START_EXAMPLE,
+                    ),
+                    ExampleObject(
+                        name = "TIMEOUT_END",
+                        summary = "TIMEOUT_END — окончание таймаута",
+                        description = "teamId — команда, таймаут которой завершается.",
+                        value = EventOpenApiDocumentation.TIMEOUT_END_EXAMPLE,
+                    ),
+                    ExampleObject(
+                        name = "HALFTIME_START",
+                        summary = "HALFTIME_START — начало перерыва",
+                        description = "Системное событие без идентификаторов игроков или команд.",
+                        value = EventOpenApiDocumentation.HALFTIME_START_EXAMPLE,
+                    ),
+                    ExampleObject(
+                        name = "HALFTIME_END",
+                        summary = "HALFTIME_END — окончание перерыва",
+                        description = "Системное событие без идентификаторов игроков или команд.",
+                        value = EventOpenApiDocumentation.HALFTIME_END_EXAMPLE,
                     ),
                 ],
             )],
@@ -109,10 +178,13 @@ class EventController(
             is EventResult.InvalidState -> conflict(result.problem, servletRequest)
             is EventResult.Conflict -> conflict(result.problem, servletRequest)
             else -> ResponseEntity.internalServerError().build<Any>()
-        }
+    }
 
     @PatchMapping("/{eventId}")
-    @Operation(summary = "Исправить участников события")
+    @Operation(
+        summary = "Исправить участников события",
+        description = EventOpenApiDocumentation.UPDATE_DESCRIPTION,
+    )
     @ApiResponses(
         value = [
             ApiResponse(
@@ -128,6 +200,40 @@ class EventController(
     fun update(
         @PathVariable matchId: UUID,
         @PathVariable eventId: UUID,
+        @OpenApiRequestBody(
+            required = true,
+            description = "Payload зависит от категории уже сохранённого события.",
+            content = [Content(
+                mediaType = "application/json",
+                schema = Schema(implementation = UpdateEventRequest::class),
+                examples = [
+                    ExampleObject(
+                        name = "onePlayerEvent",
+                        summary = "Исправить участника PICKUP",
+                        description = "participantId обязателен для события с одним участником.",
+                        value = EventOpenApiDocumentation.PICKUP_PATCH_EXAMPLE,
+                    ),
+                    ExampleObject(
+                        name = "twoPlayerEvent",
+                        summary = "Исправить принимающего в PASS",
+                        description = "У события с двумя участниками разрешено передать только изменяемый ID.",
+                        value = EventOpenApiDocumentation.PASS_PATCH_EXAMPLE,
+                    ),
+                    ExampleObject(
+                        name = "blockTypeCorrection",
+                        summary = "Уточнить вид блока",
+                        description = "Типы BLOCK, BLOCK_MARKER и BLOCK_FIELD можно заменять друг на друга.",
+                        value = EventOpenApiDocumentation.BLOCK_PATCH_EXAMPLE,
+                    ),
+                    ExampleObject(
+                        name = "teamEvent",
+                        summary = "Исправить команду таймаута",
+                        description = "teamId обязателен для события таймаута.",
+                        value = EventOpenApiDocumentation.TIMEOUT_PATCH_EXAMPLE,
+                    ),
+                ],
+            )],
+        )
         @RequestBody request: UpdateEventRequest,
         servletRequest: HttpServletRequest,
     ): ResponseEntity<*> =
