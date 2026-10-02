@@ -13,6 +13,7 @@ import com.github.mihanizzm.ultistats.service.MatchService
 import com.github.mihanizzm.ultistats.service.PlayerService
 import com.github.mihanizzm.ultistats.service.TeamService
 import com.github.mihanizzm.ultistats.service.TeamPlayerService
+import org.hamcrest.Matchers.hasItem
 import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -64,7 +65,7 @@ class MatchControllerTest {
     fun `Создание матча возвращает 201`() {
         val team1 = createTestTeam("Команда 1")
         val team2 = createTestTeam("Команда 2")
-        val request = CreateMatchRequest(teamIds = listOf(team1.id, team2.id))
+        val request = CreateMatchRequest(teamIds = listOf(team1.id, team2.id), playersPerTeam = 7)
 
         mockMvc.perform(
             post("/api/v1/matches")
@@ -97,12 +98,133 @@ class MatchControllerTest {
     }
 
     @Test
+    fun `Регламент сохраняется и возвращается в detail и list API`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+
+        val created = mockMvc.perform(
+            post("/api/v1/matches")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    objectMapper.writeValueAsString(
+                        mapOf(
+                            "teamIds" to listOf(team1.id, team2.id),
+                            "playersPerTeam" to 2,
+                        ),
+                    ),
+                ),
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.playersPerTeam").value(2))
+            .andReturn()
+
+        val matchId = objectMapper.readTree(created.response.contentAsString).get("id").asText()
+        mockMvc.perform(get("/api/v1/matches/$matchId"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.playersPerTeam").value(2))
+        mockMvc.perform(get("/api/v1/matches"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.content[0].playersPerTeam").value(2))
+    }
+
+    @Test
+    fun `Создание матча требует playersPerTeam`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+
+        mockMvc.perform(
+            post("/api/v1/matches")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(mapOf("teamIds" to listOf(team1.id, team2.id)))),
+        )
+            .andExpectProblem(
+                expectedStatus = 400,
+                code = "INVALID_REQUEST",
+                instance = "/api/v1/matches",
+            )
+    }
+
+    @Test
+    fun `Создание матча отклоняет неположительный playersPerTeam`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+
+        mockMvc.perform(
+            post("/api/v1/matches")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    objectMapper.writeValueAsString(
+                        mapOf(
+                            "teamIds" to listOf(team1.id, team2.id),
+                            "playersPerTeam" to 1,
+                        ),
+                    ),
+                ),
+        )
+            .andExpectProblem(
+                expectedStatus = 400,
+                code = "INVALID_REQUEST",
+                instance = "/api/v1/matches",
+            )
+            .andExpect(jsonPath("$.detail").value("Players per team must be at least 2"))
+    }
+
+    @Test
+    fun `Редактирование матча обновляет playersPerTeam`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val match = createTestMatch(team1, team2)
+
+        mockMvc.perform(
+            put("/api/v1/matches/${match.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(mapOf("playersPerTeam" to 5))),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.playersPerTeam").value(5))
+
+        mockMvc.perform(get("/api/v1/matches/${match.id}"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.playersPerTeam").value(5))
+    }
+
+    @Test
+    fun `Редактирование матча отклоняет неположительный playersPerTeam`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val match = createTestMatch(team1, team2)
+
+        mockMvc.perform(
+            put("/api/v1/matches/${match.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(mapOf("playersPerTeam" to 1))),
+        )
+            .andExpectProblem(
+                expectedStatus = 400,
+                code = "INVALID_REQUEST",
+                instance = "/api/v1/matches/${match.id}",
+            )
+            .andExpect(jsonPath("$.detail").value("Players per team must be at least 2"))
+    }
+
+    @Test
+    fun `OpenAPI документирует playersPerTeam в запросах и ответах матча`() {
+        mockMvc.perform(get("/v3/api-docs"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.components.schemas.CreateMatchRequest.required").value(hasItem("playersPerTeam")))
+            .andExpect(jsonPath("$.components.schemas.CreateMatchRequest.properties.playersPerTeam.type").value("integer"))
+            .andExpect(jsonPath("$.components.schemas.UpdateMatchRequest.properties.playersPerTeam.type").value("integer"))
+            .andExpect(jsonPath("$.components.schemas.MatchResponse.properties.playersPerTeam.type").value("integer"))
+            .andExpect(jsonPath("$.components.schemas.MatchListItemResponse.properties.playersPerTeam.type").value("integer"))
+    }
+
+    @Test
     fun `Имена матча не меняются после редактирования справочников`() {
         val team1 = createTestTeam("Original team 1")
         val team2 = createTestTeam("Original team 2")
         val firstMembership = teamPlayerService.getByTeamId(team1.id).first { it.number == 1 }
         val player = requireNotNull(playerService.get(firstMembership.playerId))
-        val request = CreateMatchRequest(teamIds = listOf(team1.id, team2.id))
+        val request = CreateMatchRequest(teamIds = listOf(team1.id, team2.id), playersPerTeam = 7)
         val created = mockMvc.perform(
             post("/api/v1/matches")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -174,7 +296,7 @@ class MatchControllerTest {
     @Test
     fun `Создание матча с несуществующей командой возвращает 400`() {
         val team1 = createTestTeam("Команда 1")
-        val request = CreateMatchRequest(teamIds = listOf(team1.id, UUID.randomUUID()))
+        val request = CreateMatchRequest(teamIds = listOf(team1.id, UUID.randomUUID()), playersPerTeam = 7)
 
         mockMvc.perform(
             post("/api/v1/matches")
@@ -192,7 +314,7 @@ class MatchControllerTest {
     fun `Получение матча по ID возвращает 200`() {
         val team1 = createTestTeam("Команда 1")
         val team2 = createTestTeam("Команда 2")
-        val request = CreateMatchRequest(teamIds = listOf(team1.id, team2.id))
+        val request = CreateMatchRequest(teamIds = listOf(team1.id, team2.id), playersPerTeam = 7)
 
         val result = mockMvc.perform(
             post("/api/v1/matches")
@@ -217,7 +339,7 @@ class MatchControllerTest {
     fun `Удаление матча возвращает 204`() {
         val team1 = createTestTeam("Команда 1")
         val team2 = createTestTeam("Команда 2")
-        val request = CreateMatchRequest(teamIds = listOf(team1.id, team2.id))
+        val request = CreateMatchRequest(teamIds = listOf(team1.id, team2.id), playersPerTeam = 7)
 
         val result = mockMvc.perform(
             post("/api/v1/matches")
@@ -255,7 +377,7 @@ class MatchControllerTest {
         val created = mockMvc.perform(
             post("/api/v1/matches")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(CreateMatchRequest(listOf(team1.id, team2.id)))),
+                .content(objectMapper.writeValueAsString(CreateMatchRequest(listOf(team1.id, team2.id), 7))),
         ).andExpect(status().isCreated).andReturn()
         val matchId = objectMapper.readTree(created.response.contentAsString).get("id").asText()
 

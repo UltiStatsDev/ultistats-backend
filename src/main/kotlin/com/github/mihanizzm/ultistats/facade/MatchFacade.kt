@@ -70,17 +70,19 @@ class MatchFacade(
 
     fun create(request: CreateMatchRequest): MatchCommandResult<MatchResponse> {
         validateTeamSelection(request.teamIds)?.let { return it }
+        validatePlayersPerTeam(request.playersPerTeam)?.let { return it }
         val match = Match(
             id = UUID.randomUUID(),
             teamIds = request.teamIds,
             plannedStartTimestamp = request.plannedStartTimestamp,
+            playersPerTeam = request.playersPerTeam,
         )
         matchService.create(match)
         return MatchCommandResult.Success(matchService.getOrThrow(match.id).toResponse())
     }
 
     fun update(id: UUID, request: UpdateMatchRequest): MatchCommandResult<MatchResponse> {
-        val result = matchService.update(id, request.teamIds, request.plannedStartTimestamp)
+        val result = matchService.update(id, request.teamIds, request.plannedStartTimestamp, request.playersPerTeam)
         return result.toResponse()
     }
 
@@ -103,6 +105,13 @@ class MatchFacade(
         teamService.getAllInList(teamIds).size != teamIds.size -> invalidRequest("All selected teams must exist and be active")
         else -> null
     }
+
+    private fun validatePlayersPerTeam(playersPerTeam: Int): MatchCommandResult.InvalidRequest? =
+        if (playersPerTeam < Match.MIN_PLAYERS_PER_TEAM) {
+            invalidRequest("Players per team must be at least ${Match.MIN_PLAYERS_PER_TEAM}")
+        } else {
+            null
+        }
 
     private fun invalidRequest(detail: String) = MatchCommandResult.InvalidRequest(
         MatchProblem(MatchProblemCode.INVALID_REQUEST, "Invalid match request", detail),

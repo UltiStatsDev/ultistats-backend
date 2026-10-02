@@ -17,6 +17,7 @@ interface MatchService {
         matchId: UUID,
         teamIds: List<UUID>?,
         plannedStartTimestamp: Instant?,
+        playersPerTeam: Int? = null,
     ): MatchCommandResult<Match>
 
     fun update(match: Match): MatchCommandResult<Match>

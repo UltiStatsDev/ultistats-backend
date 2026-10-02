@@ -59,15 +59,18 @@ class MatchServiceImpl(
         matchId: UUID,
         teamIds: List<UUID>?,
         plannedStartTimestamp: Instant?,
+        playersPerTeam: Int?,
     ): MatchCommandResult<Match> {
         val match = getForUpdate(matchId)?.hydrate(includeEvents = true) ?: return MatchCommandResult.NotFound
         val updatedTeamIds = teamIds ?: match.teamIds
         invalidTeamSelection(updatedTeamIds, updatedTeamIds != match.teamIds && match.events.isNotEmpty())?.let { return it }
+        invalidPlayersPerTeam(playersPerTeam)?.let { return it }
         lifecyclePolicy.validateUpdate(match).toCommandRejection()?.let { return it }
 
         val updatedMatch = match.copy(
             teamIds = updatedTeamIds,
             plannedStartTimestamp = plannedStartTimestamp ?: match.plannedStartTimestamp,
+            playersPerTeam = playersPerTeam ?: match.playersPerTeam,
         )
         matchRepository.save(updatedMatch)
         if (updatedTeamIds != match.teamIds) replaceParticipants(matchId, updatedTeamIds)
@@ -76,7 +79,7 @@ class MatchServiceImpl(
 
     @Transactional
     override fun update(match: Match): MatchCommandResult<Match> =
-        update(match.id, match.teamIds, match.plannedStartTimestamp)
+        update(match.id, match.teamIds, match.plannedStartTimestamp, match.playersPerTeam)
 
     override fun delete(matchId: UUID) {
         get(matchId)?.let {
@@ -237,6 +240,13 @@ class MatchServiceImpl(
             )
             changingTeamsWithActiveEvents -> invalidRequest("Teams cannot be changed after events have been recorded")
             else -> null
+        }
+
+    private fun invalidPlayersPerTeam(playersPerTeam: Int?): MatchCommandResult.InvalidRequest? =
+        if (playersPerTeam != null && playersPerTeam < Match.MIN_PLAYERS_PER_TEAM) {
+            invalidRequest("Players per team must be at least ${Match.MIN_PLAYERS_PER_TEAM}")
+        } else {
+            null
         }
 
     private fun invalidRequest(detail: String) = MatchCommandResult.InvalidRequest(

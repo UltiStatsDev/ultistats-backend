@@ -10,6 +10,7 @@ data class MatchResponse(
     val id: UUID,
     val teams: List<MatchTeamResponse>,
     val eventCount: Int,
+    val playersPerTeam: Int,
     val plannedStartTimestamp: Instant?,
     val startedAt: Instant?,
     val endedAt: Instant?,
@@ -32,6 +33,7 @@ data class MatchResponse(
                 }
             },
             eventCount = match.eventCount,
+            playersPerTeam = match.playersPerTeam,
             plannedStartTimestamp = match.plannedStartTimestamp,
             startedAt = match.startedAt,
             endedAt = match.endedAt,

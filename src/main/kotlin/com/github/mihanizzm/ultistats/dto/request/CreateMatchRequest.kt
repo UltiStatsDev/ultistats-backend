@@ -5,5 +5,6 @@ import java.util.UUID
 
 data class CreateMatchRequest(
     val teamIds: List<UUID>,
+    val playersPerTeam: Int,
     val plannedStartTimestamp: Instant? = null,
 )
