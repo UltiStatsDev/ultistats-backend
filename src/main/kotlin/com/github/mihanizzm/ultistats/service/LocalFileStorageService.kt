@@ -22,8 +22,12 @@ class LocalFileStorageService(
         validate(!file.isEmpty, "File must not be empty")
         validate(file.size <= MAX_FILE_SIZE_BYTES, "File exceeds maximum size of 10 MiB")
 
-        val content = file.inputStream.use { input ->
-            input.readNBytes(MAX_FILE_SIZE_BYTES + 1)
+        val content = try {
+            file.inputStream.use { input ->
+                input.readNBytes(MAX_FILE_SIZE_BYTES + 1)
+            }
+        } catch (e: IOException) {
+            throw FileStorageException("Failed to read uploaded file", e)
         }
         validate(content.size <= MAX_FILE_SIZE_BYTES, "File exceeds maximum size of 10 MiB")
 
@@ -45,20 +49,27 @@ class LocalFileStorageService(
 
             return "/uploads/$key"
         } catch (e: IOException) {
-            throw RuntimeException(e)
+            throw FileStorageException("Failed to store file", e)
         }
     }
 
-    override fun delete(key: String?) {
+    override fun delete(url: String) {
+        val key = managedKey(url)
+        val path = root.resolve(key).normalize()
+        check(path.startsWith(root)) { "Managed storage path escapes configured root" }
         try {
-            Files.deleteIfExists(root.resolve(key))
+            Files.deleteIfExists(path)
         } catch (e: IOException) {
-            throw RuntimeException(e)
+            throw FileStorageException("Failed to delete file", e)
         }
     }
 
-    override fun getUrl(key: String?): String? {
-        return "/uploads/$key"
+    private fun managedKey(url: String): String {
+        val key = url.removePrefix(PUBLIC_URL_PREFIX)
+        if (key == url || key.isBlank() || key == "." || key == ".." || '/' in key || '\\' in key) {
+            throw FileStorageException("Storage URL is not managed by this service")
+        }
+        return key
     }
 
     private fun validate(condition: Boolean, detail: String) {
@@ -87,6 +98,7 @@ class LocalFileStorageService(
 
     private companion object {
         const val MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
+        const val PUBLIC_URL_PREFIX = "/uploads/"
 
         fun ByteArray.startsWith(vararg signature: Int): Boolean = hasBytesAt(0, *signature)
 

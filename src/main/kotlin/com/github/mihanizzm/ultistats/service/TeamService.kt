@@ -7,6 +7,8 @@ import java.util.UUID
 interface TeamService {
     fun get(teamId: UUID): Team?
 
+    fun getForUpdate(teamId: UUID): Team?
+
     fun create(team: Team)
 
     fun update(team: Team)

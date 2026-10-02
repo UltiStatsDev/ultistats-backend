@@ -21,6 +21,8 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.util.FileSystemUtils
+import org.springframework.web.multipart.MultipartFile
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -134,6 +136,34 @@ class LocalFileStorageIntegrationTest {
     }
 
     @Test
+    fun `ошибка чтения multipart потока возвращается как ошибка storage`() {
+        val file = org.mockito.Mockito.mock(MultipartFile::class.java)
+        org.mockito.Mockito.`when`(file.isEmpty).thenReturn(false)
+        org.mockito.Mockito.`when`(file.size).thenReturn(PNG_BYTES.size.toLong())
+        org.mockito.Mockito.`when`(file.inputStream).thenThrow(IOException("read failed"))
+
+        assertThatThrownBy { storage.upload(file) }
+            .isInstanceOf(FileStorageException::class.java)
+            .hasMessage("Failed to read uploaded file")
+            .hasCauseInstanceOf(IOException::class.java)
+
+        assertThat(Files.list(storageRoot).use { it.toList() }).isEmpty()
+    }
+
+    @Test
+    fun `удаление отклоняет URL вне управляемого storage namespace`() {
+        listOf(
+            "/outside/photo.png",
+            "/uploads/nested/photo.png",
+            "/uploads/..",
+        ).forEach { url ->
+            assertThatThrownBy { storage.delete(url) }
+                .isInstanceOf(FileStorageException::class.java)
+                .hasMessage("Storage URL is not managed by this service")
+        }
+    }
+
+    @Test
     fun `endpoint игрока принимает multipart часть file`() {
         val player = Player(java.util.UUID.randomUUID(), "Photo", "Player")
         playerService.create(player)
@@ -178,24 +208,38 @@ class LocalFileStorageIntegrationTest {
     }
 
     @Test
-    fun `OpenAPI документирует multipart часть и ошибку загрузки`() {
-        val playerUpload = "$.paths['/api/v1/players/{playerId}/uploadPhoto'].post"
-        val teamUpload = "$.paths['/api/v1/teams/{teamId}/uploadPhoto'].post"
+    fun `OpenAPI документирует photo resource и deprecated aliases`() {
+        val playerPhoto = "$.paths['/api/v1/players/{playerId}/photo']"
+        val teamPhoto = "$.paths['/api/v1/teams/{teamId}/photo']"
+        val legacyPlayerUpload = "$.paths['/api/v1/players/{playerId}/uploadPhoto'].post"
+        val legacyPlayerUrl = "$.paths['/api/v1/players/{playerId}/photoUrl']"
+        val legacyTeamUpload = "$.paths['/api/v1/teams/{teamId}/uploadPhoto'].post"
+        val legacyTeamUrl = "$.paths['/api/v1/teams/{teamId}/photoUrl']"
 
         mockMvc.perform(get("/v3/api-docs"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$playerUpload.requestBody.content['multipart/form-data'].schema.required[0]").value("file"))
-            .andExpect(jsonPath("$playerUpload.requestBody.content['multipart/form-data'].schema.properties.file.format").value("binary"))
+            .andExpect(jsonPath("$playerPhoto.put.requestBody.content['multipart/form-data'].schema.required[0]").value("file"))
+            .andExpect(jsonPath("$playerPhoto.put.requestBody.content['multipart/form-data'].schema.properties.file.format").value("binary"))
             .andExpect(
-                jsonPath("$playerUpload.responses['400'].content['application/problem+json'].schema['\$ref']")
+                jsonPath("$playerPhoto.put.responses['400'].content['application/problem+json'].schema['\$ref']")
                     .value("#/components/schemas/ProblemDetail"),
             )
-            .andExpect(jsonPath("$teamUpload.requestBody.content['multipart/form-data'].schema.required[0]").value("file"))
-            .andExpect(jsonPath("$teamUpload.requestBody.content['multipart/form-data'].schema.properties.file.format").value("binary"))
             .andExpect(
-                jsonPath("$teamUpload.responses['400'].content['application/problem+json'].schema['\$ref']")
+                jsonPath("$playerPhoto.put.responses['503'].content['application/problem+json'].schema['\$ref']")
                     .value("#/components/schemas/ProblemDetail"),
             )
+            .andExpect(
+                jsonPath("$playerPhoto.delete.responses['503'].content['application/problem+json'].schema['\$ref']")
+                    .value("#/components/schemas/ProblemDetail"),
+            )
+            .andExpect(jsonPath("$teamPhoto.put.requestBody.content['multipart/form-data'].schema.required[0]").value("file"))
+            .andExpect(jsonPath("$teamPhoto.put.requestBody.content['multipart/form-data'].schema.properties.file.format").value("binary"))
+            .andExpect(jsonPath("$legacyPlayerUpload.deprecated").value(true))
+            .andExpect(jsonPath("$legacyPlayerUrl.get.deprecated").value(true))
+            .andExpect(jsonPath("$legacyPlayerUrl.delete.deprecated").value(true))
+            .andExpect(jsonPath("$legacyTeamUpload.deprecated").value(true))
+            .andExpect(jsonPath("$legacyTeamUrl.get.deprecated").value(true))
+            .andExpect(jsonPath("$legacyTeamUrl.delete.deprecated").value(true))
     }
 
     @Test

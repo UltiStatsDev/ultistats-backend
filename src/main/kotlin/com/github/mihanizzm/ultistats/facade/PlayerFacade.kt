@@ -10,7 +10,7 @@ import com.github.mihanizzm.ultistats.dto.response.PlayerDetailResponse
 import com.github.mihanizzm.ultistats.dto.response.PlayerListItemResponse
 import com.github.mihanizzm.ultistats.dto.response.PlayerTeamMembershipResponse
 import com.github.mihanizzm.ultistats.model.Player
-import com.github.mihanizzm.ultistats.service.FileStorageService
+import com.github.mihanizzm.ultistats.service.PhotoLifecycleService
 import com.github.mihanizzm.ultistats.service.PlayerService
 import com.github.mihanizzm.ultistats.service.TeamPlayerService
 import com.github.mihanizzm.ultistats.service.TeamService
@@ -25,7 +25,7 @@ class PlayerFacade(
     private val playerService: PlayerService,
     private val teamPlayerService: TeamPlayerService,
     private val teamService: TeamService,
-    private val fileStorageService: FileStorageService,
+    private val photoLifecycleService: PhotoLifecycleService,
 ) {
     companion object {
         val DEFAULT_SORT = SortParam("lastName")
@@ -75,20 +75,25 @@ class PlayerFacade(
         return true
     }
 
+    @Transactional
     fun uploadPhoto(playerId: UUID, file: MultipartFile): PhotoUrlResponse? {
-        val player = playerService.get(playerId) ?: return null
-        val url = fileStorageService.upload(file)
-        playerService.update(player.copy(photoUrl = url))
+        val player = playerService.getForUpdate(playerId) ?: return null
+        val url = photoLifecycleService.replace(player.photoUrl, file) { photoUrl ->
+            playerService.update(player.copy(photoUrl = photoUrl))
+        }
         return PhotoUrlResponse(url)
     }
 
     fun getPhotoUrl(playerId: UUID): PhotoUrlResponse? =
         playerService.get(playerId)?.photoUrl?.let(::PhotoUrlResponse)
 
+    @Transactional
     fun deletePhotoUrl(playerId: UUID): PhotoUrlResponse? {
-        val player = playerService.get(playerId) ?: return null
-        val oldUrl = player.photoUrl
-        playerService.update(player.copy(photoUrl = null))
+        val player = playerService.getForUpdate(playerId) ?: return null
+        val oldUrl = player.photoUrl ?: return null
+        photoLifecycleService.delete(oldUrl) { photoUrl ->
+            playerService.update(player.copy(photoUrl = photoUrl))
+        }
         return PhotoUrlResponse(oldUrl)
     }
 
