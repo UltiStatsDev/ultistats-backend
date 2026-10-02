@@ -37,6 +37,7 @@ CREATE INDEX idx_team_players_player_id ON team_players(player_id);
 CREATE TABLE matches (
     id UUID PRIMARY KEY,
     planned_start_timestamp TIMESTAMP WITH TIME ZONE,
+    players_per_team INTEGER NOT NULL CHECK (players_per_team >= 2),
     started_at TIMESTAMP WITH TIME ZONE,
     ended_at TIMESTAMP WITH TIME ZONE,
     deleted_at TIMESTAMP WITH TIME ZONE

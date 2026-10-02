@@ -42,6 +42,9 @@ data class Match(
     @Column(name = "planned_start_timestamp")
     val plannedStartTimestamp: Instant? = null,
 
+    @Column(name = "players_per_team", nullable = false)
+    val playersPerTeam: Int = DEFAULT_PLAYERS_PER_TEAM,
+
     @Column(name = "started_at")
     var startedAt: Instant? = null,
 
@@ -51,6 +54,12 @@ data class Match(
     @Column(name = "deleted_at")
     val deletedAt: Instant? = null,
 ) {
+    init {
+        require(playersPerTeam >= MIN_PLAYERS_PER_TEAM) {
+            "Players per team must be at least $MIN_PLAYERS_PER_TEAM"
+        }
+    }
+
     @get:JsonIgnore
     val status: MatchStatus
         get() = when {
@@ -58,5 +67,10 @@ data class Match(
             startedAt != null -> MatchStatus.IN_PROGRESS
             else -> MatchStatus.PLANNED
         }
+
+    companion object {
+        const val MIN_PLAYERS_PER_TEAM = 2
+        const val DEFAULT_PLAYERS_PER_TEAM = 7
+    }
 
 }

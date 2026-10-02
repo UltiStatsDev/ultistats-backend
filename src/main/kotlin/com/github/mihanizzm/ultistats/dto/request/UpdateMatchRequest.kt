@@ -9,5 +9,6 @@ import java.util.UUID
  */
 data class UpdateMatchRequest(
     val teamIds: List<UUID>? = null,
+    val playersPerTeam: Int? = null,
     val plannedStartTimestamp: Instant? = null,
 )
