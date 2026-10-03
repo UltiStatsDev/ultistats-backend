@@ -9,7 +9,9 @@ import com.github.mihanizzm.ultistats.dto.request.UpdateMatchRequest
 import com.github.mihanizzm.ultistats.dto.response.MatchListItemResponse
 import com.github.mihanizzm.ultistats.dto.response.MatchResponse
 import com.github.mihanizzm.ultistats.model.Match
+import com.github.mihanizzm.ultistats.model.MatchParticipantKind
 import com.github.mihanizzm.ultistats.service.MatchService
+import com.github.mihanizzm.ultistats.service.PlayerService
 import com.github.mihanizzm.ultistats.service.TeamService
 import com.github.mihanizzm.ultistats.service.result.MatchCommandResult
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
@@ -22,6 +24,7 @@ import java.util.UUID
 class MatchFacade(
     private val matchService: MatchService,
     private val teamService: TeamService,
+    private val playerService: PlayerService,
 ) {
     companion object {
         val DEFAULT_SORT = SortParam("plannedStartTimestamp")
@@ -34,11 +37,7 @@ class MatchFacade(
         )
     }
 
-    fun getAll(): List<MatchResponse> =
-        matchService.getAll().map { match ->
-            val teams = teamService.getAllInListIncludingDeleted(match.teamIds)
-            MatchResponse.from(match, teams.associateBy { it.id })
-        }
+    fun getAll(): List<MatchResponse> = matchService.getAll().map { it.toResponse() }
 
     fun getAllPaged(
         page: Int,
@@ -64,8 +63,7 @@ class MatchFacade(
 
     fun getById(id: UUID): MatchResponse? {
         val match = matchService.get(id) ?: return null
-        val teams = teamService.getAllInListIncludingDeleted(match.teamIds)
-        return MatchResponse.from(match, teams.associateBy { it.id })
+        return match.toResponse()
     }
 
     fun create(request: CreateMatchRequest): MatchCommandResult<MatchResponse> {
@@ -129,6 +127,15 @@ class MatchFacade(
 
     private fun Match.toResponse(): MatchResponse {
         val teams = teamService.getAllInListIncludingDeleted(teamIds)
-        return MatchResponse.from(this, teams.associateBy { it.id })
+        val playerIds = participantsByTeam.values
+            .flatten()
+            .filter { it.kind == MatchParticipantKind.PLAYER }
+            .map { it.participantId }
+        val players = playerService.getAllByIdsIncludingDeleted(playerIds)
+        return MatchResponse.from(
+            match = this,
+            teamsById = teams.associateBy { it.id },
+            playersById = players.associateBy { it.id },
+        )
     }
 }
