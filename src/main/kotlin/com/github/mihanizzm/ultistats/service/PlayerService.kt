@@ -19,6 +19,8 @@ interface PlayerService {
 
     fun getAllByIds(ids: List<UUID>): List<Player>
 
+    fun getAllByIdsIncludingDeleted(ids: List<UUID>): List<Player>
+
     fun getAllByTeamId(teamId: UUID): List<Player>
 
     fun findAllFiltered(filter: PlayerFilterRequest): List<Player>

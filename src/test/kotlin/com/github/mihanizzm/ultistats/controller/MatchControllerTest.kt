@@ -14,6 +14,7 @@ import com.github.mihanizzm.ultistats.service.PlayerService
 import com.github.mihanizzm.ultistats.service.TeamService
 import com.github.mihanizzm.ultistats.service.TeamPlayerService
 import org.hamcrest.Matchers.hasItem
+import org.hamcrest.Matchers.not
 import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -216,6 +217,53 @@ class MatchControllerTest {
             .andExpect(jsonPath("$.components.schemas.UpdateMatchRequest.properties.playersPerTeam.type").value("integer"))
             .andExpect(jsonPath("$.components.schemas.MatchResponse.properties.playersPerTeam.type").value("integer"))
             .andExpect(jsonPath("$.components.schemas.MatchListItemResponse.properties.playersPerTeam.type").value("integer"))
+    }
+
+    @Test
+    fun `Участник матча возвращает актуальный photoUrl игрока`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val playerId = teamPlayerService.getByTeamId(team1.id).first().playerId
+        val match = createTestMatch(team1, team2)
+        val photoUrl = "/uploads/players/$playerId/photo.jpg"
+
+        val player = requireNotNull(playerService.get(playerId))
+        playerService.update(player.copy(photoUrl = photoUrl))
+
+        mockMvc.perform(get("/api/v1/matches/${match.id}"))
+            .andExpect(status().isOk)
+            .andExpect(
+                jsonPath("$.teams[0].participants[?(@.participantId == '$playerId')].photoUrl")
+                    .value(hasItem(photoUrl)),
+            )
+            .andExpect(jsonPath("$.teams[0].participants[?(@.kind == 'UNKNOWN')].photoUrl").value(hasItem(nullValue())))
+    }
+
+    @Test
+    fun `Участник исторического матча сохраняет photoUrl после удаления игрока`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val playerId = teamPlayerService.getByTeamId(team1.id).first().playerId
+        val match = createTestMatch(team1, team2)
+        val photoUrl = "/uploads/players/$playerId/photo.jpg"
+        val player = requireNotNull(playerService.get(playerId))
+        playerService.update(player.copy(photoUrl = photoUrl))
+        playerService.delete(playerId)
+
+        mockMvc.perform(get("/api/v1/matches/${match.id}"))
+            .andExpect(status().isOk)
+            .andExpect(
+                jsonPath("$.teams[0].participants[?(@.participantId == '$playerId')].photoUrl")
+                    .value(hasItem(photoUrl)),
+            )
+    }
+
+    @Test
+    fun `OpenAPI документирует nullable photoUrl участника матча`() {
+        mockMvc.perform(get("/v3/api-docs"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.components.schemas.MatchParticipantResponse.properties.photoUrl").exists())
+            .andExpect(jsonPath("$.components.schemas.MatchParticipantResponse.required", not(hasItem("photoUrl"))))
     }
 
     @Test

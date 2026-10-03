@@ -36,6 +36,9 @@ class PlayerServiceImpl(
     override fun getAllByIds(ids: List<UUID>): List<Player> =
         playerRepository.findAllByIdInAndDeletedAtIsNull(ids)
 
+    override fun getAllByIdsIncludingDeleted(ids: List<UUID>): List<Player> =
+        playerRepository.findAllById(ids).toList()
+
     override fun getAllByTeamId(teamId: UUID): List<Player> {
         val playerIds = teamPlayerService.getByTeamId(teamId).map { it.playerId }
         return playerRepository.findAllByIdInAndDeletedAtIsNull(playerIds)
