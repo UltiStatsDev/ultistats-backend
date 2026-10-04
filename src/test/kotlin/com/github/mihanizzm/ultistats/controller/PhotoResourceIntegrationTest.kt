@@ -91,6 +91,76 @@ class PhotoResourceIntegrationTest {
     }
 
     @Test
+    fun `PUT photo resource игрока принимает legacy часть multipartFile`() {
+        val player = scenarioFactory.createPlayer()
+
+        mockMvc.perform(
+            photoPutRequest(
+                url = "/api/v1/players/${player.id}/photo",
+                contentType = "image/png",
+                content = PNG_BYTES,
+                partName = "multipartFile",
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.url").exists())
+    }
+
+    @Test
+    fun `PUT photo resource команды принимает legacy часть multipartFile`() {
+        val team = scenarioFactory.createTeam()
+
+        mockMvc.perform(
+            photoPutRequest(
+                url = "/api/v1/teams/${team.id}/photo",
+                contentType = "image/webp",
+                content = WEBP_BYTES,
+                partName = "multipartFile",
+            ),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.url").exists())
+    }
+
+    @Test
+    fun `deprecated photo uploads принимают legacy часть multipartFile`() {
+        val player = scenarioFactory.createPlayer()
+        val team = scenarioFactory.createTeam()
+
+        mockMvc.perform(
+            photoPostRequest(
+                url = "/api/v1/players/${player.id}/uploadPhoto",
+                contentType = "image/png",
+                content = PNG_BYTES,
+                partName = "multipartFile",
+            ),
+        ).andExpect(status().isCreated)
+
+        mockMvc.perform(
+            photoPostRequest(
+                url = "/api/v1/teams/${team.id}/uploadPhoto",
+                contentType = "image/webp",
+                content = WEBP_BYTES,
+                partName = "multipartFile",
+            ),
+        ).andExpect(status().isCreated)
+    }
+
+    @Test
+    fun `photo upload отклоняет одновременно file и multipartFile`() {
+        val player = scenarioFactory.createPlayer()
+
+        mockMvc.perform(
+            multipart("/api/v1/players/${player.id}/photo")
+                .file(MockMultipartFile("file", "photo.png", "image/png", PNG_BYTES))
+                .file(MockMultipartFile("multipartFile", "legacy.png", "image/png", PNG_BYTES))
+                .with { request -> request.apply { method = "PUT" } },
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("INVALID_FILE_UPLOAD"))
+    }
+
+    @Test
     fun `замена photo resource игрока удаляет старый файл`() {
         val player = scenarioFactory.createPlayer()
         val oldUrl = putPhoto("/api/v1/players/${player.id}/photo", "image/png", PNG_BYTES)
@@ -265,10 +335,20 @@ class PhotoResourceIntegrationTest {
         url: String,
         contentType: String,
         content: ByteArray,
+        partName: String = "file",
     ): MockHttpServletRequestBuilder =
         multipart(url)
-            .file(MockMultipartFile("file", "photo", contentType, content))
+            .file(MockMultipartFile(partName, "photo", contentType, content))
             .with { request -> request.apply { method = "PUT" } }
+
+    private fun photoPostRequest(
+        url: String,
+        contentType: String,
+        content: ByteArray,
+        partName: String,
+    ): MockHttpServletRequestBuilder =
+        multipart(url)
+            .file(MockMultipartFile(partName, "photo", contentType, content))
 
     private fun MvcResult.responseUrl(): String =
         objectMapper.readTree(response.contentAsString).get("url").asText()
