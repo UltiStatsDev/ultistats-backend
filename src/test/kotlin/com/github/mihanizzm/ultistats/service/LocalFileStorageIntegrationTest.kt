@@ -218,8 +218,14 @@ class LocalFileStorageIntegrationTest {
 
         mockMvc.perform(get("/v3/api-docs"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$playerPhoto.put.requestBody.content['multipart/form-data'].schema.required[0]").value("file"))
-            .andExpect(jsonPath("$playerPhoto.put.requestBody.content['multipart/form-data'].schema.properties.file.format").value("binary"))
+            .andExpect(jsonPath("$playerPhoto.put.requestBody.required").value(true))
+            .andExpect(
+                jsonPath("$playerPhoto.put.requestBody.content['multipart/form-data'].schema['\$ref']")
+                    .value("#/components/schemas/PhotoUploadRequest"),
+            )
+            .andExpect(jsonPath("$.components.schemas.PhotoUploadRequest.required[0]").value("file"))
+            .andExpect(jsonPath("$.components.schemas.PhotoUploadRequest.properties.file.format").value("binary"))
+            .andExpect(jsonPath("$.components.schemas.PhotoUploadRequest.properties.multipartFile").doesNotExist())
             .andExpect(
                 jsonPath("$playerPhoto.put.responses['400'].content['application/problem+json'].schema['\$ref']")
                     .value("#/components/schemas/ProblemDetail"),
@@ -232,8 +238,11 @@ class LocalFileStorageIntegrationTest {
                 jsonPath("$playerPhoto.delete.responses['503'].content['application/problem+json'].schema['\$ref']")
                     .value("#/components/schemas/ProblemDetail"),
             )
-            .andExpect(jsonPath("$teamPhoto.put.requestBody.content['multipart/form-data'].schema.required[0]").value("file"))
-            .andExpect(jsonPath("$teamPhoto.put.requestBody.content['multipart/form-data'].schema.properties.file.format").value("binary"))
+            .andExpect(jsonPath("$teamPhoto.put.requestBody.required").value(true))
+            .andExpect(
+                jsonPath("$teamPhoto.put.requestBody.content['multipart/form-data'].schema['\$ref']")
+                    .value("#/components/schemas/PhotoUploadRequest"),
+            )
             .andExpect(jsonPath("$legacyPlayerUpload.deprecated").value(true))
             .andExpect(jsonPath("$legacyPlayerUrl.get.deprecated").value(true))
             .andExpect(jsonPath("$legacyPlayerUrl.delete.deprecated").value(true))

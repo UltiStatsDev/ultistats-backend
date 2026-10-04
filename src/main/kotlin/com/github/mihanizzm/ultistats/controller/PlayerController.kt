@@ -4,6 +4,7 @@ import com.github.mihanizzm.ultistats.dto.common.PageResponse
 import com.github.mihanizzm.ultistats.dto.common.SortParam
 import com.github.mihanizzm.ultistats.dto.request.CreatePlayerRequest
 import com.github.mihanizzm.ultistats.dto.request.PlayerFilterRequest
+import com.github.mihanizzm.ultistats.dto.request.PhotoUploadRequest
 import com.github.mihanizzm.ultistats.dto.request.UpdatePlayerRequest
 import com.github.mihanizzm.ultistats.dto.response.PhotoUrlResponse
 import com.github.mihanizzm.ultistats.dto.response.PlayerDetailResponse
@@ -17,6 +18,7 @@ import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
+import io.swagger.v3.oas.annotations.parameters.RequestBody as OpenApiRequestBody
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
@@ -96,7 +98,16 @@ class PlayerController(
         else ResponseEntity.notFound().build()
 
     @PutMapping("/{playerId}/photo", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
-    @Operation(summary = "Создать или заменить фотографию игрока")
+    @Operation(
+        summary = "Создать или заменить фотографию игрока",
+        requestBody = OpenApiRequestBody(
+            required = true,
+            content = [Content(
+                mediaType = MediaType.MULTIPART_FORM_DATA_VALUE,
+                schema = Schema(implementation = PhotoUploadRequest::class),
+            )],
+        ),
+    )
     @ApiResponses(
         value = [
             ApiResponse(
@@ -119,9 +130,14 @@ class PlayerController(
     )
     fun putPhoto(
         @PathVariable playerId: UUID,
-        @RequestPart("file") multipartFile: MultipartFile,
+        @Parameter(hidden = true)
+        @RequestPart("file", required = false)
+        file: MultipartFile?,
+        @Parameter(hidden = true)
+        @RequestPart("multipartFile", required = false)
+        legacyMultipartFile: MultipartFile?,
     ): ResponseEntity<PhotoUrlResponse> =
-        playerFacade.uploadPhoto(playerId, multipartFile)
+        playerFacade.uploadPhoto(playerId, resolvePhotoUploadPart(file, legacyMultipartFile))
             ?.let { ResponseEntity.ok(it) }
             ?: ResponseEntity.notFound().build()
 
@@ -148,7 +164,17 @@ class PlayerController(
             ?: ResponseEntity.notFound().build()
 
     @PostMapping("/{playerId}/uploadPhoto", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
-    @Operation(summary = "Загрузить аватар для игрока", deprecated = true)
+    @Operation(
+        summary = "Загрузить аватар для игрока",
+        deprecated = true,
+        requestBody = OpenApiRequestBody(
+            required = true,
+            content = [Content(
+                mediaType = MediaType.MULTIPART_FORM_DATA_VALUE,
+                schema = Schema(implementation = PhotoUploadRequest::class),
+            )],
+        ),
+    )
     @ApiResponses(
         value = [
             ApiResponse(
@@ -163,9 +189,14 @@ class PlayerController(
     )
     fun uploadPhoto(
         @PathVariable playerId: UUID,
-        @RequestPart("file") multipartFile: MultipartFile,
+        @Parameter(hidden = true)
+        @RequestPart("file", required = false)
+        file: MultipartFile?,
+        @Parameter(hidden = true)
+        @RequestPart("multipartFile", required = false)
+        legacyMultipartFile: MultipartFile?,
     ): ResponseEntity<PhotoUrlResponse> =
-        playerFacade.uploadPhoto(playerId, multipartFile)
+        playerFacade.uploadPhoto(playerId, resolvePhotoUploadPart(file, legacyMultipartFile))
             ?.let { ResponseEntity.status(HttpStatus.CREATED).body(it) }
             ?: ResponseEntity.notFound().build()
 
