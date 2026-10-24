@@ -1,10 +1,10 @@
 package com.github.mihanizzm.ultistats.controller
 
 import com.github.mihanizzm.ultistats.dto.common.PageResponse
-import com.github.mihanizzm.ultistats.dto.common.SortParam
 import com.github.mihanizzm.ultistats.dto.request.CreateTeamRequest
 import com.github.mihanizzm.ultistats.dto.request.PhotoUploadRequest
 import com.github.mihanizzm.ultistats.dto.request.TeamFilterRequest
+import com.github.mihanizzm.ultistats.dto.request.TeamSortRequest
 import com.github.mihanizzm.ultistats.dto.request.UpdateTeamRequest
 import com.github.mihanizzm.ultistats.dto.request.UpsertTeamPlayerRequest
 import com.github.mihanizzm.ultistats.dto.response.PhotoUrlResponse
@@ -21,6 +21,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import io.swagger.v3.oas.annotations.parameters.RequestBody as OpenApiRequestBody
+import jakarta.servlet.http.HttpServletRequest
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
@@ -38,6 +40,16 @@ class TeamController(
 ) {
     @GetMapping
     @Operation(summary = "Получить команды с пагинацией, фильтрацией и сортировкой")
+    @ApiResponses(value = [
+        ApiResponse(responseCode = "200", description = "Страница результатов", useReturnTypeSchema = true),
+        ApiResponse(
+            responseCode = "400", description = "Некорректные или неоднозначные параметры сортировки",
+            content = [Content(
+                mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                schema = Schema(implementation = ProblemDetail::class),
+            )],
+        ),
+    ])
     fun getAll(
         @Parameter(description = "Номер страницы (начиная с 0)")
         @RequestParam(defaultValue = "0")
@@ -51,16 +63,12 @@ class TeamController(
         @RequestParam(required = false)
         name: String?,
 
-        @Parameter(
-            description = "Сортировка. Формат: field:direction. " +
-                "Доступные поля: name. По умолчанию: name:asc",
-            example = "name:asc"
-        )
-        @RequestParam(required = false)
-        sort: SortParam?,
+        @ParameterObject @ModelAttribute
+        sorting: TeamSortRequest,
+        servletRequest: HttpServletRequest,
     ): PageResponse<TeamListItemResponse> {
         val filter = TeamFilterRequest(name = name)
-        return teamFacade.getAllPaged(page, size, filter, sort ?: TeamFacade.DEFAULT_SORT)
+        return teamFacade.getAllPaged(page, size, filter, sorting.toSortParam(servletRequest.parameterMap))
     }
 
     @GetMapping("/{id}")

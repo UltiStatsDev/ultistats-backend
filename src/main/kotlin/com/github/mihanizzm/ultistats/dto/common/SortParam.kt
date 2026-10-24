@@ -10,7 +10,9 @@ data class SortParam(
          */
         fun parse(param: String): SortParam {
             val parts = param.split(":")
+            require(parts.size <= 2) { "Expected field or field:direction" }
             val field = parts[0].trim()
+            require(field.isNotEmpty()) { "Sort field must not be blank" }
             val direction = if (parts.size > 1) {
                 SortDirection.fromString(parts[1].trim())
             } else {
@@ -27,9 +29,7 @@ enum class SortDirection {
 
     companion object {
         fun fromString(value: String): SortDirection =
-            when (value.lowercase()) {
-                "desc" -> DESC
-                else -> ASC
-            }
+            entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
+                ?: throw IllegalArgumentException("Sort direction must be ASC or DESC")
     }
 }
