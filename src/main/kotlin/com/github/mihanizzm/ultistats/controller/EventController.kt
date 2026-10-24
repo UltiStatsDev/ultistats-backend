@@ -141,6 +141,55 @@ class EventController(
             else -> ResponseEntity.internalServerError().build<Any>()
         }
 
+    @PostMapping("/undo")
+    @Operation(
+        summary = "Отменить последнее событие матча",
+        description = """Без тела запроса. Мягко удаляет активное событие с наибольшим sequenceNumber
+            под блокировкой матча, пересчитывает счёт и после commit отправляет SSE event-log-changed
+            с operation=DELETED. Возвращает отменённое событие. Сохраняет правила удаления событий:
+            журнал завершённого матча должен оканчиваться завершённым розыгрышем.
+            Операция неидемпотентна: каждый повторный вызов отменяет следующее активное событие.
+            Не повторяйте запрос автоматически при потере ответа; сначала перечитайте журнал.""",
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "Отменённое событие",
+                content = [Content(
+                    mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = Schema(implementation = EventResponse::class),
+                )],
+            ),
+            ApiResponse(
+                responseCode = "404",
+                description = "Матч не найден или активных событий нет",
+                content = [Content(
+                    mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                    schema = Schema(implementation = ProblemDetail::class),
+                )],
+            ),
+            ApiResponse(
+                responseCode = "409",
+                description = "Отмена нарушает состояние матча или последовательность событий",
+                content = [Content(
+                    mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                    schema = Schema(implementation = ProblemDetail::class),
+                )],
+            ),
+        ],
+    )
+    fun undoLast(
+        @PathVariable matchId: UUID,
+        servletRequest: HttpServletRequest,
+    ): ResponseEntity<*> = when (val result = eventFacade.undoLast(matchId)) {
+        is EventResult.Success -> ResponseEntity.ok(result.response)
+        is EventResult.NotFound -> notFound("Match $matchId not found or has no active events", servletRequest)
+        is EventResult.InvalidState -> conflict(result.problem, servletRequest)
+        is EventResult.Conflict -> conflict(result.problem, servletRequest)
+        else -> ResponseEntity.internalServerError().build<Any>()
+    }
+
     @DeleteMapping("/{eventId}")
     @Operation(summary = "Удалить событие по ID")
     fun delete(
@@ -159,6 +208,10 @@ class EventController(
     private fun notFound(matchId: UUID, eventId: UUID?, request: HttpServletRequest): ResponseEntity<*> {
         val detail = if (eventId == null) "Match $matchId not found"
         else "Match $matchId or event $eventId not found"
+        return notFound(detail, request)
+    }
+
+    private fun notFound(detail: String, request: HttpServletRequest): ResponseEntity<*> {
         val problem = MatchProblem(MatchProblemCode.RESOURCE_NOT_FOUND, "Resource not found", detail)
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
             .body(problem.toProblemDetail(HttpStatus.NOT_FOUND, URI.create(request.requestURI)))
