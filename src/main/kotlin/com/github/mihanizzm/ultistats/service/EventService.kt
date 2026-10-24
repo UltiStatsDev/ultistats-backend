@@ -10,5 +10,6 @@ interface EventService {
     fun get(eventId: UUID, matchId: UUID): StoredEvent?
     fun update(eventId: UUID, matchId: UUID, update: (StoredEvent) -> Event): EventCommandResult
     fun remove(eventId: UUID, matchId: UUID): EventCommandResult
+    fun undoLast(matchId: UUID): EventCommandResult
     fun getAllEventsOfMatch(matchId: UUID): List<StoredEvent>
 }

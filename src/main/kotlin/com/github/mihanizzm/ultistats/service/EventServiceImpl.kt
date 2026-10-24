@@ -78,9 +78,26 @@ class EventServiceImpl(
         val match = matchService.getForUpdate(matchId) ?: return EventCommandResult.NotFound
         val existing = eventRepository.findByIdAndMatchIdAndDeletedAtIsNull(eventId, matchId)
             ?: return EventCommandResult.NotFound
+        return removeLocked(match, existing)
+    }
+
+    @Transactional
+    override fun undoLast(matchId: UUID): EventCommandResult {
+        val match = matchService.getForUpdate(matchId) ?: return EventCommandResult.NotFound
+        val existing = eventRepository.findFirstByMatchIdAndDeletedAtIsNullOrderBySequenceNumberDesc(matchId)
+            ?: return EventCommandResult.NotFound
+        return when (val result = removeLocked(match, existing)) {
+            EventCommandResult.Deleted -> EventCommandResult.Success(existing.toStored())
+            else -> result
+        }
+    }
+
+    /** Both deletion commands hold the match lock for selection, validation and persistence. */
+    private fun removeLocked(match: Match, existing: EventEntity): EventCommandResult {
+        val matchId = match.id
         lifecyclePolicy.validateEventDeletion(match).toCommandRejection()?.let { return it }
         val proposedEvents = eventRepository.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(matchId)
-            .filterNot { it.id == eventId }
+            .filterNot { it.id == existing.id }
             .map { it.toDomain() }
         validateSequence(proposedEvents, requirePointEnded = match.status == MatchStatus.FINISHED)?.let { return it }
 

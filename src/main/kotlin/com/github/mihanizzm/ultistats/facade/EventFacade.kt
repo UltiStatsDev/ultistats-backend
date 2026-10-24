@@ -106,6 +106,8 @@ class EventFacade(
         return eventService.remove(eventId, matchId).toFacadeResult()
     }
 
+    fun undoLast(matchId: UUID): EventResult = eventService.undoLast(matchId).toFacadeResult()
+
     private fun EventCommandResult.toFacadeResult(): EventResult = when (this) {
         is EventCommandResult.Success -> EventResult.Success(EventResponse.from(event))
         EventCommandResult.Deleted -> EventResult.Deleted
