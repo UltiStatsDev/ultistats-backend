@@ -50,7 +50,17 @@ class EventController(
     }
 
     @PostMapping
-    @Operation(summary = "Создать событие")
+    @Operation(
+        summary = "Создать событие",
+        description = "Добавляет одно событие в журнал матча IN_PROGRESS. Обязательны type и occurredAt, " +
+            "а остальные поля зависят от type (см. отдельный пример каждого типа). " +
+            "participantId/fromParticipantId/toParticipantId — идентификаторы участников из состава этого матча, " +
+            "включая UNKNOWN; используйте participantId из ответа GET /api/v1/matches/{matchId}. " +
+            "Для PASS/GOAL нужны разные участники одной команды, для блоков и перехватов — противоположных команд. " +
+            "UUID в примерах условные: замените их идентификаторами своего матча. " +
+            "occurredAt передаётся в ISO-8601 UTC, не раньше начала матча и последнего активного события; " +
+            "одинаковое время допустимо. Недопустимая последовательность событий возвращает 409.",
+    )
     @ApiResponses(
         value = [
             ApiResponse(
@@ -73,28 +83,94 @@ class EventController(
                 schema = Schema(implementation = CreateEventRequest::class),
                 examples = [
                     ExampleObject(
-                        name = "onePlayerEvent",
-                        summary = "Событие с одним игроком",
-                        description = "Допустимые type: INCOMPLETE_PASS, PULL, BRICK, PICKUP.",
-                        value = """{"type":"PICKUP","occurredAt":"2026-07-28T12:30:00Z","participantId":"11111111-1111-1111-1111-111111111111"}""",
-                    ),
-                    ExampleObject(
-                        name = "twoPlayerEvent",
-                        summary = "Событие с двумя игроками",
-                        description = "Допустимые type: PASS, GOAL, BLOCK, BLOCK_MARKER, BLOCK_FIELD, INTERCEPTION, CALLAHAN.",
+                        name = "PASS",
+                        summary = "PASS — Успешный пас",
+                        description = "Пас партнёру: fromParticipantId — бросающий, toParticipantId — принимающий. Участники одной команды; принимающий становится владельцем диска.",
                         value = """{"type":"PASS","occurredAt":"2026-07-28T12:30:00Z","fromParticipantId":"11111111-1111-1111-1111-111111111111","toParticipantId":"22222222-2222-2222-2222-222222222222"}""",
                     ),
                     ExampleObject(
-                        name = "teamEvent",
-                        summary = "Командное событие",
-                        description = "Допустимые type: TIMEOUT_START, TIMEOUT_END.",
+                        name = "GOAL",
+                        summary = "GOAL — Гол с ассистом",
+                        description = "Голевой пас: fromParticipantId — автор ассиста, toParticipantId — поймавший диск в голевой зоне и забивший гол. Участники одной команды; розыгрыш завершается.",
+                        value = """{"type":"GOAL","occurredAt":"2026-07-28T12:30:00Z","fromParticipantId":"11111111-1111-1111-1111-111111111111","toParticipantId":"22222222-2222-2222-2222-222222222222"}""",
+                    ),
+                    ExampleObject(
+                        name = "INCOMPLETE_PASS",
+                        summary = "INCOMPLETE_PASS — Незавершённый пас",
+                        description = "Пас без зафиксированного действия защиты: выброс, аут или неудачная ловля. participantId — бросающий, а не не поймавший игрок. Диск свободен до PICKUP.",
+                        value = """{"type":"INCOMPLETE_PASS","occurredAt":"2026-07-28T12:30:00Z","participantId":"11111111-1111-1111-1111-111111111111"}""",
+                    ),
+                    ExampleObject(
+                        name = "PULL",
+                        summary = "PULL — Ввод диска в игру",
+                        description = "Пулл в начале матча, после гола или перерыва. participantId — выполнивший пулл игрок. Владение не устанавливается; далее ожидается BRICK или PICKUP.",
+                        value = """{"type":"PULL","occurredAt":"2026-07-28T12:30:00Z","participantId":"11111111-1111-1111-1111-111111111111"}""",
+                    ),
+                    ExampleObject(
+                        name = "BRICK",
+                        summary = "BRICK — Брик после пулла",
+                        description = "Объявление брика непосредственно после PULL. participantId — игрок, выполнивший предшествующий пулл, а не объявивший брик. У него увеличивается статистика bricks; далее требуется PICKUP.",
+                        value = """{"type":"BRICK","occurredAt":"2026-07-28T12:30:00Z","participantId":"11111111-1111-1111-1111-111111111111"}""",
+                    ),
+                    ExampleObject(
+                        name = "PICKUP",
+                        summary = "PICKUP — Подбор свободного диска",
+                        description = "participantId — подобравший диск участник. Применяется после PULL, BRICK, INCOMPLETE_PASS или блока; начинает новое владение.",
+                        value = """{"type":"PICKUP","occurredAt":"2026-07-28T12:30:00Z","participantId":"11111111-1111-1111-1111-111111111111"}""",
+                    ),
+                    ExampleObject(
+                        name = "BLOCK",
+                        summary = "BLOCK — Блок без уточнения позиции",
+                        description = "fromParticipantId — бросающий, toParticipantId — блокирующий защитник противоположной команды. Позиция защитника не уточнена. Диск свободен до PICKUP.",
+                        value = """{"type":"BLOCK","occurredAt":"2026-07-28T12:30:00Z","fromParticipantId":"11111111-1111-1111-1111-111111111111","toParticipantId":"44444444-4444-4444-4444-444444444444"}""",
+                    ),
+                    ExampleObject(
+                        name = "BLOCK_MARKER",
+                        summary = "BLOCK_MARKER — Блок на маркере",
+                        description = "fromParticipantId — бросающий, toParticipantId — маркировавший его защитник противоположной команды. Блок учитывается в marker-статистике; далее требуется PICKUP.",
+                        value = """{"type":"BLOCK_MARKER","occurredAt":"2026-07-28T12:30:00Z","fromParticipantId":"11111111-1111-1111-1111-111111111111","toParticipantId":"44444444-4444-4444-4444-444444444444"}""",
+                    ),
+                    ExampleObject(
+                        name = "BLOCK_FIELD",
+                        summary = "BLOCK_FIELD — Полевой блок",
+                        description = "fromParticipantId — бросающий, toParticipantId — полевой защитник противоположной команды, выполнивший блок. Блок учитывается в field-статистике; далее требуется PICKUP.",
+                        value = """{"type":"BLOCK_FIELD","occurredAt":"2026-07-28T12:30:00Z","fromParticipantId":"11111111-1111-1111-1111-111111111111","toParticipantId":"44444444-4444-4444-4444-444444444444"}""",
+                    ),
+                    ExampleObject(
+                        name = "INTERCEPTION",
+                        summary = "INTERCEPTION — Перехват с владением",
+                        description = "fromParticipantId — бросающий соперник, toParticipantId — поймавший его пас защитник противоположной команды. Защитник сразу получает владение, дополнительный PICKUP не нужен.",
+                        value = """{"type":"INTERCEPTION","occurredAt":"2026-07-28T12:30:00Z","fromParticipantId":"11111111-1111-1111-1111-111111111111","toParticipantId":"44444444-4444-4444-4444-444444444444"}""",
+                    ),
+                    ExampleObject(
+                        name = "CALLAHAN",
+                        summary = "CALLAHAN — Перехват с голом",
+                        description = "fromParticipantId — бросающий соперник, toParticipantId — защитник противоположной команды, перехвативший диск в атакуемой им голевой зоне. Засчитываются перехват и гол; розыгрыш завершается.",
+                        value = """{"type":"CALLAHAN","occurredAt":"2026-07-28T12:30:00Z","fromParticipantId":"11111111-1111-1111-1111-111111111111","toParticipantId":"44444444-4444-4444-4444-444444444444"}""",
+                    ),
+                    ExampleObject(
+                        name = "TIMEOUT_START",
+                        summary = "TIMEOUT_START — Начало таймаута",
+                        description = "teamId — команда-участница матча, взявшая таймаут. Игровой таймер останавливается, предыдущее состояние сохраняется до TIMEOUT_END.",
                         value = """{"type":"TIMEOUT_START","occurredAt":"2026-07-28T12:30:00Z","teamId":"33333333-3333-3333-3333-333333333333"}""",
                     ),
                     ExampleObject(
-                        name = "systemEvent",
-                        summary = "Системное событие",
-                        description = "Допустимые type: HALFTIME_START, HALFTIME_END.",
+                        name = "TIMEOUT_END",
+                        summary = "TIMEOUT_END — Окончание таймаута",
+                        description = "teamId — команда, чей таймаут заканчивается. После TIMEOUT_START возобновляются таймер и предыдущее игровое состояние.",
+                        value = """{"type":"TIMEOUT_END","occurredAt":"2026-07-28T12:30:00Z","teamId":"33333333-3333-3333-3333-333333333333"}""",
+                    ),
+                    ExampleObject(
+                        name = "HALFTIME_START",
+                        summary = "HALFTIME_START — Начало перерыва",
+                        description = "Начинает перерыв после завершённого розыгрыша и останавливает игровой таймер. Требуются только type и occurredAt, без participantId/teamId.",
                         value = """{"type":"HALFTIME_START","occurredAt":"2026-07-28T12:30:00Z"}""",
+                    ),
+                    ExampleObject(
+                        name = "HALFTIME_END",
+                        summary = "HALFTIME_END — Окончание перерыва",
+                        description = "Завершает перерыв после HALFTIME_START. Далее ожидается PULL нового розыгрыша. Требуются только type и occurredAt, без participantId/teamId.",
+                        value = """{"type":"HALFTIME_END","occurredAt":"2026-07-28T12:30:00Z"}""",
                     ),
                 ],
             )],
@@ -112,9 +188,39 @@ class EventController(
         }
 
     @PatchMapping("/{eventId}")
-    @Operation(summary = "Исправить участников события")
+    @Operation(
+        summary = "Исправить участников, команду или разновидность блока",
+        description = "Обязательное поле type должно совпадать с сохранённым типом события. " +
+            "Исключение: разрешены взаимные замены BLOCK, BLOCK_MARKER и BLOCK_FIELD; другие смены дают 400. " +
+            "Для события с одним участником обязателен participantId, для командного — teamId. " +
+            "В событии с двумя участниками fromParticipantId и toParticipantId необязательны: " +
+            "отсутствие или null сохраняет прежнее значение; можно передать только type для уточнения блока. " +
+            "Роли участников и ограничения команд совпадают с POST. " +
+            "occurredAt неизменяем и не входит в PATCH; идентификатор и sequenceNumber также сохраняются. " +
+            "Системные события HALFTIME_START и HALFTIME_END не редактируются: " +
+            "PATCH с их сохранённым type возвращает 405 Method Not Allowed. " +
+            "Исправление допускается после начала матча, в том числе после завершения; " +
+            "нарушение последовательности событий или правил состояния возвращает 409.",
+    )
     @ApiResponses(
         value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "Исправленное событие с прежними id, sequenceNumber и occurredAt",
+                content = [Content(
+                    mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = Schema(implementation = EventResponse::class),
+                )],
+            ),
+            ApiResponse(responseCode = "405", description = "Редактирование системного события не поддерживается", content = []),
+            ApiResponse(
+                responseCode = "409",
+                description = "Конфликт состояния матча или последовательности событий",
+                content = [Content(
+                    mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                    schema = Schema(implementation = ProblemDetail::class),
+                )],
+            ),
             ApiResponse(
                 responseCode = "400",
                 description = "Недопустимое изменение события",
@@ -128,6 +234,40 @@ class EventController(
     fun update(
         @PathVariable matchId: UUID,
         @PathVariable eventId: UUID,
+        @OpenApiRequestBody(
+            required = true,
+            description = "Исправление существующего события без изменения его времени.",
+            content = [Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                schema = Schema(implementation = UpdateEventRequest::class),
+                examples = [
+                    ExampleObject(
+                        name = "onePlayerEvent",
+                        summary = "Исправить выполнившего пулл",
+                        description = "Для сохранённого PULL заменяет participantId; оба поля обязательны.",
+                        value = """{"type":"PULL","participantId":"11111111-1111-1111-1111-111111111111"}""",
+                    ),
+                    ExampleObject(
+                        name = "twoPlayerEvent",
+                        summary = "Исправить только принимающего пас",
+                        description = "Для сохранённого PASS заменяет toParticipantId; прежний бросающий сохраняется. Участники должны остаться разными игроками одной команды.",
+                        value = """{"type":"PASS","toParticipantId":"22222222-2222-2222-2222-222222222222"}""",
+                    ),
+                    ExampleObject(
+                        name = "blockRefinement",
+                        summary = "Уточнить блок как блок на маркере",
+                        description = "Для BLOCK или BLOCK_FIELD меняет type на BLOCK_MARKER, сохраняя обоих участников.",
+                        value = """{"type":"BLOCK_MARKER"}""",
+                    ),
+                    ExampleObject(
+                        name = "teamEvent",
+                        summary = "Исправить команду таймаута",
+                        description = "Для сохранённого TIMEOUT_START заменяет teamId на другую команду-участницу матча; оба поля обязательны.",
+                        value = """{"type":"TIMEOUT_START","teamId":"33333333-3333-3333-3333-333333333333"}""",
+                    ),
+                ],
+            )],
+        )
         @RequestBody request: UpdateEventRequest,
         servletRequest: HttpServletRequest,
     ): ResponseEntity<*> =

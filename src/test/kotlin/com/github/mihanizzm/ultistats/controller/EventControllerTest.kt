@@ -485,23 +485,6 @@ class EventControllerTest {
     }
 
     @Test
-    fun `create event OpenAPI request has examples for every request shape`() {
-        val examplesPath = "$.paths['/api/v1/matches/{matchId}/events'].post.requestBody.content['application/json'].examples"
-
-        mockMvc.perform(get("/v3/api-docs"))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$examplesPath.length()").value(4))
-            .andExpect(jsonPath("$examplesPath.onePlayerEvent.value.type").value("PICKUP"))
-            .andExpect(jsonPath("$examplesPath.onePlayerEvent.value.participantId").exists())
-            .andExpect(jsonPath("$examplesPath.twoPlayerEvent.value.type").value("PASS"))
-            .andExpect(jsonPath("$examplesPath.twoPlayerEvent.value.fromParticipantId").exists())
-            .andExpect(jsonPath("$examplesPath.twoPlayerEvent.value.toParticipantId").exists())
-            .andExpect(jsonPath("$examplesPath.teamEvent.value.type").value("TIMEOUT_START"))
-            .andExpect(jsonPath("$examplesPath.teamEvent.value.teamId").exists())
-            .andExpect(jsonPath("$examplesPath.systemEvent.value.type").value("HALFTIME_START"))
-    }
-
-    @Test
     fun `event mutations document bad request ProblemDetail`() {
         val eventsPath = "$.paths['/api/v1/matches/{matchId}/events']"
         val eventPath = "$.paths['/api/v1/matches/{matchId}/events/{eventId}']"

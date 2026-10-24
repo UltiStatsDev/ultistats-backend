@@ -49,13 +49,13 @@ import java.util.UUID
 )
 sealed interface CreateEventRequest {
     @get:Schema(
-        description = "Тип события. Он определяет форму запроса и является обязательным.",
+        description = "Обязательный тип события. Определяет схему и роли участников; выберите соответствующий пример POST.",
         example = "PASS",
     )
     val type: EventType
 
     @get:Schema(
-        description = "Фактическое время события в формате ISO-8601 UTC.",
+        description = "Фактическое время события в ISO-8601 UTC. Не раньше начала матча и последнего активного события; одинаковое время допустимо. После создания не изменяется.",
         example = "2026-07-28T12:30:00Z",
     )
     val occurredAt: Instant
@@ -65,6 +65,10 @@ sealed interface CreateEventRequest {
 data class OnePlayerEventRequest(
     override val type: EventType,
     override val occurredAt: Instant,
+    @field:Schema(
+        description = "UUID участника из состава этого матча (participantId, включая UNKNOWN). INCOMPLETE_PASS — бросающий, чей пас не завершён; PULL — выполнивший пулл; BRICK — выполнивший предшествующий пулл, а не объявивший брик; PICKUP — подобравший диск.",
+        example = "11111111-1111-1111-1111-111111111111",
+    )
     val participantId: UUID,
 ) : CreateEventRequest
 
@@ -72,7 +76,15 @@ data class OnePlayerEventRequest(
 data class TwoPlayerEventRequest(
     override val type: EventType,
     override val occurredAt: Instant,
+    @field:Schema(
+        description = "UUID бросающего участника из состава матча (participantId, включая UNKNOWN). Для PASS/GOAL — автор паса/ассиста; для BLOCK, BLOCK_MARKER, BLOCK_FIELD, INTERCEPTION, CALLAHAN — бросающий соперник защитника. Должен отличаться от toParticipantId.",
+        example = "11111111-1111-1111-1111-111111111111",
+    )
     val fromParticipantId: UUID,
+    @field:Schema(
+        description = "UUID второго участника из состава матча (participantId, включая UNKNOWN). Для PASS/GOAL — принимающий/автор гола из той же команды; для BLOCK, BLOCK_MARKER, BLOCK_FIELD — блокирующий защитник; для INTERCEPTION/CALLAHAN — перехвативший защитник. Защитник должен быть из противоположной команды.",
+        example = "22222222-2222-2222-2222-222222222222",
+    )
     val toParticipantId: UUID,
 ) : CreateEventRequest
 
@@ -80,10 +92,14 @@ data class TwoPlayerEventRequest(
 data class TeamEventRequest(
     override val type: EventType,
     override val occurredAt: Instant,
+    @field:Schema(
+        description = "UUID команды-участницы этого матча, чей таймаут начинается (TIMEOUT_START) или заканчивается (TIMEOUT_END). Это teamId, а не participantId.",
+        example = "33333333-3333-3333-3333-333333333333",
+    )
     val teamId: UUID,
 ) : CreateEventRequest
 
-@Schema(description = "Системное событие: HALFTIME_START или HALFTIME_END.")
+@Schema(description = "Системное событие: HALFTIME_START — начало перерыва после завершённого розыгрыша; HALFTIME_END — окончание перерыва, после которого ожидается PULL. Требуются только type и occurredAt; участники и команда не передаются.")
 data class SystemEventRequest(
     override val type: EventType,
     override val occurredAt: Instant,
