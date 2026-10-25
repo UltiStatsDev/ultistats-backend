@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.controller
 
+import com.github.mihanizzm.ultistats.dto.request.PaginationRequest
+import com.github.mihanizzm.ultistats.validation.query.validateScalarQueryParameters
+import jakarta.validation.Valid
 import com.github.mihanizzm.ultistats.dto.common.PageResponse
 import com.github.mihanizzm.ultistats.dto.request.CreatePlayerRequest
 import com.github.mihanizzm.ultistats.dto.request.PlayerFilterRequest
@@ -35,12 +38,17 @@ import java.util.UUID
 class PlayerController(
     private val playerFacade: PlayerFacade,
 ) {
+    @InitBinder("paginationRequest", "playerFilterRequest")
+    fun validateListQuery(servletRequest: HttpServletRequest) {
+        validateScalarQueryParameters(servletRequest.parameterMap, setOf("page", "size", "name", "teamId"))
+    }
+
     @GetMapping
     @Operation(summary = "Получить игроков с пагинацией, фильтрацией и сортировкой")
     @ApiResponses(value = [
         ApiResponse(responseCode = "200", description = "Страница результатов", useReturnTypeSchema = true),
         ApiResponse(
-            responseCode = "400", description = "Некорректные или неоднозначные параметры сортировки",
+            responseCode = "400", description = "Некорректные или неоднозначные параметры пагинации, фильтрации или сортировки",
             content = [Content(
                 mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
                 schema = Schema(implementation = ProblemDetail::class),
@@ -48,28 +56,19 @@ class PlayerController(
         ),
     ])
     fun getAll(
-        @Parameter(description = "Номер страницы (начиная с 0)")
-        @RequestParam(defaultValue = "0")
-        page: Int,
+        @Valid @ParameterObject @ModelAttribute
+        pagination: PaginationRequest,
 
-        @Parameter(description = "Размер страницы")
-        @RequestParam(defaultValue = "20")
-        size: Int,
-
-        @Parameter(description = "Фильтр по имени (частичное совпадение)")
-        @RequestParam(required = false)
-        name: String?,
-
-        @Parameter(description = "Фильтр по ID команды")
-        @RequestParam(required = false)
-        teamId: UUID?,
+        @Valid @ParameterObject @ModelAttribute
+        filter: PlayerFilterRequest,
 
         @ParameterObject @ModelAttribute
         sorting: PlayerSortRequest,
         servletRequest: HttpServletRequest,
     ): PageResponse<PlayerListItemResponse> {
-        val filter = PlayerFilterRequest(name = name, teamId = teamId)
-        return playerFacade.getAllPaged(page, size, filter, sorting.toSortParam(servletRequest.parameterMap))
+        return playerFacade.getAllPaged(
+            pagination.page, pagination.size, filter, sorting.toSortParam(servletRequest.parameterMap),
+        )
     }
 
     @GetMapping("/{id}")

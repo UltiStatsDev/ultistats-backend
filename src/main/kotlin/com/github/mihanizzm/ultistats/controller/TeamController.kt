@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.controller
 
+import com.github.mihanizzm.ultistats.dto.request.PaginationRequest
+import com.github.mihanizzm.ultistats.validation.query.validateScalarQueryParameters
+import jakarta.validation.Valid
 import com.github.mihanizzm.ultistats.dto.common.PageResponse
 import com.github.mihanizzm.ultistats.dto.request.CreateTeamRequest
 import com.github.mihanizzm.ultistats.dto.request.PhotoUploadRequest
@@ -38,12 +41,17 @@ import java.util.UUID
 class TeamController(
     private val teamFacade: TeamFacade,
 ) {
+    @InitBinder("paginationRequest", "teamFilterRequest")
+    fun validateListQuery(servletRequest: HttpServletRequest) {
+        validateScalarQueryParameters(servletRequest.parameterMap, setOf("page", "size", "name"))
+    }
+
     @GetMapping
     @Operation(summary = "Получить команды с пагинацией, фильтрацией и сортировкой")
     @ApiResponses(value = [
         ApiResponse(responseCode = "200", description = "Страница результатов", useReturnTypeSchema = true),
         ApiResponse(
-            responseCode = "400", description = "Некорректные или неоднозначные параметры сортировки",
+            responseCode = "400", description = "Некорректные или неоднозначные параметры пагинации, фильтрации или сортировки",
             content = [Content(
                 mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
                 schema = Schema(implementation = ProblemDetail::class),
@@ -51,24 +59,19 @@ class TeamController(
         ),
     ])
     fun getAll(
-        @Parameter(description = "Номер страницы (начиная с 0)")
-        @RequestParam(defaultValue = "0")
-        page: Int,
+        @Valid @ParameterObject @ModelAttribute
+        pagination: PaginationRequest,
 
-        @Parameter(description = "Размер страницы")
-        @RequestParam(defaultValue = "20")
-        size: Int,
-
-        @Parameter(description = "Фильтр по названию (частичное совпадение)")
-        @RequestParam(required = false)
-        name: String?,
+        @Valid @ParameterObject @ModelAttribute
+        filter: TeamFilterRequest,
 
         @ParameterObject @ModelAttribute
         sorting: TeamSortRequest,
         servletRequest: HttpServletRequest,
     ): PageResponse<TeamListItemResponse> {
-        val filter = TeamFilterRequest(name = name)
-        return teamFacade.getAllPaged(page, size, filter, sorting.toSortParam(servletRequest.parameterMap))
+        return teamFacade.getAllPaged(
+            pagination.page, pagination.size, filter, sorting.toSortParam(servletRequest.parameterMap),
+        )
     }
 
     @GetMapping("/{id}")
