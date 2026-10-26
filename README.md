@@ -159,6 +159,36 @@ docker compose start ultistats
 
 ---
 
+## Сортировка списков
+
+Списки команд, игроков и матчей принимают отдельные query-параметры:
+
+```http
+GET /api/v1/teams?sortBy=NAME&sortDirection=DESC
+GET /api/v1/players?sortBy=FIRST_NAME&sortDirection=ASC
+GET /api/v1/matches?sortBy=STARTED_AT&sortDirection=DESC
+```
+
+| Ресурс | Значения `sortBy` | Поле по умолчанию |
+|--------|------------------|------------------|
+| `/api/v1/teams` | `NAME` | `NAME` |
+| `/api/v1/players` | `LAST_NAME`, `FIRST_NAME` | `LAST_NAME` |
+| `/api/v1/matches` | `PLANNED_START_TIMESTAMP`, `STARTED_AT`, `ENDED_AT`, `STATUS` | `PLANNED_START_TIMESTAMP` |
+
+`sortDirection` — `ASC` (по умолчанию) или `DESC`. Новые значения регистрозависимы.
+Параметры необязательны: одно направление применяется к полю по умолчанию,
+одно поле — с направлением `ASC`. Сортировка выполняется до пагинации;
+существующие фильтры, `page` и `size` не меняются. Для дат `null` остаётся
+в конце при `ASC` и в начале при `DESC`; статусы сортируются по имени.
+
+Старый `sort=lastName:desc` пока поддерживается, но помечен deprecated в Swagger.
+В нём сохраняются прежние имена полей (`name`, `lastName`, `firstName`,
+`plannedStartTimestamp`, `startedAt`, `endedAt`, `status` — только для своего ресурса),
+необязательное направление и его регистронезависимость.
+Нельзя совмещать `sort` с `sortBy` или `sortDirection`.
+Неизвестные поля/направления, пустые и повторяющиеся параметры, некорректный
+старый формат возвращают `400 application/problem+json` с кодом `INVALID_REQUEST`.
+
 ## Структура событий
 
 - **Атака:** пуллы, передачи, голевые пасы, голы, потери, спасения.

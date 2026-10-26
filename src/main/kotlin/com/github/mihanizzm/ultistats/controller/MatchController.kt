@@ -1,9 +1,9 @@
 package com.github.mihanizzm.ultistats.controller
 
 import com.github.mihanizzm.ultistats.dto.common.PageResponse
-import com.github.mihanizzm.ultistats.dto.common.SortParam
 import com.github.mihanizzm.ultistats.dto.request.CreateMatchRequest
 import com.github.mihanizzm.ultistats.dto.request.MatchFilterRequest
+import com.github.mihanizzm.ultistats.dto.request.MatchSortRequest
 import com.github.mihanizzm.ultistats.dto.request.MatchTimestampRequest
 import com.github.mihanizzm.ultistats.dto.request.UpdateMatchRequest
 import com.github.mihanizzm.ultistats.dto.response.MatchListItemResponse
@@ -15,8 +15,15 @@ import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
+import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import jakarta.servlet.http.HttpServletRequest
@@ -32,6 +39,16 @@ class MatchController(
 ) {
     @GetMapping
     @Operation(summary = "Получить матчи с пагинацией, фильтрацией и сортировкой")
+    @ApiResponses(value = [
+        ApiResponse(responseCode = "200", description = "Страница результатов", useReturnTypeSchema = true),
+        ApiResponse(
+            responseCode = "400", description = "Некорректные или неоднозначные параметры сортировки",
+            content = [Content(
+                mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                schema = Schema(implementation = ProblemDetail::class),
+            )],
+        ),
+    ])
     fun getAll(
         @Parameter(description = "Номер страницы (начиная с 0)")
         @RequestParam(defaultValue = "0")
@@ -57,14 +74,9 @@ class MatchController(
         @RequestParam(required = false)
         dateTo: Instant?,
 
-        @Parameter(
-            description = "Сортировка. Формат: field:direction. " +
-                "Доступные поля: plannedStartTimestamp, startedAt, endedAt, status. " +
-                "По умолчанию: plannedStartTimestamp:asc",
-            example = "plannedStartTimestamp:asc"
-        )
-        @RequestParam(required = false)
-        sort: SortParam?,
+        @ParameterObject @ModelAttribute
+        sorting: MatchSortRequest,
+        servletRequest: HttpServletRequest,
     ): PageResponse<MatchListItemResponse> {
         val filter = MatchFilterRequest(
             teamId = teamId,
@@ -72,7 +84,7 @@ class MatchController(
             dateFrom = dateFrom,
             dateTo = dateTo,
         )
-        return matchFacade.getAllPaged(page, size, filter, sort ?: MatchFacade.DEFAULT_SORT)
+        return matchFacade.getAllPaged(page, size, filter, sorting.toSortParam(servletRequest.parameterMap))
     }
 
     @GetMapping("/{id}")
