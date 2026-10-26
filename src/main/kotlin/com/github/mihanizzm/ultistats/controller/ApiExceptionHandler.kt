@@ -1,6 +1,7 @@
 package com.github.mihanizzm.ultistats.controller
 
 import com.github.mihanizzm.ultistats.dto.common.InvalidSortException
+import com.github.mihanizzm.ultistats.validation.query.InvalidQueryParameterException
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
 import jakarta.servlet.http.HttpServletRequest
@@ -15,6 +16,10 @@ import java.net.URI
 
 @RestControllerAdvice
 class ApiExceptionHandler {
+    @ExceptionHandler(InvalidQueryParameterException::class)
+    fun handleInvalidQuery(exception: InvalidQueryParameterException, request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        invalidParameters(exception.message ?: "Invalid query parameters", request)
+
     @ExceptionHandler(InvalidSortException::class)
     fun handleInvalidSort(exception: InvalidSortException, request: HttpServletRequest): ResponseEntity<ProblemDetail> =
         invalidParameters(exception.message ?: "Invalid sorting parameters", request)
@@ -22,8 +27,13 @@ class ApiExceptionHandler {
     @ExceptionHandler(BindException::class)
     fun handleBindingFailure(exception: BindException, request: HttpServletRequest): ResponseEntity<ProblemDetail> =
         invalidParameters(
-            "Invalid query parameter(s): ${exception.fieldErrors.map { it.field }.distinct().joinToString()}. " +
-                "Use the documented parameter types and enum values.",
+            exception.fieldErrors.joinToString("; ") { error ->
+                if (error.isBindingFailure) {
+                    "Invalid '${error.field}': use the documented parameter type and enum values"
+                } else {
+                    "Invalid '${error.field}': ${error.defaultMessage ?: "constraint violated"}"
+                }
+            },
             request,
         )
 

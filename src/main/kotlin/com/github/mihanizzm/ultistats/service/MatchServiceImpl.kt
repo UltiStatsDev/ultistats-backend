@@ -97,7 +97,9 @@ class MatchServiceImpl(
     override fun findAllFiltered(filter: MatchFilterRequest): List<Match> =
         getAll().filter { match ->
             (filter.teamId == null || filter.teamId in match.teamIds) &&
-                (filter.status == null || filter.status == match.status)
+                (filter.status == null || filter.status == match.status) &&
+                (filter.dateFrom == null || match.plannedStartTimestamp?.let { it >= filter.dateFrom } == true) &&
+                (filter.dateTo == null || match.plannedStartTimestamp?.let { it <= filter.dateTo } == true)
         }
 
     override fun count(): Long = matchRepository.countByDeletedAtIsNull()

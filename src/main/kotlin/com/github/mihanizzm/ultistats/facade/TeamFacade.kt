@@ -42,7 +42,7 @@ class TeamFacade(
     fun getAllPaged(page: Int, size: Int, filter: TeamFilterRequest, sortParam: SortParam = DEFAULT_SORT): PageResponse<TeamListItemResponse> {
         val teams = teamService.findAllFiltered(filter)
         val content = teams.applySorting(sortParam, SORT_FIELD_EXTRACTORS)
-            .drop(page * size).take(size).map(TeamListItemResponse::from)
+            .drop((page.toLong() * size).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()).take(size).map(TeamListItemResponse::from)
         return PageResponse.of(content, teams.size.toLong(), page, size)
     }
 

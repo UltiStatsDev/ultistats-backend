@@ -38,7 +38,7 @@ class PlayerFacade(
     fun getAllPaged(page: Int, size: Int, filter: PlayerFilterRequest, sortParam: SortParam = DEFAULT_SORT): PageResponse<PlayerListItemResponse> {
         val players = playerService.findAllFiltered(filter)
         val content = players.applySorting(sortParam, SORT_FIELD_EXTRACTORS)
-            .drop(page * size).take(size).map(PlayerListItemResponse::from)
+            .drop((page.toLong() * size).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()).take(size).map(PlayerListItemResponse::from)
         return PageResponse.of(content, players.size.toLong(), page, size)
     }
 

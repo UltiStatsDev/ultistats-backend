@@ -51,7 +51,7 @@ class MatchFacade(
         val sortedMatches = filteredMatches.applySorting(sortParam, SORT_FIELD_EXTRACTORS)
 
         val content = sortedMatches
-            .drop(page * size)
+            .drop((page.toLong() * size).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
             .take(size)
             .map { match ->
                 val teams = teamService.getAllInListIncludingDeleted(match.teamIds)
