@@ -3,6 +3,7 @@ package com.github.mihanizzm.ultistats.service
 import com.github.mihanizzm.ultistats.dto.request.MatchFilterRequest
 import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.service.result.MatchCommandResult
+import com.github.mihanizzm.ultistats.service.patch.MatchPatch
 import java.time.Instant
 import java.util.UUID
 
@@ -21,6 +22,8 @@ interface MatchService {
     ): MatchCommandResult<Match>
 
     fun update(match: Match): MatchCommandResult<Match>
+
+    fun patch(matchId: UUID, patch: MatchPatch): MatchCommandResult<Match>
 
     fun delete(matchId: UUID)
 

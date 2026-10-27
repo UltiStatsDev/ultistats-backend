@@ -608,6 +608,130 @@ class MatchControllerTest {
     }
 
     @Test
+    fun `PATCH матча обновляет переданное поле и сохраняет пропущенные`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val plannedStart = Instant.parse("2026-08-14T10:00:00Z")
+        val match = createTestMatchWithTimestamp(team1, team2, plannedStart)
+
+        mockMvc.perform(
+            patch("/api/v1/matches/${match.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"playersPerTeam":5}"""),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.playersPerTeam").value(5))
+            .andExpect(jsonPath("$.plannedStartTimestamp").value(plannedStart.toString()))
+            .andExpect(jsonPath("$.teams[*].teamId").value(hasItem(team1.id.toString())))
+            .andExpect(jsonPath("$.teams[*].teamId").value(hasItem(team2.id.toString())))
+    }
+
+    @Test
+    fun `PATCH матча очищает plannedStartTimestamp при явном null`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val match = createTestMatchWithTimestamp(team1, team2, Instant.parse("2026-08-14T10:00:00Z"))
+
+        mockMvc.perform(
+            patch("/api/v1/matches/${match.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"plannedStartTimestamp":null}"""),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.plannedStartTimestamp").doesNotExist())
+
+        mockMvc.perform(get("/api/v1/matches/${match.id}"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.plannedStartTimestamp").doesNotExist())
+    }
+
+    @Test
+    fun `PATCH матча отклоняет null для обязательных полей`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val match = createTestMatch(team1, team2)
+
+        listOf("teamIds", "playersPerTeam").forEach { field ->
+            mockMvc.perform(
+                patch("/api/v1/matches/${match.id}")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"$field":null}"""),
+            )
+                .andExpectProblem(
+                    expectedStatus = 400,
+                    code = "INVALID_REQUEST",
+                    instance = "/api/v1/matches/${match.id}",
+                )
+        }
+    }
+
+    @Test
+    fun `PATCH матча отклоняет пустой объект`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val match = createTestMatch(team1, team2)
+
+        mockMvc.perform(
+            patch("/api/v1/matches/${match.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"),
+        )
+            .andExpectProblem(
+                expectedStatus = 400,
+                code = "INVALID_REQUEST",
+                instance = "/api/v1/matches/${match.id}",
+            )
+    }
+
+    @Test
+    fun `PATCH начатого матча возвращает конфликт состояния`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val match = createTestMatch(team1, team2)
+        matchService.startMatch(match.id, Instant.parse("2026-08-14T10:00:00Z"))
+
+        mockMvc.perform(
+            patch("/api/v1/matches/${match.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"playersPerTeam":5}"""),
+        )
+            .andExpectProblem(
+                expectedStatus = 409,
+                code = "MATCH_UPDATE_LOCKED",
+                instance = "/api/v1/matches/${match.id}",
+                currentStatus = "IN_PROGRESS",
+            )
+    }
+
+    @Test
+    fun `Отклоненный PATCH матча не сохраняет часть изменений`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val match = createTestMatch(team1, team2)
+
+        mockMvc.perform(
+            patch("/api/v1/matches/${match.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    objectMapper.writeValueAsString(
+                        mapOf("teamIds" to listOf(team1.id), "playersPerTeam" to 5),
+                    ),
+                ),
+        )
+            .andExpectProblem(
+                expectedStatus = 400,
+                code = "INVALID_REQUEST",
+                instance = "/api/v1/matches/${match.id}",
+            )
+
+        mockMvc.perform(get("/api/v1/matches/${match.id}"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.playersPerTeam").value(Match.DEFAULT_PLAYERS_PER_TEAM))
+            .andExpect(jsonPath("$.teams[*].teamId").value(hasItem(team1.id.toString())))
+            .andExpect(jsonPath("$.teams[*].teamId").value(hasItem(team2.id.toString())))
+    }
+
+    @Test
     fun `Обновление несуществующего матча возвращает 404`() {
         val matchId = UUID.randomUUID()
         val updateRequest = UpdateMatchRequest(plannedStartTimestamp = Instant.now())

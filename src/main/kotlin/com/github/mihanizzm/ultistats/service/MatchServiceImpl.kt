@@ -17,6 +17,8 @@ import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchTeamReposito
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataPlayerRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataTeamRepository
 import com.github.mihanizzm.ultistats.service.result.MatchCommandResult
+import com.github.mihanizzm.ultistats.service.patch.FieldPatch
+import com.github.mihanizzm.ultistats.service.patch.MatchPatch
 import com.github.mihanizzm.ultistats.validation.event.EventSequenceDecision
 import com.github.mihanizzm.ultistats.validation.event.EventSequencePolicy
 import com.github.mihanizzm.ultistats.validation.match.MatchLifecycleDecision
@@ -60,17 +62,43 @@ class MatchServiceImpl(
         teamIds: List<UUID>?,
         plannedStartTimestamp: Instant?,
         playersPerTeam: Int?,
-    ): MatchCommandResult<Match> {
+    ): MatchCommandResult<Match> = updateLocked(
+        matchId,
+        MatchPatch(
+            teamIds = teamIds?.let { FieldPatch.Value(it) } ?: FieldPatch.Omitted,
+            plannedStartTimestamp = plannedStartTimestamp?.let { FieldPatch.Value(it) } ?: FieldPatch.Omitted,
+            playersPerTeam = playersPerTeam?.let { FieldPatch.Value(it) } ?: FieldPatch.Omitted,
+        ),
+    )
+
+    @Transactional
+    override fun patch(matchId: UUID, patch: MatchPatch): MatchCommandResult<Match> = updateLocked(matchId, patch)
+
+    private fun updateLocked(matchId: UUID, patch: MatchPatch): MatchCommandResult<Match> {
         val match = getForUpdate(matchId)?.hydrate(includeEvents = true) ?: return MatchCommandResult.NotFound
-        val updatedTeamIds = teamIds ?: match.teamIds
+        val updatedTeamIds = when (val teamIds = patch.teamIds) {
+            FieldPatch.Omitted -> match.teamIds
+            FieldPatch.Null -> return invalidRequest("'teamIds' cannot be null")
+            is FieldPatch.Value -> teamIds.value
+        }
+        val updatedPlayersPerTeam = when (val playersPerTeam = patch.playersPerTeam) {
+            FieldPatch.Omitted -> match.playersPerTeam
+            FieldPatch.Null -> return invalidRequest("'playersPerTeam' cannot be null")
+            is FieldPatch.Value -> playersPerTeam.value
+        }
+        val updatedPlannedStartTimestamp = when (val plannedStartTimestamp = patch.plannedStartTimestamp) {
+            FieldPatch.Omitted -> match.plannedStartTimestamp
+            FieldPatch.Null -> null
+            is FieldPatch.Value -> plannedStartTimestamp.value
+        }
         invalidTeamSelection(updatedTeamIds, updatedTeamIds != match.teamIds && match.events.isNotEmpty())?.let { return it }
-        invalidPlayersPerTeam(playersPerTeam)?.let { return it }
+        invalidPlayersPerTeam(updatedPlayersPerTeam)?.let { return it }
         lifecyclePolicy.validateUpdate(match).toCommandRejection()?.let { return it }
 
         val updatedMatch = match.copy(
             teamIds = updatedTeamIds,
-            plannedStartTimestamp = plannedStartTimestamp ?: match.plannedStartTimestamp,
-            playersPerTeam = playersPerTeam ?: match.playersPerTeam,
+            plannedStartTimestamp = updatedPlannedStartTimestamp,
+            playersPerTeam = updatedPlayersPerTeam,
         )
         matchRepository.save(updatedMatch)
         if (updatedTeamIds != match.teamIds) replaceParticipants(matchId, updatedTeamIds)
