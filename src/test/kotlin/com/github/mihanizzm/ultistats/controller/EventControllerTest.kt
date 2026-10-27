@@ -267,7 +267,11 @@ class EventControllerTest {
             start.countDown()
 
             val results = responses.map { it.get(10, TimeUnit.SECONDS).response }
-            assertEquals(setOf(201, 409), results.map { it.status }.toSet())
+            assertEquals(
+                setOf(201, 409),
+                results.map { it.status }.toSet(),
+                results.joinToString { response -> "${response.status}: ${response.contentAsString}" },
+            )
             val conflict = results.single { it.status == 409 }
             assertEquals("EVENT_IDEMPOTENCY_CONFLICT", objectMapper.readTree(conflict.contentAsString)["code"].asText())
         }
