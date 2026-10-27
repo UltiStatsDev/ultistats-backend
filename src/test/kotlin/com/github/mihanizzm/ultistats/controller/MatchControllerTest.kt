@@ -608,6 +608,25 @@ class MatchControllerTest {
     }
 
     @Test
+    fun `Устаревший PUT матча сохраняет no-op семантику для пустого запроса и null`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val plannedStart = Instant.parse("2026-08-14T10:00:00Z")
+        val match = createTestMatchWithTimestamp(team1, team2, plannedStart)
+
+        listOf("{}", """{"plannedStartTimestamp":null}""").forEach { body ->
+            mockMvc.perform(
+                put("/api/v1/matches/${match.id}")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body),
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.plannedStartTimestamp").value(plannedStart.toString()))
+                .andExpect(jsonPath("$.playersPerTeam").value(Match.DEFAULT_PLAYERS_PER_TEAM))
+        }
+    }
+
+    @Test
     fun `PATCH матча обновляет переданное поле и сохраняет пропущенные`() {
         val team1 = createTestTeam("Команда 1")
         val team2 = createTestTeam("Команда 2")

@@ -69,14 +69,22 @@ class MatchServiceImpl(
             plannedStartTimestamp = plannedStartTimestamp?.let { FieldPatch.Value(it) } ?: FieldPatch.Omitted,
             playersPerTeam = playersPerTeam?.let { FieldPatch.Value(it) } ?: FieldPatch.Omitted,
         ),
+        rejectEmptyPatch = false,
     )
 
     @Transactional
-    override fun patch(matchId: UUID, patch: MatchPatch): MatchCommandResult<Match> = updateLocked(matchId, patch)
+    override fun patch(matchId: UUID, patch: MatchPatch): MatchCommandResult<Match> =
+        updateLocked(matchId, patch, rejectEmptyPatch = true)
 
-    private fun updateLocked(matchId: UUID, patch: MatchPatch): MatchCommandResult<Match> {
+    private fun updateLocked(
+        matchId: UUID,
+        patch: MatchPatch,
+        rejectEmptyPatch: Boolean,
+    ): MatchCommandResult<Match> {
         val match = getForUpdate(matchId)?.hydrate(includeEvents = true) ?: return MatchCommandResult.NotFound
-        if (patch.isEmpty()) return invalidRequest("Patch request must contain at least one supported field")
+        if (rejectEmptyPatch && patch.isEmpty()) {
+            return invalidRequest("Patch request must contain at least one supported field")
+        }
         val updatedTeamIds = when (val teamIds = patch.teamIds) {
             FieldPatch.Omitted -> match.teamIds
             FieldPatch.Null -> return invalidRequest("'teamIds' cannot be null")
