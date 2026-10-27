@@ -44,6 +44,67 @@ class TeamControllerTest {
     }
 
     @Test
+    fun `team patch updates provided field and preserves omitted city`() {
+        mockMvc.perform(
+            patch("/api/v1/teams/${team.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"name":"Renamed"}"""),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.name").value("Renamed"))
+            .andExpect(jsonPath("$.city").value("City"))
+    }
+
+    @Test
+    fun `team patch clears city on explicit null`() {
+        mockMvc.perform(
+            patch("/api/v1/teams/${team.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"city":null}"""),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.name").value("Team"))
+            .andExpect(jsonPath("$.city").doesNotExist())
+
+        mockMvc.perform(get("/api/v1/teams/${team.id}"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.city").doesNotExist())
+    }
+
+    @Test
+    fun `team patch rejects explicit null for required name`() {
+        mockMvc.perform(
+            patch("/api/v1/teams/${team.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"name":null}"""),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+    }
+
+    @Test
+    fun `team patch rejects empty object`() {
+        mockMvc.perform(
+            patch("/api/v1/teams/${team.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+    }
+
+    @Test
+    fun `team patch returns not found for missing team`() {
+        mockMvc.perform(
+            patch("/api/v1/teams/${UUID.randomUUID()}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"name":"Renamed"}"""),
+        ).andExpect(status().isNotFound)
+    }
+
+    @Test
     fun `membership put creates and updates stable relationship`() {
         val url = "/api/v1/teams/${team.id}/players/${player.id}"
         mockMvc.perform(put(url).contentType(MediaType.APPLICATION_JSON).content("""{"number":7}"""))
