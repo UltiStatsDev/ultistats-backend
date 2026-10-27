@@ -17,8 +17,12 @@ import com.github.mihanizzm.ultistats.validation.event.EventSequenceViolation
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
 import jakarta.transaction.Transactional
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.time.Instant
+import java.util.HexFormat
 import java.util.UUID
 
 @Service
@@ -30,16 +34,44 @@ class EventServiceImpl(
     private val realtimePublisher: MatchRealtimePublisher,
 ) : EventService {
     @Transactional
-    override fun create(event: Event, matchId: UUID): EventCommandResult {
+    override fun create(event: Event, matchId: UUID, eventId: UUID?): EventCommandResult {
         val lockedMatch = matchService.getForUpdate(matchId) ?: return EventCommandResult.NotFound
+        val creationFingerprint = event.creationFingerprint()
+        eventId?.let { requestedId ->
+            eventRepository.findById(requestedId).orElse(null)?.let { existing ->
+                val storedEventIsUnchanged = existing.creationFingerprint != null &&
+                    existing.creationFingerprint == existing.toDomain().creationFingerprint()
+                return if (
+                    existing.matchId == matchId &&
+                    existing.deletedAt == null &&
+                    storedEventIsUnchanged &&
+                    existing.creationFingerprint == creationFingerprint
+                ) {
+                    EventCommandResult.Success(existing.toStored(), replayed = true)
+                } else {
+                    EventCommandResult.Conflict(idempotencyConflict(requestedId))
+                }
+            }
+        }
         val activeEvents = eventRepository.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(matchId)
         val match = lockedMatch.toPolicyMatch(activeEvents)
         lifecyclePolicy.validateEventCreation(match, event.occurredAt).toCommandRejection()?.let { return it }
         validateSequence(activeEvents.map { it.toDomain() } + event)?.let { return it }
 
         val lastInSequence = eventRepository.findFirstByMatchIdOrderBySequenceNumberDesc(matchId)
-        val entity = EventEntity.fromDomain(UUID.randomUUID(), matchId, (lastInSequence?.sequenceNumber ?: 0) + 1, event)
-        eventRepository.save(entity)
+        val entity = EventEntity.fromDomain(
+            eventId ?: UUID.randomUUID(),
+            matchId,
+            (lastInSequence?.sequenceNumber ?: 0) + 1,
+            event,
+            creationFingerprint,
+        )
+        try {
+            eventRepository.insert(entity)
+        } catch (exception: DataIntegrityViolationException) {
+            if (eventId != null) throw EventIdempotencyConflictException(eventId, exception)
+            throw exception
+        }
         matchService.recalculateScore(matchId)
         realtimePublisher.eventLogChanged(matchId, MatchRealtimeOperation.CREATED, entity.id)
         return EventCommandResult.Success(entity.toStored())
@@ -66,7 +98,13 @@ class EventServiceImpl(
         }
         validateSequence(proposedEvents, requirePointEnded = match.status == MatchStatus.FINISHED)?.let { return it }
 
-        val updated = EventEntity.fromDomain(existing.id, matchId, existing.sequenceNumber, event)
+        val updated = EventEntity.fromDomain(
+            existing.id,
+            matchId,
+            existing.sequenceNumber,
+            event,
+            creationFingerprint = null,
+        )
         eventRepository.save(updated)
         matchService.recalculateScore(matchId)
         realtimePublisher.eventLogChanged(matchId, MatchRealtimeOperation.UPDATED, updated.id)
@@ -146,4 +184,31 @@ class EventServiceImpl(
         currentState = currentState,
         attemptedEventType = attemptedType,
     )
+
+    private fun idempotencyConflict(eventId: UUID) = MatchProblem(
+        code = MatchProblemCode.EVENT_IDEMPOTENCY_CONFLICT,
+        title = "Event idempotency conflict",
+        detail = "Event $eventId already exists with a different payload",
+    )
+
+    private fun Event.creationFingerprint(): String {
+        val canonicalPayload = when (this) {
+            is com.github.mihanizzm.ultistats.model.events.OnePlayerEvent ->
+                listOf(type, occurredAt, participant)
+            is com.github.mihanizzm.ultistats.model.events.TwoPlayerEvent ->
+                listOf(type, occurredAt, fromParticipant, toParticipant)
+            is com.github.mihanizzm.ultistats.model.events.TeamEvent ->
+                listOf(type, occurredAt, team)
+            is com.github.mihanizzm.ultistats.model.events.SystemEvent ->
+                listOf(type, occurredAt)
+        }.joinToString("|")
+        return HexFormat.of().formatHex(
+            MessageDigest.getInstance("SHA-256").digest(canonicalPayload.toByteArray(StandardCharsets.UTF_8)),
+        )
+    }
 }
+
+class EventIdempotencyConflictException(
+    val eventId: UUID,
+    cause: Throwable,
+) : RuntimeException("Event $eventId already exists", cause)

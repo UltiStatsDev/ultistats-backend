@@ -50,6 +50,9 @@ data class EventEntity(
 
     @Column(name = "deleted_at")
     val deletedAt: Instant? = null,
+
+    @Column(name = "creation_fingerprint", length = 64)
+    val creationFingerprint: String? = null,
 ) {
     fun toDomain(): Event = when (eventType.category) {
         com.github.mihanizzm.ultistats.model.events.EventCategory.ONE_PLAYER -> {
@@ -70,20 +73,33 @@ data class EventEntity(
     }
 
     companion object {
-        fun fromDomain(id: UUID, matchId: UUID, sequenceNumber: Int, event: Event): EventEntity = when (event) {
+        fun fromDomain(
+            id: UUID,
+            matchId: UUID,
+            sequenceNumber: Int,
+            event: Event,
+            creationFingerprint: String? = null,
+        ): EventEntity = when (event) {
             is OnePlayerEvent -> EventEntity(
                 id, matchId, sequenceNumber, event.type, event.occurredAt,
                 fromParticipantId = event.participant,
+                creationFingerprint = creationFingerprint,
             )
             is TwoPlayerEvent -> EventEntity(
                 id, matchId, sequenceNumber, event.type, event.occurredAt,
                 fromParticipantId = event.fromParticipant,
                 toParticipantId = event.toParticipant,
+                creationFingerprint = creationFingerprint,
             )
             is TeamEvent -> EventEntity(
-                id, matchId, sequenceNumber, event.type, event.occurredAt, teamId = event.team,
+                id, matchId, sequenceNumber, event.type, event.occurredAt,
+                teamId = event.team,
+                creationFingerprint = creationFingerprint,
             )
-            is SystemEvent -> EventEntity(id, matchId, sequenceNumber, event.type, event.occurredAt)
+            is SystemEvent -> EventEntity(
+                id, matchId, sequenceNumber, event.type, event.occurredAt,
+                creationFingerprint = creationFingerprint,
+            )
         }
     }
 }

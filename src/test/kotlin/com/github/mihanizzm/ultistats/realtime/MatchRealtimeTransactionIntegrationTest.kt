@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.Instant
+import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
@@ -48,6 +49,26 @@ class MatchRealtimeTransactionIntegrationTest : MatchAbstractTest() {
             MATCH.id,
             MatchRealtimeOperation.CREATED,
             created.id,
+        )
+    }
+
+    @Test
+    fun `Идемпотентный повтор не публикует второе изменение журнала`() {
+        val eventId = UUID.randomUUID()
+        assertIs<EventCommandResult.Success>(eventService.create(validPull(), MATCH.id, eventId))
+        verify(streamService, timeout(1_000).times(1)).eventLogChanged(
+            MATCH.id,
+            MatchRealtimeOperation.CREATED,
+            eventId,
+        )
+
+        val replay = assertIs<EventCommandResult.Success>(eventService.create(validPull(), MATCH.id, eventId))
+
+        assertEquals(true, replay.replayed)
+        verify(streamService, after(200).times(1)).eventLogChanged(
+            MATCH.id,
+            MatchRealtimeOperation.CREATED,
+            eventId,
         )
     }
 

@@ -36,7 +36,7 @@ class EventOpenApiTest {
         assertTrue(example.path("description").asText().isNotBlank())
         val payload = example["value"]
         val schemaName = CREATE_TYPES.entries.single { type.name in it.value }.key
-        assertEquals(CREATE_FIELDS.getValue(schemaName), payload.fieldNames().asSequence().toSet())
+        assertEquals(CREATE_FIELDS.getValue(schemaName) + "eventId", payload.fieldNames().asSequence().toSet())
         val request = objectMapper.treeToValue(payload, CreateEventRequest::class.java)
         assertEquals(type, request.type)
         assertEquals(schemaName, request.javaClass.simpleName)
@@ -49,6 +49,7 @@ class EventOpenApiTest {
         val schema = schemas[name]
         val properties = resolvedProperties(schema, schemas)
         assertEquals(CREATE_FIELDS.getValue(name), schema.path("required").map { it.asText() }.toSet())
+        assertEquals(CREATE_FIELDS.getValue(name) + "eventId", properties.keys)
         CREATE_TYPES.getValue(name).forEach { type ->
             assertEquals("#/components/schemas/$name", schemas["CreateEventRequest"]["discriminator"]["mapping"][type].asText())
         }
@@ -60,6 +61,20 @@ class EventOpenApiTest {
                 field == "occurredAt" -> assertEquals("date-time", property["format"].asText())
             }
         }
+        assertEquals("uuid", properties.getValue("eventId")["format"].asText())
+        assertTrue(properties.getValue("eventId").path("description").asText().isNotBlank())
+    }
+
+    @Test
+    fun `POST documents idempotent creation responses`() {
+        val operation = apiDocs()["paths"][EVENTS_PATH]["post"]
+        assertTrue("eventId" in operation.path("description").asText())
+        assertTrue(operation["responses"].has("200"))
+        assertTrue(operation["responses"].has("201"))
+        assertEquals(
+            "#/components/schemas/ProblemDetail",
+            operation["responses"]["409"]["content"]["application/problem+json"]["schema"]["\$ref"].asText(),
+        )
     }
 
     @Test

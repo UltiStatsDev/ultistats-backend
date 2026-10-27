@@ -49,6 +49,13 @@ import java.util.UUID
 )
 sealed interface CreateEventRequest {
     @get:Schema(
+        description = "Необязательный UUID события, заранее сгенерированный клиентом. Повтор POST с тем же eventId и тем же payload возвращает исходное активное неизменённое событие без дубликата; другой payload, а также повтор после PATCH или DELETE возвращает 409. Если поле не передано, UUID генерирует сервер.",
+        example = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED,
+    )
+    val eventId: UUID?
+
+    @get:Schema(
         description = "Обязательный тип события. Определяет схему и роли участников; выберите соответствующий пример POST.",
         example = "PASS",
     )
@@ -70,6 +77,7 @@ data class OnePlayerEventRequest(
         example = "11111111-1111-1111-1111-111111111111",
     )
     val participantId: UUID,
+    override val eventId: UUID? = null,
 ) : CreateEventRequest
 
 @Schema(description = "Событие с двумя участниками матча: PASS, GOAL, BLOCK, BLOCK_MARKER, BLOCK_FIELD, INTERCEPTION или CALLAHAN.")
@@ -86,6 +94,7 @@ data class TwoPlayerEventRequest(
         example = "22222222-2222-2222-2222-222222222222",
     )
     val toParticipantId: UUID,
+    override val eventId: UUID? = null,
 ) : CreateEventRequest
 
 @Schema(description = "Командное событие: TIMEOUT_START или TIMEOUT_END.")
@@ -97,10 +106,12 @@ data class TeamEventRequest(
         example = "33333333-3333-3333-3333-333333333333",
     )
     val teamId: UUID,
+    override val eventId: UUID? = null,
 ) : CreateEventRequest
 
 @Schema(description = "Системное событие: HALFTIME_START — начало перерыва после завершённого розыгрыша; HALFTIME_END — окончание перерыва, после которого ожидается PULL. Требуются только type и occurredAt; участники и команда не передаются.")
 data class SystemEventRequest(
     override val type: EventType,
     override val occurredAt: Instant,
+    override val eventId: UUID? = null,
 ) : CreateEventRequest
