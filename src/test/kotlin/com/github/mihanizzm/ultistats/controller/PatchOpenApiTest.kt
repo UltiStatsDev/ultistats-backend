@@ -48,7 +48,10 @@ class PatchOpenApiTest {
 
         listOf("PatchPlayerRequest", "PatchTeamRequest", "PatchMatchRequest").forEach { schemaName ->
             val schema = schemas.path(schemaName)
-            assertTrue(schema.path("description").asText().contains("Пропущенные поля"))
+            assertTrue(
+                schema.path("description").asText().contains("Пропущенные поля"),
+                "$schemaName: ${schema.toPrettyString()}",
+            )
             assertNotNull(schema.get("example"))
         }
 
@@ -73,7 +76,18 @@ class PatchOpenApiTest {
         )
         val teamIdsSchema = schemas.path("PatchMatchRequest").path("properties").path("teamIds")
         assertEquals("array", teamIdsSchema.path("type").asText(), teamIdsSchema.toPrettyString())
+        assertEquals("string", teamIdsSchema.path("items").path("type").asText(), teamIdsSchema.toPrettyString())
+        assertEquals("uuid", teamIdsSchema.path("items").path("format").asText(), teamIdsSchema.toPrettyString())
         assertTrue(!teamIdsSchema.has("\$ref"), teamIdsSchema.toPrettyString())
+
+        listOf("PatchPlayerRequest", "PatchTeamRequest", "PatchMatchRequest").forEach { schemaName ->
+            schemas.path(schemaName).path("properties").forEach { property ->
+                assertTrue(
+                    !property.path("\$ref").asText().contains("JsonNullable"),
+                    "$schemaName exposes JsonNullable internals: ${property.toPrettyString()}",
+                )
+            }
+        }
     }
 
     private fun openApiDocument(): JsonNode {

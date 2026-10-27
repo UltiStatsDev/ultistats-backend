@@ -76,6 +76,7 @@ class MatchServiceImpl(
 
     private fun updateLocked(matchId: UUID, patch: MatchPatch): MatchCommandResult<Match> {
         val match = getForUpdate(matchId)?.hydrate(includeEvents = true) ?: return MatchCommandResult.NotFound
+        if (patch.isEmpty()) return invalidRequest("Patch request must contain at least one supported field")
         val updatedTeamIds = when (val teamIds = patch.teamIds) {
             FieldPatch.Omitted -> match.teamIds
             FieldPatch.Null -> return invalidRequest("'teamIds' cannot be null")

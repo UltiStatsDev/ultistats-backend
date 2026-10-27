@@ -684,6 +684,22 @@ class MatchControllerTest {
     }
 
     @Test
+    fun `Пустой PATCH несуществующего матча возвращает 404`() {
+        val matchId = UUID.randomUUID()
+
+        mockMvc.perform(
+            patch("/api/v1/matches/$matchId")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"),
+        )
+            .andExpectProblem(
+                expectedStatus = 404,
+                code = "RESOURCE_NOT_FOUND",
+                instance = "/api/v1/matches/$matchId",
+            )
+    }
+
+    @Test
     fun `PATCH начатого матча возвращает конфликт состояния`() {
         val team1 = createTestTeam("Команда 1")
         val team2 = createTestTeam("Команда 2")

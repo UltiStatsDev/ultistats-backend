@@ -11,12 +11,10 @@ import com.github.mihanizzm.ultistats.dto.response.MatchListItemResponse
 import com.github.mihanizzm.ultistats.dto.response.MatchResponse
 import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.model.MatchParticipantKind
-import com.github.mihanizzm.ultistats.exception.InvalidPatchException
 import com.github.mihanizzm.ultistats.service.MatchService
 import com.github.mihanizzm.ultistats.service.PlayerService
 import com.github.mihanizzm.ultistats.service.TeamService
 import com.github.mihanizzm.ultistats.service.result.MatchCommandResult
-import com.github.mihanizzm.ultistats.service.patch.FieldPatch
 import com.github.mihanizzm.ultistats.service.patch.MatchPatch
 import com.github.mihanizzm.ultistats.service.patch.toFieldPatch
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
@@ -95,13 +93,6 @@ class MatchFacade(
             playersPerTeam = request.playersPerTeam.toFieldPatch(),
             plannedStartTimestamp = request.plannedStartTimestamp.toFieldPatch(),
         )
-        if (
-            patch.teamIds == FieldPatch.Omitted &&
-            patch.playersPerTeam == FieldPatch.Omitted &&
-            patch.plannedStartTimestamp == FieldPatch.Omitted
-        ) {
-            throw InvalidPatchException("Patch request must contain at least one supported field")
-        }
         return matchService.patch(id, patch).toResponse()
     }
 
