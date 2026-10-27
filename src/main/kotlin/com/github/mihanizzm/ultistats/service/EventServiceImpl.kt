@@ -67,7 +67,7 @@ class EventServiceImpl(
             creationFingerprint,
         )
         try {
-            eventRepository.saveAndFlush(entity)
+            eventRepository.insert(entity)
         } catch (exception: DataIntegrityViolationException) {
             if (eventId != null) throw EventIdempotencyConflictException(eventId, exception)
             throw exception
