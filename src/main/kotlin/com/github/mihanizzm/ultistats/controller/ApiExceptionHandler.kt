@@ -4,6 +4,7 @@ import com.github.mihanizzm.ultistats.dto.common.InvalidSortException
 import com.github.mihanizzm.ultistats.validation.query.InvalidQueryParameterException
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
+import com.github.mihanizzm.ultistats.service.EventIdempotencyConflictException
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -16,6 +17,20 @@ import java.net.URI
 
 @RestControllerAdvice
 class ApiExceptionHandler {
+    @ExceptionHandler(EventIdempotencyConflictException::class)
+    fun handleEventIdempotencyConflict(
+        exception: EventIdempotencyConflictException,
+        request: HttpServletRequest,
+    ): ResponseEntity<ProblemDetail> {
+        val problem = MatchProblem(
+            code = MatchProblemCode.EVENT_IDEMPOTENCY_CONFLICT,
+            title = "Event idempotency conflict",
+            detail = "Event ${exception.eventId} already exists with a different payload",
+        )
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(problem.toProblemDetail(HttpStatus.CONFLICT, URI.create(request.requestURI)))
+    }
+
     @ExceptionHandler(InvalidQueryParameterException::class)
     fun handleInvalidQuery(exception: InvalidQueryParameterException, request: HttpServletRequest): ResponseEntity<ProblemDetail> =
         invalidParameters(exception.message ?: "Invalid query parameters", request)
