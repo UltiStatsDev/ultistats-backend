@@ -157,6 +157,29 @@ docker compose start ultistats
 - **Документация API:** springdoc-openapi
 - **Контейнеризация:** Docker, Docker Compose
 
+### Проверка списков на PostgreSQL
+
+Обычный `./gradlew cleanTest build` использует H2. Для проверки SQL-пагинации,
+фильтров, COUNT, NULL, Unicode и UUID-порядка на PostgreSQL 16 запустите
+отдельную тестовую базу и выполните:
+
+```bash
+SPRING_PROFILES_ACTIVE=postgres-list \
+TEST_POSTGRES_URL=jdbc:postgresql://localhost:54663/issue63 \
+TEST_POSTGRES_USERNAME=postgres \
+TEST_POSTGRES_PASSWORD=your-test-password \
+./gradlew cleanTest test --tests '*ListPaginationIntegrationTest' \
+  --tests '*ListSortingControllerTest' --tests '*ListQueryValidationControllerTest'
+```
+
+Профиль `postgres-list` применяет настоящие Flyway migrations. Используйте
+выделенную тестовую базу: тесты создают и удаляют данные. Сортировка строк
+сохраняет регистр и порядок UTF-16 Kotlin; NULL идут последними при ASC и
+первыми при DESC. При равных значениях UUID всегда сравниваются по ASC,
+как `java.util.UUID.compareTo` (оба 64-битных блока сравниваются со знаком).
+SQL выбирает только текущую страницу, общее количество считает отдельным
+COUNT с теми же фильтрами.
+
 ---
 
 ## Пагинация и фильтрация списков

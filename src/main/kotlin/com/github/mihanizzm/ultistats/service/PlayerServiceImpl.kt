@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.service
 
+import com.github.mihanizzm.ultistats.repository.ListPage
+import com.github.mihanizzm.ultistats.repository.ListPageRequest
+import com.github.mihanizzm.ultistats.repository.jpa.ListQueryRepository
 import com.github.mihanizzm.ultistats.dto.request.PlayerFilterRequest
 import com.github.mihanizzm.ultistats.model.Player
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataPlayerRepository
@@ -10,6 +13,7 @@ import java.util.UUID
 
 @Service
 class PlayerServiceImpl(
+    private val listQueries: ListQueryRepository,
     private val playerRepository: SpringDataPlayerRepository,
     private val teamPlayerService: TeamPlayerService,
 ) : PlayerService {
@@ -51,8 +55,11 @@ class PlayerServiceImpl(
         return players.filter { it.id in playerIds }
     }
 
+    override fun findPage(filter: PlayerFilterRequest, request: ListPageRequest): ListPage<Player> =
+        listQueries.players(filter, request)
+
     override fun count(): Long = playerRepository.countByDeletedAtIsNull()
 
-    override fun countFiltered(filter: PlayerFilterRequest): Long =
-        findAllFiltered(filter).size.toLong()
+    override fun countFiltered(filter: PlayerFilterRequest): Long = listQueries.countPlayers(filter)
+
 }

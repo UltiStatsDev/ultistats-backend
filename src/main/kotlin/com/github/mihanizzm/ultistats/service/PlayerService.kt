@@ -1,5 +1,7 @@
 package com.github.mihanizzm.ultistats.service
 
+import com.github.mihanizzm.ultistats.repository.ListPage
+import com.github.mihanizzm.ultistats.repository.ListPageRequest
 import com.github.mihanizzm.ultistats.dto.request.PlayerFilterRequest
 import com.github.mihanizzm.ultistats.model.Player
 import java.util.UUID
@@ -24,6 +26,8 @@ interface PlayerService {
     fun getAllByTeamId(teamId: UUID): List<Player>
 
     fun findAllFiltered(filter: PlayerFilterRequest): List<Player>
+
+    fun findPage(filter: PlayerFilterRequest, request: ListPageRequest): ListPage<Player>
 
     fun count(): Long
 
