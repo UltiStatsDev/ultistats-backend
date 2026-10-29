@@ -115,3 +115,9 @@ CREATE TABLE event_batch_receipts (
     fingerprint VARCHAR(64) NOT NULL,
     UNIQUE (match_id, base_sequence_number, base_log_revision)
 );
+
+CREATE TABLE IF NOT EXISTS obs_config (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    payload TEXT NOT NULL
+);
+INSERT INTO obs_config (id, payload) SELECT 1, '{}' WHERE NOT EXISTS (SELECT 1 FROM obs_config WHERE id = 1);

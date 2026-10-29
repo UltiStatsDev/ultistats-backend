@@ -1,0 +1,58 @@
+export async function readJson(url) {
+    const response=await fetch(url,{cache:'no-store'});
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+}
+
+// All invalidations share one serialized reader. Failed REST reads retry even after SSE has closed on finish.
+export class Reconciler {
+    constructor(fetchSnapshot,onSnapshot,onStatus=()=>{},retryMs=1000) {
+        Object.assign(this,{fetchSnapshot,onSnapshot,onStatus,retryMs});
+        this.pending=false; this.closed=false; this.loop=null; this.timer=null; this.wake=null;
+    }
+    request() {
+        if(this.closed) return Promise.resolve();
+        this.pending=true;
+        if(!this.loop) this.loop=this.run().finally(()=>{this.loop=null;});
+        return this.loop;
+    }
+    finish() { return this.request(); }
+    async run() {
+        let failures=0;
+        while(this.pending&&!this.closed) {
+            this.pending=false;
+            try {
+                const snapshot=await this.fetchSnapshot();
+                if(this.closed) return;
+                this.onSnapshot(snapshot); this.onStatus('Синхронизировано'); failures=0;
+            } catch(error) {
+                if(this.closed) return;
+                this.onStatus(`Нет связи: ${error.message}. Повтор…`); this.pending=true;
+                await new Promise(resolve=>{
+                    this.wake=resolve; this.timer=setTimeout(resolve,Math.min(this.retryMs*2**failures++,15000));
+                });
+                this.timer=null; this.wake=null;
+            }
+        }
+    }
+    close() { this.closed=true;clearTimeout(this.timer);this.wake?.(); }
+}
+
+export function watchConfig(onConfig,onStatus=()=>{}) {
+    const reader=new Reconciler(()=>readJson('/api/v1/obs/config'),onConfig,onStatus);
+    const source=new EventSource('/api/v1/obs/config/stream');
+    source.addEventListener('connected',()=>void reader.request());
+    source.addEventListener('config-changed',()=>void reader.request());
+    source.onerror=()=>onStatus('Настройки: переподключение…');
+    return ()=>{source.close();reader.close();};
+}
+
+export function watchMatch(matchId,onSnapshot,onStatus=()=>{}) {
+    const reader=new Reconciler(()=>readJson(`/api/v2/matches/${encodeURIComponent(matchId)}/events`),onSnapshot,onStatus);
+    const source=new EventSource(`/api/v1/matches/${encodeURIComponent(matchId)}/events/stream`);
+    source.addEventListener('connected',()=>void reader.request());
+    source.addEventListener('event-log-changed',()=>void reader.request());
+    source.addEventListener('match-finished',()=>{source.close();void reader.finish().then(()=>onStatus('Матч завершён'));});
+    source.onerror=()=>onStatus('Матч: переподключение…');
+    return ()=>{source.close();reader.close();};
+}
