@@ -16,7 +16,7 @@ import com.github.mihanizzm.ultistats.service.PhotoLifecycleService
 import com.github.mihanizzm.ultistats.service.PlayerService
 import com.github.mihanizzm.ultistats.service.TeamPlayerService
 import com.github.mihanizzm.ultistats.service.TeamService
-import com.github.mihanizzm.ultistats.util.SortingUtils.applySorting
+import com.github.mihanizzm.ultistats.repository.ListPageRequest
 import com.github.mihanizzm.ultistats.service.patch.FieldPatch
 import com.github.mihanizzm.ultistats.service.patch.toFieldPatch
 import org.springframework.stereotype.Component
@@ -40,10 +40,8 @@ class PlayerFacade(
     }
 
     fun getAllPaged(page: Int, size: Int, filter: PlayerFilterRequest, sortParam: SortParam = DEFAULT_SORT): PageResponse<PlayerListItemResponse> {
-        val players = playerService.findAllFiltered(filter)
-        val content = players.applySorting(sortParam, SORT_FIELD_EXTRACTORS)
-            .drop((page.toLong() * size).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()).take(size).map(PlayerListItemResponse::from)
-        return PageResponse.of(content, players.size.toLong(), page, size)
+        val result = playerService.findPage(filter, ListPageRequest(page, size, sortParam))
+        return PageResponse.of(result.content.map(PlayerListItemResponse::from), result.totalElements, page, size)
     }
 
     fun getById(id: UUID): PlayerDetailResponse? = playerService.get(id)?.let {

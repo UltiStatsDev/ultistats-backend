@@ -19,7 +19,7 @@ import com.github.mihanizzm.ultistats.service.patch.MatchPatch
 import com.github.mihanizzm.ultistats.service.patch.toFieldPatch
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
-import com.github.mihanizzm.ultistats.util.SortingUtils.applySorting
+import com.github.mihanizzm.ultistats.repository.ListPageRequest
 import org.springframework.stereotype.Component
 import java.util.UUID
 
@@ -48,20 +48,13 @@ class MatchFacade(
         filter: MatchFilterRequest,
         sortParam: SortParam = DEFAULT_SORT,
     ): PageResponse<MatchListItemResponse> {
-        val filteredMatches = matchService.findAllFiltered(filter)
-        val totalElements = filteredMatches.size.toLong()
-
-        val sortedMatches = filteredMatches.applySorting(sortParam, SORT_FIELD_EXTRACTORS)
-
-        val content = sortedMatches
-            .drop((page.toLong() * size).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
-            .take(size)
-            .map { match ->
+        val result = matchService.findPage(filter, ListPageRequest(page, size, sortParam))
+        val content = result.content            .map { match ->
                 val teams = teamService.getAllInListIncludingDeleted(match.teamIds)
                 MatchListItemResponse.from(match, teams.associateBy { it.id })
             }
 
-        return PageResponse.of(content, totalElements, page, size)
+        return PageResponse.of(content, result.totalElements, page, size)
     }
 
     fun getById(id: UUID): MatchResponse? {

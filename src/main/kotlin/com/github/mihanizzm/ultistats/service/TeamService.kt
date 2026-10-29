@@ -1,5 +1,7 @@
 package com.github.mihanizzm.ultistats.service
 
+import com.github.mihanizzm.ultistats.repository.ListPage
+import com.github.mihanizzm.ultistats.repository.ListPageRequest
 import com.github.mihanizzm.ultistats.dto.request.TeamFilterRequest
 import com.github.mihanizzm.ultistats.model.Team
 import java.util.UUID
@@ -22,6 +24,8 @@ interface TeamService {
     fun getAllInListIncludingDeleted(ids: List<UUID>): List<Team>
 
     fun findAllFiltered(filter: TeamFilterRequest): List<Team>
+
+    fun findPage(filter: TeamFilterRequest, request: ListPageRequest): ListPage<Team>
 
     fun count(): Long
 
