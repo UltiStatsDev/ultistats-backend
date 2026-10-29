@@ -51,6 +51,14 @@ data class Match(
     @Column(name = "ended_at")
     var endedAt: Instant? = null,
 
+    @get:JsonIgnore
+    @Column(name = "event_log_revision", nullable = false)
+    var eventLogRevision: Long = 0,
+
+    @get:JsonIgnore
+    @Column(name = "last_event_log_invalidation_revision", nullable = false)
+    var lastEventLogInvalidationRevision: Long = 0,
+
     @Column(name = "deleted_at")
     val deletedAt: Instant? = null,
 ) {

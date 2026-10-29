@@ -1,5 +1,13 @@
 package com.github.mihanizzm.ultistats.service
 
+import com.github.mihanizzm.ultistats.dto.request.CreateEventBatchRequest
+import com.github.mihanizzm.ultistats.dto.response.EventLogResponse
+import com.github.mihanizzm.ultistats.dto.response.EventResponse
+import com.github.mihanizzm.ultistats.factory.EventFactory
+import com.github.mihanizzm.ultistats.factory.EventCreationResult
+import com.github.mihanizzm.ultistats.model.EventBatchReceipt
+import com.github.mihanizzm.ultistats.repository.jpa.SpringDataEventBatchReceiptRepository
+import com.github.mihanizzm.ultistats.service.result.EventBatchResult
 import com.github.mihanizzm.ultistats.dto.response.realtime.MatchRealtimeOperation
 import com.github.mihanizzm.ultistats.model.EventEntity
 import com.github.mihanizzm.ultistats.model.Match
@@ -32,6 +40,8 @@ class EventServiceImpl(
     private val lifecyclePolicy: MatchLifecyclePolicy,
     private val sequencePolicy: EventSequencePolicy,
     private val realtimePublisher: MatchRealtimePublisher,
+    private val eventFactory: EventFactory,
+    private val receiptRepository: SpringDataEventBatchReceiptRepository,
 ) : EventService {
     @Transactional
     override fun create(event: Event, matchId: UUID, eventId: UUID?): EventCommandResult {
@@ -39,12 +49,10 @@ class EventServiceImpl(
         val creationFingerprint = event.creationFingerprint()
         eventId?.let { requestedId ->
             eventRepository.findById(requestedId).orElse(null)?.let { existing ->
-                val storedEventIsUnchanged = existing.creationFingerprint != null &&
-                    existing.creationFingerprint == existing.toDomain().creationFingerprint()
+                // PATCH clears this immutable request fingerprint; DB timestamp rounding must not invalidate retry.
                 return if (
                     existing.matchId == matchId &&
                     existing.deletedAt == null &&
-                    storedEventIsUnchanged &&
                     existing.creationFingerprint == creationFingerprint
                 ) {
                     EventCommandResult.Success(existing.toStored(), replayed = true)
@@ -53,29 +61,133 @@ class EventServiceImpl(
                 }
             }
         }
-        val activeEvents = eventRepository.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(matchId)
-        val match = lockedMatch.toPolicyMatch(activeEvents)
-        lifecyclePolicy.validateEventCreation(match, event.occurredAt).toCommandRejection()?.let { return it }
-        validateSequence(activeEvents.map { it.toDomain() } + event)?.let { return it }
-
-        val lastInSequence = eventRepository.findFirstByMatchIdOrderBySequenceNumberDesc(matchId)
-        val entity = EventEntity.fromDomain(
-            eventId ?: UUID.randomUUID(),
-            matchId,
-            (lastInSequence?.sequenceNumber ?: 0) + 1,
-            event,
-            creationFingerprint,
-        )
-        try {
-            eventRepository.insert(entity)
-        } catch (exception: DataIntegrityViolationException) {
-            if (eventId != null) throw EventIdempotencyConflictException(eventId, exception)
-            throw exception
+        return when (val result = appendLocked(lockedMatch, listOf(PendingEvent(eventId ?: UUID.randomUUID(), event)))) {
+            is AppendResult.Applied -> EventCommandResult.Success(result.events.single())
+            is AppendResult.Rejected -> result.result
         }
-        matchService.recalculateScore(matchId)
-        realtimePublisher.eventLogChanged(matchId, MatchRealtimeOperation.CREATED, entity.id)
-        return EventCommandResult.Success(entity.toStored())
     }
+
+    @Transactional
+    override fun snapshot(matchId: UUID): EventLogResponse? {
+        val match = matchService.getForUpdate(matchId) ?: return null
+        return logResponse(match, eventRepository.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(matchId).map { it.toStored() })
+    }
+
+    @Transactional
+    override fun appendBatch(matchId: UUID, request: CreateEventBatchRequest): EventBatchResult {
+        val match = matchService.getForUpdate(matchId) ?: return EventBatchResult.NotFound
+        val lastSequence = lastSequence(matchId)
+        fun reject(
+            problem: MatchProblem, index: Int? = null, badRequest: Boolean = false,
+        ) = EventBatchResult.Rejected(
+            problem, lastSequence, match.eventLogRevision,
+            index?.let { request.events[it]?.eventId }, index, badRequest,
+        )
+        fun conflict(code: MatchProblemCode, detail: String, index: Int? = null) =
+            reject(MatchProblem(code, "Event batch conflict", detail), index)
+
+        if (request.expectedLastSequenceNumber == null || request.expectedLastSequenceNumber < 0 ||
+            request.expectedLogRevision == null || request.expectedLogRevision < 0 ||
+            request.events.isEmpty() || request.events.size > 100
+        ) return reject(MatchProblem(MatchProblemCode.INVALID_REQUEST, "Invalid event batch", "Non-negative bases and 1–100 events are required"), badRequest = true)
+        val seen = mutableSetOf<UUID>()
+        request.events.forEachIndexed { index, event ->
+            if (event?.eventId == null || !seen.add(requireNotNull(event.eventId))) {
+                return reject(MatchProblem(MatchProblemCode.INVALID_REQUEST, "Invalid event batch", "Every event requires a unique client eventId"), index, true)
+            }
+        }
+        val pending = request.events.filterNotNull().mapIndexed { index, requestEvent ->
+            when (val created = eventFactory.createValidatedFromRequest(requestEvent, matchId)) {
+                is EventCreationResult.Success -> PendingEvent(requireNotNull(requestEvent.eventId), created.event)
+                is EventCreationResult.Invalid -> return reject(
+                    MatchProblem(MatchProblemCode.INVALID_REQUEST, "Invalid event request", created.detail), index, true,
+                )
+            }
+        }
+        val existing = pending.map { eventRepository.findById(it.id).orElse(null) }
+        pending.forEachIndexed { index, event ->
+            val stored = existing[index]
+            if (stored != null && (stored.matchId != matchId || stored.deletedAt != null ||
+                    stored.creationFingerprint == null || stored.creationFingerprint != event.event.creationFingerprint())) {
+                return reject(idempotencyConflict(event.id), index)
+            }
+        }
+        val fingerprint = sha256(pending.joinToString("|") { "${it.id}:${it.event.creationFingerprint()}" })
+        if (existing.any { it != null }) {
+            val receipt = receiptRepository.findByMatchIdAndBaseSequenceNumberAndBaseLogRevision(
+                matchId, request.expectedLastSequenceNumber, request.expectedLogRevision,
+            )
+            if (existing.all { it != null } && receipt?.fingerprint == fingerprint &&
+                match.lastEventLogInvalidationRevision <= request.expectedLogRevision + 1 &&
+                existing.withIndex().all { (index, stored) -> stored!!.sequenceNumber.toLong() == request.expectedLastSequenceNumber.toLong() + index + 1 }
+            ) return EventBatchResult.Success(logResponse(match, existing.map { it!!.toStored() }), replayed = true)
+            return conflict(MatchProblemCode.EVENT_BATCH_CONFLICT, "The batch is partially applied, differs from its original request, or was invalidated by an edit; reload the canonical event log")
+        }
+        if (request.expectedLastSequenceNumber != lastSequence || request.expectedLogRevision != match.eventLogRevision) {
+            return conflict(MatchProblemCode.EVENT_LOG_STALE, "The expected event log position is stale; reload the canonical event log")
+        }
+        return when (val appended = appendLocked(match, pending)) {
+            is AppendResult.Rejected -> {
+                val problem = when (val result = appended.result) {
+                    is EventCommandResult.Conflict -> result.problem
+                    is EventCommandResult.InvalidState -> result.problem
+                    else -> error("Unexpected append rejection")
+                }
+                reject(problem, appended.index)
+            }
+            is AppendResult.Applied -> {
+                receiptRepository.save(EventBatchReceipt(
+                    matchId = matchId,
+                    baseSequenceNumber = request.expectedLastSequenceNumber,
+                    baseLogRevision = request.expectedLogRevision,
+                    fingerprint = fingerprint,
+                ))
+                EventBatchResult.Success(logResponse(match, appended.events))
+            }
+        }
+    }
+
+    private data class PendingEvent(val id: UUID, val event: Event)
+    private sealed interface AppendResult {
+        data class Applied(val events: List<StoredEvent>) : AppendResult
+        data class Rejected(val result: EventCommandResult, val index: Int) : AppendResult
+    }
+
+    /** Shared v1/v2 append pipeline. Validate every prefix before the first write. Caller holds the match lock. */
+    private fun appendLocked(match: Match, pending: List<PendingEvent>): AppendResult {
+        val active = eventRepository.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(match.id)
+        val policyMatch = match.toPolicyMatch(active)
+        pending.forEachIndexed { index, command ->
+            lifecyclePolicy.validateEventCreation(policyMatch, command.event.occurredAt).toCommandRejection()
+                ?.let { return AppendResult.Rejected(it, index) }
+            validateSequence(policyMatch.events + command.event)
+                ?.let { return AppendResult.Rejected(it, index) }
+            policyMatch.events.add(command.event)
+        }
+        val last = lastSequence(match.id)
+        require(last.toLong() + pending.size <= Int.MAX_VALUE) { "Event sequence capacity exceeded" }
+        val entities = pending.mapIndexed { index, command ->
+            EventEntity.fromDomain(command.id, match.id, last + index + 1, command.event, command.event.creationFingerprint())
+        }
+        entities.forEach { entity ->
+            try {
+                eventRepository.insert(entity)
+            } catch (exception: DataIntegrityViolationException) {
+                throw EventIdempotencyConflictException(entity.id, exception)
+            }
+        }
+        match.eventLogRevision++
+        matchService.recalculateScore(match.id)
+        realtimePublisher.eventLogChanged(match.id, MatchRealtimeOperation.CREATED, entities.last().id)
+        return AppendResult.Applied(entities.map { it.toStored() })
+    }
+
+    private fun lastSequence(matchId: UUID): Int =
+        eventRepository.findFirstByMatchIdOrderBySequenceNumberDesc(matchId)?.sequenceNumber ?: 0
+
+    private fun logResponse(match: Match, events: List<StoredEvent>) = EventLogResponse(
+        events.map(EventResponse::from), lastSequence(match.id), match.eventLogRevision,
+    )
 
     override fun get(eventId: UUID, matchId: UUID): StoredEvent? {
         matchService.getOrThrow(matchId)
@@ -106,6 +218,8 @@ class EventServiceImpl(
             creationFingerprint = null,
         )
         eventRepository.save(updated)
+        match.eventLogRevision++
+        match.lastEventLogInvalidationRevision = match.eventLogRevision
         matchService.recalculateScore(matchId)
         realtimePublisher.eventLogChanged(matchId, MatchRealtimeOperation.UPDATED, updated.id)
         return EventCommandResult.Success(updated.toStored())
@@ -140,6 +254,8 @@ class EventServiceImpl(
         validateSequence(proposedEvents, requirePointEnded = match.status == MatchStatus.FINISHED)?.let { return it }
 
         eventRepository.save(existing.copy(deletedAt = Instant.now()))
+        match.eventLogRevision++
+        match.lastEventLogInvalidationRevision = match.eventLogRevision
         matchService.recalculateScore(matchId)
         realtimePublisher.eventLogChanged(matchId, MatchRealtimeOperation.DELETED, existing.id)
         return EventCommandResult.Deleted
@@ -202,10 +318,12 @@ class EventServiceImpl(
             is com.github.mihanizzm.ultistats.model.events.SystemEvent ->
                 listOf(type, occurredAt)
         }.joinToString("|")
-        return HexFormat.of().formatHex(
-            MessageDigest.getInstance("SHA-256").digest(canonicalPayload.toByteArray(StandardCharsets.UTF_8)),
-        )
+        return sha256(canonicalPayload)
     }
+
+    private fun sha256(value: String): String = HexFormat.of().formatHex(
+        MessageDigest.getInstance("SHA-256").digest(value.toByteArray(StandardCharsets.UTF_8)),
+    )
 }
 
 class EventIdempotencyConflictException(

@@ -11,6 +11,8 @@ class EventInsertRepositoryImpl(
     override fun insert(event: EventEntity): EventEntity {
         entityManager.persist(event)
         entityManager.flush()
+        // Return the canonical persisted payload (PostgreSQL timestamps have microsecond precision).
+        entityManager.refresh(event)
         return event
     }
 }
