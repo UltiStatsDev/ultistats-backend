@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.service
 
+import com.github.mihanizzm.ultistats.repository.ListPage
+import com.github.mihanizzm.ultistats.repository.ListPageRequest
+import com.github.mihanizzm.ultistats.repository.jpa.ListQueryRepository
 import com.github.mihanizzm.ultistats.dto.request.TeamFilterRequest
 import com.github.mihanizzm.ultistats.model.Team
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataTeamRepository
@@ -11,6 +14,7 @@ import java.util.UUID
 @Service
 @Suppress("unused")
 class TeamServiceImpl(
+    private val listQueries: ListQueryRepository,
     private val teamRepository: SpringDataTeamRepository,
 ) : TeamService {
     private val log = LoggerFactory.getLogger(TeamServiceImpl::class.java)
@@ -48,12 +52,11 @@ class TeamServiceImpl(
         return teams
     }
 
+    override fun findPage(filter: TeamFilterRequest, request: ListPageRequest): ListPage<Team> =
+        listQueries.teams(filter, request)
+
     override fun count(): Long = teamRepository.countByDeletedAtIsNull()
 
-    override fun countFiltered(filter: TeamFilterRequest): Long =
-        if (filter.name != null) {
-            teamRepository.countByNameContainingIgnoreCase(filter.name)
-        } else {
-            teamRepository.countByDeletedAtIsNull()
-        }
+    override fun countFiltered(filter: TeamFilterRequest): Long = listQueries.countTeams(filter)
+
 }

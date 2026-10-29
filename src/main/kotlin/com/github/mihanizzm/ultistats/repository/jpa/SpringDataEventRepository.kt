@@ -4,7 +4,7 @@ import com.github.mihanizzm.ultistats.model.EventEntity
 import org.springframework.data.jpa.repository.JpaRepository
 import java.util.UUID
 
-interface SpringDataEventRepository : JpaRepository<EventEntity, UUID> {
+interface SpringDataEventRepository : JpaRepository<EventEntity, UUID>, EventInsertRepository {
     fun findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(matchId: UUID): List<EventEntity>
     fun findFirstByMatchIdOrderBySequenceNumberDesc(matchId: UUID): EventEntity?
     fun findFirstByMatchIdAndDeletedAtIsNullOrderBySequenceNumberDesc(matchId: UUID): EventEntity?

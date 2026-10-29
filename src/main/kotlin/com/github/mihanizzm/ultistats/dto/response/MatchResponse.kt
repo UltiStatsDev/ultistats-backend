@@ -2,6 +2,7 @@ package com.github.mihanizzm.ultistats.dto.response
 
 import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.model.MatchStatus
+import com.github.mihanizzm.ultistats.model.Player
 import com.github.mihanizzm.ultistats.model.Team
 import java.time.Instant
 import java.util.UUID
@@ -17,7 +18,7 @@ data class MatchResponse(
     val status: MatchStatus,
 ) {
     companion object {
-        fun from(match: Match, teamsById: Map<UUID, Team>) = MatchResponse(
+        fun from(match: Match, teamsById: Map<UUID, Team>, playersById: Map<UUID, Player>) = MatchResponse(
             id = match.id,
             teams = match.teamIds.mapNotNull { teamId ->
                 teamsById[teamId]?.let { team ->
@@ -26,7 +27,9 @@ data class MatchResponse(
                         teamId = team.id,
                         teamName = match.teamNamesById.getValue(teamId),
                         teamScore = teamScore,
-                        participants = match.participantsByTeam[teamId].orEmpty().map(MatchParticipantResponse::from),
+                        participants = match.participantsByTeam[teamId].orEmpty().map { participant ->
+                            MatchParticipantResponse.from(participant, playersById[participant.participantId]?.photoUrl)
+                        },
                         city = team.city,
                         photoUrl = team.photoUrl,
                     )

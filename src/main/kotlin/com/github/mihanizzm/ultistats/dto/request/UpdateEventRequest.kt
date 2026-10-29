@@ -26,6 +26,7 @@ import java.util.UUID
     JsonSubTypes.Type(SystemEventPatchRequest::class, name = "HALFTIME_END"),
 )
 @Schema(
+    description = "Исправление участников или команды существующего события. occurredAt неизменяем и не входит в PATCH. Редактирование HALFTIME_START/HALFTIME_END не поддерживается (405).",
     oneOf = [OnePlayerEventPatchRequest::class, TwoPlayerEventPatchRequest::class, TeamEventPatchRequest::class],
     discriminatorProperty = "type",
     discriminatorMapping = [
@@ -44,56 +45,48 @@ import java.util.UUID
         DiscriminatorMapping(value = "TIMEOUT_END", schema = TeamEventPatchRequest::class),
     ],
 )
-sealed interface UpdateEventRequest { val type: EventType }
-
-@Schema(description = "Исправление события с одним участником.")
-data class OnePlayerEventPatchRequest(
-    @field:Schema(
-        description = "Существующий тип события с одним участником.",
-        allowableValues = ["INCOMPLETE_PASS", "PULL", "BRICK", "PICKUP"],
-        example = "PICKUP",
+sealed interface UpdateEventRequest {
+    @get:Schema(
+        description = "Обязательный тип события. Должен совпадать с сохранённым; смена разрешена только между BLOCK, BLOCK_MARKER и BLOCK_FIELD в любом направлении. Остальные смены возвращают 400.",
+        example = "BLOCK_MARKER",
     )
+    val type: EventType
+}
+
+@Schema(description = "Замена единственного участника INCOMPLETE_PASS, PULL, BRICK или PICKUP. Обязательны type и participantId.")
+data class OnePlayerEventPatchRequest(
     override val type: EventType,
     @field:Schema(
-        description = "Новый ID участника-снэпшота этого матча.",
+        description = "Обязательный UUID нового участника из состава матча, включая UNKNOWN. Роли как в POST: INCOMPLETE_PASS — бросающий; PULL/BRICK — выполнивший пулл; PICKUP — подобравший диск.",
         example = "11111111-1111-1111-1111-111111111111",
     )
     val participantId: UUID,
 ) : UpdateEventRequest
 
-@Schema(description = "Исправление события с двумя участниками. Можно передать один или оба идентификатора.")
+@Schema(description = "Частичное исправление двух участников или уточнение типа блока. Обязателен type; отсутствующий или null идентификатор сохраняет прежнего участника. Можно передать только type для изменения разновидности блока.")
 data class TwoPlayerEventPatchRequest(
-    @field:Schema(
-        description = "Существующий тип события либо другой тип блока для уточнения BLOCK/BLOCK_MARKER/BLOCK_FIELD.",
-        allowableValues = ["PASS", "GOAL", "BLOCK", "BLOCK_MARKER", "BLOCK_FIELD", "INTERCEPTION", "CALLAHAN"],
-        example = "PASS",
-    )
     override val type: EventType,
     @field:Schema(
-        description = "Новый ID бросающего. Если поле отсутствует, прежнее значение сохраняется.",
+        description = "Новый UUID бросающего участника матча, включая UNKNOWN. Для PASS/GOAL — автор паса/ассиста, для блоков и перехватов — бросающий соперник. Отсутствие или null сохраняет прежнее значение. Итоговые участники должны различаться.",
         example = "11111111-1111-1111-1111-111111111111",
     )
     val fromParticipantId: UUID? = null,
     @field:Schema(
-        description = "Новый ID принимающего или защитника. Если поле отсутствует, прежнее значение сохраняется.",
+        description = "Новый UUID принимающего участника для PASS/GOAL (та же команда) либо защитника для BLOCK/BLOCK_MARKER/BLOCK_FIELD/INTERCEPTION/CALLAHAN (противоположная команда). Допустим UNKNOWN из состава матча. Отсутствие или null сохраняет прежнее значение.",
         example = "22222222-2222-2222-2222-222222222222",
     )
     val toParticipantId: UUID? = null,
 ) : UpdateEventRequest
 
-@Schema(description = "Исправление команды в событии таймаута.")
+@Schema(description = "Замена команды события TIMEOUT_START или TIMEOUT_END. Обязательны type и teamId; тип начала/окончания таймаута менять нельзя.")
 data class TeamEventPatchRequest(
-    @field:Schema(
-        description = "Существующий тип события таймаута.",
-        allowableValues = ["TIMEOUT_START", "TIMEOUT_END"],
-        example = "TIMEOUT_START",
-    )
     override val type: EventType,
     @field:Schema(
-        description = "Новый ID команды-снэпшота этого матча.",
+        description = "Обязательный UUID новой команды-участницы матча, которой принадлежит таймаут. Это teamId, а не participantId.",
         example = "33333333-3333-3333-3333-333333333333",
     )
     val teamId: UUID,
 ) : UpdateEventRequest
 
+@Schema(description = "Системные события HALFTIME_START/HALFTIME_END не редактируются: запрос с сохранённым type возвращает 405 Method Not Allowed.")
 data class SystemEventPatchRequest(override val type: EventType) : UpdateEventRequest

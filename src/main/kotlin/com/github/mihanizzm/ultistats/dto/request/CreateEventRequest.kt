@@ -49,13 +49,20 @@ import java.util.UUID
 )
 sealed interface CreateEventRequest {
     @get:Schema(
-        description = "Тип события. Он определяет форму запроса и является обязательным.",
+        description = "Необязательный UUID события, заранее сгенерированный клиентом. Повтор POST с тем же eventId и тем же payload возвращает исходное активное неизменённое событие без дубликата; другой payload, а также повтор после PATCH или DELETE возвращает 409. Если поле не передано, UUID генерирует сервер.",
+        example = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED,
+    )
+    val eventId: UUID?
+
+    @get:Schema(
+        description = "Обязательный тип события. Определяет схему и роли участников; выберите соответствующий пример POST.",
         example = "PASS",
     )
     val type: EventType
 
     @get:Schema(
-        description = "Фактическое время события в формате ISO-8601 UTC.",
+        description = "Фактическое время события в ISO-8601 UTC. Не раньше начала матча и последнего активного события; одинаковое время допустимо. После создания не изменяется.",
         example = "2026-07-28T12:30:00Z",
     )
     val occurredAt: Instant
@@ -63,80 +70,48 @@ sealed interface CreateEventRequest {
 
 @Schema(description = "Событие с одним участником матча: INCOMPLETE_PASS, PULL, BRICK или PICKUP.")
 data class OnePlayerEventRequest(
-    @field:Schema(
-        description = "Тип события с одним участником.",
-        allowableValues = ["INCOMPLETE_PASS", "PULL", "BRICK", "PICKUP"],
-        example = "PICKUP",
-    )
     override val type: EventType,
-    @field:Schema(
-        description = "Фактическое время события в формате ISO-8601 UTC.",
-        example = "2026-07-28T12:30:00Z",
-    )
     override val occurredAt: Instant,
     @field:Schema(
-        description = "ID участника-снэпшота этого матча: бросающего для INCOMPLETE_PASS, выполнившего пулл для PULL/BRICK или подобравшего диск для PICKUP.",
+        description = "UUID участника из состава этого матча (participantId, включая UNKNOWN). INCOMPLETE_PASS — бросающий, чей пас не завершён; PULL — выполнивший пулл; BRICK — выполнивший предшествующий пулл, а не объявивший брик; PICKUP — подобравший диск.",
         example = "11111111-1111-1111-1111-111111111111",
     )
     val participantId: UUID,
+    override val eventId: UUID? = null,
 ) : CreateEventRequest
 
 @Schema(description = "Событие с двумя участниками матча: PASS, GOAL, BLOCK, BLOCK_MARKER, BLOCK_FIELD, INTERCEPTION или CALLAHAN.")
 data class TwoPlayerEventRequest(
-    @field:Schema(
-        description = "Тип события с двумя участниками.",
-        allowableValues = ["PASS", "GOAL", "BLOCK", "BLOCK_MARKER", "BLOCK_FIELD", "INTERCEPTION", "CALLAHAN"],
-        example = "PASS",
-    )
     override val type: EventType,
-    @field:Schema(
-        description = "Фактическое время события в формате ISO-8601 UTC.",
-        example = "2026-07-28T12:30:00Z",
-    )
     override val occurredAt: Instant,
     @field:Schema(
-        description = "ID бросающего участника-снэпшота этого матча.",
+        description = "UUID бросающего участника из состава матча (participantId, включая UNKNOWN). Для PASS/GOAL — автор паса/ассиста; для BLOCK, BLOCK_MARKER, BLOCK_FIELD, INTERCEPTION, CALLAHAN — бросающий соперник защитника. Должен отличаться от toParticipantId.",
         example = "11111111-1111-1111-1111-111111111111",
     )
     val fromParticipantId: UUID,
     @field:Schema(
-        description = "ID участника-снэпшота, который принял пас или сыграл в защите. Для PASS/GOAL он из команды бросающего; для BLOCK/INTERCEPTION/CALLAHAN — из противоположной команды.",
+        description = "UUID второго участника из состава матча (participantId, включая UNKNOWN). Для PASS/GOAL — принимающий/автор гола из той же команды; для BLOCK, BLOCK_MARKER, BLOCK_FIELD — блокирующий защитник; для INTERCEPTION/CALLAHAN — перехвативший защитник. Защитник должен быть из противоположной команды.",
         example = "22222222-2222-2222-2222-222222222222",
     )
     val toParticipantId: UUID,
+    override val eventId: UUID? = null,
 ) : CreateEventRequest
 
 @Schema(description = "Командное событие: TIMEOUT_START или TIMEOUT_END.")
 data class TeamEventRequest(
-    @field:Schema(
-        description = "Тип командного события.",
-        allowableValues = ["TIMEOUT_START", "TIMEOUT_END"],
-        example = "TIMEOUT_START",
-    )
     override val type: EventType,
-    @field:Schema(
-        description = "Фактическое время события в формате ISO-8601 UTC.",
-        example = "2026-07-28T12:30:00Z",
-    )
     override val occurredAt: Instant,
     @field:Schema(
-        description = "ID команды-снэпшота этого матча, которая начинает или завершает таймаут.",
+        description = "UUID команды-участницы этого матча, чей таймаут начинается (TIMEOUT_START) или заканчивается (TIMEOUT_END). Это teamId, а не participantId.",
         example = "33333333-3333-3333-3333-333333333333",
     )
     val teamId: UUID,
+    override val eventId: UUID? = null,
 ) : CreateEventRequest
 
-@Schema(description = "Системное событие: HALFTIME_START или HALFTIME_END.")
+@Schema(description = "Системное событие: HALFTIME_START — начало перерыва после завершённого розыгрыша; HALFTIME_END — окончание перерыва, после которого ожидается PULL. Требуются только type и occurredAt; участники и команда не передаются.")
 data class SystemEventRequest(
-    @field:Schema(
-        description = "Тип системного события. Дополнительные идентификаторы не передаются.",
-        allowableValues = ["HALFTIME_START", "HALFTIME_END"],
-        example = "HALFTIME_START",
-    )
     override val type: EventType,
-    @field:Schema(
-        description = "Фактическое время события в формате ISO-8601 UTC.",
-        example = "2026-07-28T12:30:00Z",
-    )
     override val occurredAt: Instant,
+    override val eventId: UUID? = null,
 ) : CreateEventRequest

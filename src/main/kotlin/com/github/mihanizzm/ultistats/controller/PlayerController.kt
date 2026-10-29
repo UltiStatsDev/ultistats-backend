@@ -1,9 +1,14 @@
 package com.github.mihanizzm.ultistats.controller
 
+import com.github.mihanizzm.ultistats.dto.request.PaginationRequest
+import com.github.mihanizzm.ultistats.validation.query.validateScalarQueryParameters
+import jakarta.validation.Valid
 import com.github.mihanizzm.ultistats.dto.common.PageResponse
-import com.github.mihanizzm.ultistats.dto.common.SortParam
 import com.github.mihanizzm.ultistats.dto.request.CreatePlayerRequest
 import com.github.mihanizzm.ultistats.dto.request.PlayerFilterRequest
+import com.github.mihanizzm.ultistats.dto.request.PlayerSortRequest
+import com.github.mihanizzm.ultistats.dto.request.PhotoUploadRequest
+import com.github.mihanizzm.ultistats.dto.request.PatchPlayerRequest
 import com.github.mihanizzm.ultistats.dto.request.UpdatePlayerRequest
 import com.github.mihanizzm.ultistats.dto.response.PhotoUrlResponse
 import com.github.mihanizzm.ultistats.dto.response.PlayerDetailResponse
@@ -17,6 +22,9 @@ import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
+import io.swagger.v3.oas.annotations.parameters.RequestBody as OpenApiRequestBody
+import jakarta.servlet.http.HttpServletRequest
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
@@ -31,36 +39,37 @@ import java.util.UUID
 class PlayerController(
     private val playerFacade: PlayerFacade,
 ) {
+    @InitBinder("paginationRequest", "playerFilterRequest")
+    fun validateListQuery(servletRequest: HttpServletRequest) {
+        validateScalarQueryParameters(servletRequest.parameterMap, setOf("page", "size", "name", "teamId"))
+    }
+
     @GetMapping
     @Operation(summary = "Получить игроков с пагинацией, фильтрацией и сортировкой")
+    @ApiResponses(value = [
+        ApiResponse(responseCode = "200", description = "Страница результатов", useReturnTypeSchema = true),
+        ApiResponse(
+            responseCode = "400", description = "Некорректные или неоднозначные параметры пагинации, фильтрации или сортировки",
+            content = [Content(
+                mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                schema = Schema(implementation = ProblemDetail::class),
+            )],
+        ),
+    ])
     fun getAll(
-        @Parameter(description = "Номер страницы (начиная с 0)")
-        @RequestParam(defaultValue = "0")
-        page: Int,
+        @Valid @ParameterObject @ModelAttribute
+        pagination: PaginationRequest,
 
-        @Parameter(description = "Размер страницы")
-        @RequestParam(defaultValue = "20")
-        size: Int,
+        @Valid @ParameterObject @ModelAttribute
+        filter: PlayerFilterRequest,
 
-        @Parameter(description = "Фильтр по имени (частичное совпадение)")
-        @RequestParam(required = false)
-        name: String?,
-
-        @Parameter(description = "Фильтр по ID команды")
-        @RequestParam(required = false)
-        teamId: UUID?,
-
-        @Parameter(
-            description = "Сортировка. Формат: field:direction. " +
-                "Доступные поля: lastName, firstName, number, teamId. " +
-                "По умолчанию: lastName:asc",
-            example = "lastName:asc"
-        )
-        @RequestParam(required = false)
-        sort: SortParam?,
+        @ParameterObject @ModelAttribute
+        sorting: PlayerSortRequest,
+        servletRequest: HttpServletRequest,
     ): PageResponse<PlayerListItemResponse> {
-        val filter = PlayerFilterRequest(name = name, teamId = teamId)
-        return playerFacade.getAllPaged(page, size, filter, sort ?: PlayerFacade.DEFAULT_SORT)
+        return playerFacade.getAllPaged(
+            pagination.page, pagination.size, filter, sorting.toSortParam(servletRequest.parameterMap),
+        )
     }
 
     @GetMapping("/{id}")
@@ -82,9 +91,16 @@ class PlayerController(
         ResponseEntity.status(HttpStatus.CREATED).body(playerFacade.create(request))
 
     @PutMapping("/{id}")
-    @Operation(summary = "Обновить игрока (частичное обновление)")
+    @Operation(summary = "Устаревшее частичное обновление игрока", deprecated = true)
     fun update(@PathVariable id: UUID, @RequestBody request: UpdatePlayerRequest): ResponseEntity<PlayerDetailResponse> =
         playerFacade.update(id, request)
+            ?.let { ResponseEntity.ok(it) }
+            ?: ResponseEntity.notFound().build()
+
+    @PatchMapping("/{id}")
+    @Operation(summary = "Частично обновить игрока")
+    fun patch(@PathVariable id: UUID, @RequestBody request: PatchPlayerRequest): ResponseEntity<PlayerDetailResponse> =
+        playerFacade.patch(id, request)
             ?.let { ResponseEntity.ok(it) }
             ?: ResponseEntity.notFound().build()
 
@@ -96,7 +112,16 @@ class PlayerController(
         else ResponseEntity.notFound().build()
 
     @PutMapping("/{playerId}/photo", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
-    @Operation(summary = "Создать или заменить фотографию игрока")
+    @Operation(
+        summary = "Создать или заменить фотографию игрока",
+        requestBody = OpenApiRequestBody(
+            required = true,
+            content = [Content(
+                mediaType = MediaType.MULTIPART_FORM_DATA_VALUE,
+                schema = Schema(implementation = PhotoUploadRequest::class),
+            )],
+        ),
+    )
     @ApiResponses(
         value = [
             ApiResponse(
@@ -119,9 +144,14 @@ class PlayerController(
     )
     fun putPhoto(
         @PathVariable playerId: UUID,
-        @RequestPart("file") multipartFile: MultipartFile,
+        @Parameter(hidden = true)
+        @RequestPart("file", required = false)
+        file: MultipartFile?,
+        @Parameter(hidden = true)
+        @RequestPart("multipartFile", required = false)
+        legacyMultipartFile: MultipartFile?,
     ): ResponseEntity<PhotoUrlResponse> =
-        playerFacade.uploadPhoto(playerId, multipartFile)
+        playerFacade.uploadPhoto(playerId, resolvePhotoUploadPart(file, legacyMultipartFile))
             ?.let { ResponseEntity.ok(it) }
             ?: ResponseEntity.notFound().build()
 
@@ -148,7 +178,17 @@ class PlayerController(
             ?: ResponseEntity.notFound().build()
 
     @PostMapping("/{playerId}/uploadPhoto", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
-    @Operation(summary = "Загрузить аватар для игрока", deprecated = true)
+    @Operation(
+        summary = "Загрузить аватар для игрока",
+        deprecated = true,
+        requestBody = OpenApiRequestBody(
+            required = true,
+            content = [Content(
+                mediaType = MediaType.MULTIPART_FORM_DATA_VALUE,
+                schema = Schema(implementation = PhotoUploadRequest::class),
+            )],
+        ),
+    )
     @ApiResponses(
         value = [
             ApiResponse(
@@ -163,9 +203,14 @@ class PlayerController(
     )
     fun uploadPhoto(
         @PathVariable playerId: UUID,
-        @RequestPart("file") multipartFile: MultipartFile,
+        @Parameter(hidden = true)
+        @RequestPart("file", required = false)
+        file: MultipartFile?,
+        @Parameter(hidden = true)
+        @RequestPart("multipartFile", required = false)
+        legacyMultipartFile: MultipartFile?,
     ): ResponseEntity<PhotoUrlResponse> =
-        playerFacade.uploadPhoto(playerId, multipartFile)
+        playerFacade.uploadPhoto(playerId, resolvePhotoUploadPart(file, legacyMultipartFile))
             ?.let { ResponseEntity.status(HttpStatus.CREATED).body(it) }
             ?: ResponseEntity.notFound().build()
 

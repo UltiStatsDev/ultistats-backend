@@ -26,7 +26,7 @@ import org.springframework.stereotype.Component
 import java.util.UUID
 
 sealed class EventResult {
-    data class Success(val response: EventResponse) : EventResult()
+    data class Success(val response: EventResponse, val replayed: Boolean = false) : EventResult()
     data class EventList(val events: List<EventResponse>) : EventResult()
     object Deleted : EventResult()
     object NotFound : EventResult()
@@ -56,7 +56,7 @@ class EventFacade(
     fun create(matchId: UUID, request: CreateEventRequest): EventResult {
         if (matchService.get(matchId) == null) return EventResult.NotFound
         return when (val creation = eventFactory.createValidatedFromRequest(request, matchId)) {
-            is EventCreationResult.Success -> eventService.create(creation.event, matchId).toFacadeResult()
+            is EventCreationResult.Success -> eventService.create(creation.event, matchId, request.eventId).toFacadeResult()
             is EventCreationResult.Invalid -> badRequest(creation.detail)
         }
     }
@@ -106,8 +106,10 @@ class EventFacade(
         return eventService.remove(eventId, matchId).toFacadeResult()
     }
 
+    fun undoLast(matchId: UUID): EventResult = eventService.undoLast(matchId).toFacadeResult()
+
     private fun EventCommandResult.toFacadeResult(): EventResult = when (this) {
-        is EventCommandResult.Success -> EventResult.Success(EventResponse.from(event))
+        is EventCommandResult.Success -> EventResult.Success(EventResponse.from(event), replayed)
         EventCommandResult.Deleted -> EventResult.Deleted
         EventCommandResult.NotFound -> EventResult.NotFound
         is EventCommandResult.InvalidState -> EventResult.InvalidState(problem)

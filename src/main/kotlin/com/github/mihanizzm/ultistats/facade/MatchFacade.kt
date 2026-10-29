@@ -5,16 +5,21 @@ import com.github.mihanizzm.ultistats.dto.common.SortParam
 import com.github.mihanizzm.ultistats.dto.request.CreateMatchRequest
 import com.github.mihanizzm.ultistats.dto.request.MatchFilterRequest
 import com.github.mihanizzm.ultistats.dto.request.MatchTimestampRequest
+import com.github.mihanizzm.ultistats.dto.request.PatchMatchRequest
 import com.github.mihanizzm.ultistats.dto.request.UpdateMatchRequest
 import com.github.mihanizzm.ultistats.dto.response.MatchListItemResponse
 import com.github.mihanizzm.ultistats.dto.response.MatchResponse
 import com.github.mihanizzm.ultistats.model.Match
+import com.github.mihanizzm.ultistats.model.MatchParticipantKind
 import com.github.mihanizzm.ultistats.service.MatchService
+import com.github.mihanizzm.ultistats.service.PlayerService
 import com.github.mihanizzm.ultistats.service.TeamService
 import com.github.mihanizzm.ultistats.service.result.MatchCommandResult
+import com.github.mihanizzm.ultistats.service.patch.MatchPatch
+import com.github.mihanizzm.ultistats.service.patch.toFieldPatch
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
-import com.github.mihanizzm.ultistats.util.SortingUtils.applySorting
+import com.github.mihanizzm.ultistats.repository.ListPageRequest
 import org.springframework.stereotype.Component
 import java.util.UUID
 
@@ -22,6 +27,7 @@ import java.util.UUID
 class MatchFacade(
     private val matchService: MatchService,
     private val teamService: TeamService,
+    private val playerService: PlayerService,
 ) {
     companion object {
         val DEFAULT_SORT = SortParam("plannedStartTimestamp")
@@ -34,11 +40,7 @@ class MatchFacade(
         )
     }
 
-    fun getAll(): List<MatchResponse> =
-        matchService.getAll().map { match ->
-            val teams = teamService.getAllInListIncludingDeleted(match.teamIds)
-            MatchResponse.from(match, teams.associateBy { it.id })
-        }
+    fun getAll(): List<MatchResponse> = matchService.getAll().map { it.toResponse() }
 
     fun getAllPaged(
         page: Int,
@@ -46,26 +48,18 @@ class MatchFacade(
         filter: MatchFilterRequest,
         sortParam: SortParam = DEFAULT_SORT,
     ): PageResponse<MatchListItemResponse> {
-        val filteredMatches = matchService.findAllFiltered(filter)
-        val totalElements = filteredMatches.size.toLong()
-
-        val sortedMatches = filteredMatches.applySorting(sortParam, SORT_FIELD_EXTRACTORS)
-
-        val content = sortedMatches
-            .drop(page * size)
-            .take(size)
-            .map { match ->
+        val result = matchService.findPage(filter, ListPageRequest(page, size, sortParam))
+        val content = result.content            .map { match ->
                 val teams = teamService.getAllInListIncludingDeleted(match.teamIds)
                 MatchListItemResponse.from(match, teams.associateBy { it.id })
             }
 
-        return PageResponse.of(content, totalElements, page, size)
+        return PageResponse.of(content, result.totalElements, page, size)
     }
 
     fun getById(id: UUID): MatchResponse? {
         val match = matchService.get(id) ?: return null
-        val teams = teamService.getAllInListIncludingDeleted(match.teamIds)
-        return MatchResponse.from(match, teams.associateBy { it.id })
+        return match.toResponse()
     }
 
     fun create(request: CreateMatchRequest): MatchCommandResult<MatchResponse> {
@@ -84,6 +78,15 @@ class MatchFacade(
     fun update(id: UUID, request: UpdateMatchRequest): MatchCommandResult<MatchResponse> {
         val result = matchService.update(id, request.teamIds, request.plannedStartTimestamp, request.playersPerTeam)
         return result.toResponse()
+    }
+
+    fun patch(id: UUID, request: PatchMatchRequest): MatchCommandResult<MatchResponse> {
+        val patch = MatchPatch(
+            teamIds = request.teamIds.toFieldPatch(),
+            playersPerTeam = request.playersPerTeam.toFieldPatch(),
+            plannedStartTimestamp = request.plannedStartTimestamp.toFieldPatch(),
+        )
+        return matchService.patch(id, patch).toResponse()
     }
 
     fun delete(id: UUID): Boolean {
@@ -129,6 +132,15 @@ class MatchFacade(
 
     private fun Match.toResponse(): MatchResponse {
         val teams = teamService.getAllInListIncludingDeleted(teamIds)
-        return MatchResponse.from(this, teams.associateBy { it.id })
+        val playerIds = participantsByTeam.values
+            .flatten()
+            .filter { it.kind == MatchParticipantKind.PLAYER }
+            .map { it.participantId }
+        val players = playerService.getAllByIdsIncludingDeleted(playerIds)
+        return MatchResponse.from(
+            match = this,
+            teamsById = teams.associateBy { it.id },
+            playersById = players.associateBy { it.id },
+        )
     }
 }

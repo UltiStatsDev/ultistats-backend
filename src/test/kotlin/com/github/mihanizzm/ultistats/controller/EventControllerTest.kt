@@ -110,6 +110,175 @@ class EventControllerTest {
     }
 
     @Test
+    fun `retry with the same event id and payload returns the original event`() {
+        val eventId = UUID.randomUUID()
+        val request = validPull() + ("eventId" to eventId)
+
+        val created = mockMvc.perform(postEvent(request))
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.id").value(eventId.toString()))
+            .andExpect(jsonPath("$.sequenceNumber").value(1))
+            .andReturn().response.contentAsString
+
+        mockMvc.perform(postEvent(request))
+            .andExpect(status().isOk)
+            .andExpect(content().json(created))
+
+        mockMvc.perform(get("/api/v1/matches/${match.id}/events"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.length()").value(1))
+    }
+
+    @Test
+    fun `retry with the same event id and different payload returns conflict`() {
+        val eventId = UUID.randomUUID()
+        mockMvc.perform(postEvent(validPull() + ("eventId" to eventId)))
+            .andExpect(status().isCreated)
+
+        mockMvc.perform(postEvent(validPull() + mapOf(
+            "eventId" to eventId,
+            "participantId" to player1.id,
+        ))).andExpectProblem(
+            expectedStatus = 409,
+            code = "EVENT_IDEMPOTENCY_CONFLICT",
+            instance = "/api/v1/matches/${match.id}/events",
+            title = "Event idempotency conflict",
+            detail = "Event $eventId already exists with a different payload",
+        )
+    }
+
+    @Test
+    fun `retry after event update or deletion returns conflict`() {
+        val updatedEventId = UUID.randomUUID()
+        val updatedRequest = validPull() + ("eventId" to updatedEventId)
+        mockMvc.perform(postEvent(updatedRequest)).andExpect(status().isCreated)
+        mockMvc.perform(
+            patch("/api/v1/matches/${match.id}/events/$updatedEventId")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(mapOf(
+                    "type" to "PULL",
+                    "participantId" to player1.id,
+                ))),
+        ).andExpect(status().isOk)
+
+        mockMvc.perform(postEvent(updatedRequest))
+            .andExpectProblem(
+                expectedStatus = 409,
+                code = "EVENT_IDEMPOTENCY_CONFLICT",
+                instance = "/api/v1/matches/${match.id}/events",
+            )
+        mockMvc.perform(postEvent(validPull() + mapOf(
+            "eventId" to updatedEventId,
+            "participantId" to player1.id,
+        ))).andExpectProblem(
+            expectedStatus = 409,
+            code = "EVENT_IDEMPOTENCY_CONFLICT",
+            instance = "/api/v1/matches/${match.id}/events",
+        )
+
+        mockMvc.perform(delete("/api/v1/matches/${match.id}/events/$updatedEventId"))
+            .andExpect(status().isNoContent)
+        val deletedEventId = UUID.randomUUID()
+        val deletedRequest = validPull(EVENT_OCCURRED_AT.plusSeconds(1)) + ("eventId" to deletedEventId)
+        mockMvc.perform(postEvent(deletedRequest)).andExpect(status().isCreated)
+        mockMvc.perform(delete("/api/v1/matches/${match.id}/events/$deletedEventId"))
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(postEvent(deletedRequest))
+            .andExpectProblem(
+                expectedStatus = 409,
+                code = "EVENT_IDEMPOTENCY_CONFLICT",
+                instance = "/api/v1/matches/${match.id}/events",
+            )
+    }
+
+    @Test
+    fun `even a no-op patch permanently invalidates idempotent replay`() {
+        val eventId = UUID.randomUUID()
+        val request = validPull() + ("eventId" to eventId)
+        mockMvc.perform(postEvent(request)).andExpect(status().isCreated)
+        mockMvc.perform(
+            patch("/api/v1/matches/${match.id}/events/$eventId")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(mapOf(
+                    "type" to "PULL",
+                    "participantId" to opponent.id,
+                ))),
+        ).andExpect(status().isOk)
+
+        mockMvc.perform(postEvent(request))
+            .andExpectProblem(
+                expectedStatus = 409,
+                code = "EVENT_IDEMPOTENCY_CONFLICT",
+                instance = "/api/v1/matches/${match.id}/events",
+            )
+    }
+
+    @Test
+    fun `concurrent retries with the same event id create one event`() {
+        val eventId = UUID.randomUUID()
+        val request = validPull() + ("eventId" to eventId)
+        val ready = CountDownLatch(2)
+        val start = CountDownLatch(1)
+
+        Executors.newFixedThreadPool(2).use { executor ->
+            val responses = List(2) {
+                executor.submit<MvcResult> {
+                    ready.countDown()
+                    check(start.await(5, TimeUnit.SECONDS)) { "Concurrent POST requests did not start together" }
+                    mockMvc.perform(postEvent(request)).andReturn()
+                }
+            }
+            check(ready.await(5, TimeUnit.SECONDS)) { "Concurrent POST requests were not ready" }
+            start.countDown()
+
+            val results = responses.map { it.get(10, TimeUnit.SECONDS).response }
+            assertEquals(setOf(200, 201), results.map { it.status }.toSet())
+            results.forEach { response ->
+                val body = objectMapper.readTree(response.contentAsString)
+                assertEquals(eventId.toString(), body["id"].asText())
+                assertEquals(1, body["sequenceNumber"].asInt())
+            }
+        }
+
+        mockMvc.perform(get("/api/v1/matches/${match.id}/events"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.length()").value(1))
+    }
+
+    @Test
+    fun `concurrent use of the same event id in different matches returns conflict instead of server error`() {
+        val otherMatch = Match(UUID.randomUUID(), listOf(team1.id, team2.id))
+        matchService.create(otherMatch)
+        matchService.startMatch(otherMatch.id, MATCH_STARTED_AT)
+        val eventId = UUID.randomUUID()
+        val request = validPull() + ("eventId" to eventId)
+        val ready = CountDownLatch(2)
+        val start = CountDownLatch(1)
+
+        Executors.newFixedThreadPool(2).use { executor ->
+            val responses = listOf(match.id, otherMatch.id).map { matchId ->
+                executor.submit<MvcResult> {
+                    ready.countDown()
+                    check(start.await(5, TimeUnit.SECONDS)) { "Concurrent cross-match POST requests did not start together" }
+                    mockMvc.perform(postEvent(request, matchId)).andReturn()
+                }
+            }
+            check(ready.await(5, TimeUnit.SECONDS)) { "Concurrent cross-match POST requests were not ready" }
+            start.countDown()
+
+            val results = responses.map { it.get(10, TimeUnit.SECONDS).response }
+            assertEquals(
+                setOf(201, 409),
+                results.map { it.status }.toSet(),
+                results.joinToString { response -> "${response.status}: ${response.contentAsString}" },
+            )
+            val conflict = results.single { it.status == 409 }
+            assertEquals("EVENT_IDEMPOTENCY_CONFLICT", objectMapper.readTree(conflict.contentAsString)["code"].asText())
+        }
+    }
+
+    @Test
     fun `pass cannot be the first gameplay event`() {
         mockMvc.perform(postEvent(mapOf(
             "type" to "PASS",
@@ -498,7 +667,7 @@ class EventControllerTest {
         )
         val operation = document["paths"]["/api/v1/matches/{matchId}/events"]["post"]
         val examples = operation["requestBody"]["content"]["application/json"]["examples"]
-        val commonFields = setOf("type", "occurredAt")
+        val commonFields = setOf("eventId", "type", "occurredAt")
         val expectedFields = mapOf(
             "PASS" to commonFields + setOf("fromParticipantId", "toParticipantId"),
             "GOAL" to commonFields + setOf("fromParticipantId", "toParticipantId"),
@@ -517,10 +686,12 @@ class EventControllerTest {
             "HALFTIME_END" to commonFields,
         )
 
+        assertEquals(EventType.values().map { it.name }.toSet(), expectedFields.keys)
         assertEquals(expectedFields.keys, examples.fieldNames().asSequence().toSet())
         expectedFields.forEach { (type, fields) ->
             val example = examples[type]["value"]
             assertEquals(type, example["type"].asText())
+            assertTrue(operation["description"].asText().contains("| `$type` |"), "$type must have a payload table row")
             assertEquals(fields, example.fieldNames().asSequence().toSet(), "Unexpected fields in $type example")
             assertTrue(examples[type]["description"].asText().isNotBlank(), "$type must explain event semantics")
         }
@@ -561,12 +732,12 @@ class EventControllerTest {
         assertTrue(description.contains("HALFTIME_START"))
         assertTrue(description.contains("BLOCK_MARKER"))
         assertEquals(
-            setOf("onePlayerEvent", "twoPlayerEvent", "blockTypeCorrection", "teamEvent"),
+            setOf("onePlayerEvent", "twoPlayerEvent", "blockRefinement", "teamEvent"),
             examples.fieldNames().asSequence().toSet(),
         )
-        assertEquals("PICKUP", examples["onePlayerEvent"]["value"]["type"].asText())
+        assertEquals("PULL", examples["onePlayerEvent"]["value"]["type"].asText())
         assertEquals("PASS", examples["twoPlayerEvent"]["value"]["type"].asText())
-        assertEquals("BLOCK_MARKER", examples["blockTypeCorrection"]["value"]["type"].asText())
+        assertEquals("BLOCK_MARKER", examples["blockRefinement"]["value"]["type"].asText())
         assertEquals("TIMEOUT_START", examples["teamEvent"]["value"]["type"].asText())
     }
 

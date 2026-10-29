@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.Instant
+import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
@@ -48,6 +49,26 @@ class MatchRealtimeTransactionIntegrationTest : MatchAbstractTest() {
             MATCH.id,
             MatchRealtimeOperation.CREATED,
             created.id,
+        )
+    }
+
+    @Test
+    fun `Идемпотентный повтор не публикует второе изменение журнала`() {
+        val eventId = UUID.randomUUID()
+        assertIs<EventCommandResult.Success>(eventService.create(validPull(), MATCH.id, eventId))
+        verify(streamService, timeout(1_000).times(1)).eventLogChanged(
+            MATCH.id,
+            MatchRealtimeOperation.CREATED,
+            eventId,
+        )
+
+        val replay = assertIs<EventCommandResult.Success>(eventService.create(validPull(), MATCH.id, eventId))
+
+        assertEquals(true, replay.replayed)
+        verify(streamService, after(200).times(1)).eventLogChanged(
+            MATCH.id,
+            MatchRealtimeOperation.CREATED,
+            eventId,
         )
     }
 
@@ -84,6 +105,53 @@ class MatchRealtimeTransactionIntegrationTest : MatchAbstractTest() {
             MATCH.id,
             MatchRealtimeOperation.DELETED,
             stored.id,
+        )
+    }
+
+    @Test
+    fun `Undo публикует идентификатор отмененного события после commit`() {
+        val stored = assertIs<EventCommandResult.Success>(eventService.create(validPull(), MATCH.id)).event
+        clearInvocations(streamService)
+
+        val undone = assertIs<EventCommandResult.Success>(eventService.undoLast(MATCH.id)).event
+
+        assertEquals(stored, undone)
+        verify(streamService, timeout(1_000).times(1)).eventLogChanged(
+            MATCH.id,
+            MatchRealtimeOperation.DELETED,
+            stored.id,
+        )
+    }
+
+    @Test
+    fun `Rollback undo сохраняет событие и счет и не публикует SSE`() {
+        recordCompletedPoint()
+        val goal = eventService.getAllEventsOfMatch(MATCH.id).last()
+        clearInvocations(streamService)
+
+        transactionTemplate.executeWithoutResult { status ->
+            assertIs<EventCommandResult.Success>(eventService.undoLast(MATCH.id))
+            assertEquals(0, matchService.getOrThrow(MATCH.id).teamScores.single { it.teamId == TEAM_1.id }.score)
+            status.setRollbackOnly()
+        }
+
+        assertEquals(goal, eventService.get(goal.id, MATCH.id))
+        assertEquals(1, matchService.getOrThrow(MATCH.id).teamScores.single { it.teamId == TEAM_1.id }.score)
+        verify(streamService, after(200).never()).eventLogChanged(
+            matching(MATCH.id), anyOperation(), anyEventId(),
+        )
+    }
+
+    @Test
+    fun `Отклоненный undo не публикует SSE`() {
+        recordCompletedPoint()
+        assertIs<MatchCommandResult.Success<Match>>(matchService.endMatch(MATCH.id, MATCH_ENDED_AT))
+        clearInvocations(streamService)
+
+        assertIs<EventCommandResult.Conflict>(eventService.undoLast(MATCH.id))
+
+        verify(streamService, after(200).never()).eventLogChanged(
+            matching(MATCH.id), anyOperation(), anyEventId(),
         )
     }
 

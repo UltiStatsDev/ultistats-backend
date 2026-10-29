@@ -14,6 +14,7 @@ import com.github.mihanizzm.ultistats.service.PlayerService
 import com.github.mihanizzm.ultistats.service.TeamService
 import com.github.mihanizzm.ultistats.service.TeamPlayerService
 import org.hamcrest.Matchers.hasItem
+import org.hamcrest.Matchers.not
 import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -216,6 +217,53 @@ class MatchControllerTest {
             .andExpect(jsonPath("$.components.schemas.UpdateMatchRequest.properties.playersPerTeam.type").value("integer"))
             .andExpect(jsonPath("$.components.schemas.MatchResponse.properties.playersPerTeam.type").value("integer"))
             .andExpect(jsonPath("$.components.schemas.MatchListItemResponse.properties.playersPerTeam.type").value("integer"))
+    }
+
+    @Test
+    fun `Участник матча возвращает актуальный photoUrl игрока`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val playerId = teamPlayerService.getByTeamId(team1.id).first().playerId
+        val match = createTestMatch(team1, team2)
+        val photoUrl = "/uploads/players/$playerId/photo.jpg"
+
+        val player = requireNotNull(playerService.get(playerId))
+        playerService.update(player.copy(photoUrl = photoUrl))
+
+        mockMvc.perform(get("/api/v1/matches/${match.id}"))
+            .andExpect(status().isOk)
+            .andExpect(
+                jsonPath("$.teams[0].participants[?(@.participantId == '$playerId')].photoUrl")
+                    .value(hasItem(photoUrl)),
+            )
+            .andExpect(jsonPath("$.teams[0].participants[?(@.kind == 'UNKNOWN')].photoUrl").value(hasItem(nullValue())))
+    }
+
+    @Test
+    fun `Участник исторического матча сохраняет photoUrl после удаления игрока`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val playerId = teamPlayerService.getByTeamId(team1.id).first().playerId
+        val match = createTestMatch(team1, team2)
+        val photoUrl = "/uploads/players/$playerId/photo.jpg"
+        val player = requireNotNull(playerService.get(playerId))
+        playerService.update(player.copy(photoUrl = photoUrl))
+        playerService.delete(playerId)
+
+        mockMvc.perform(get("/api/v1/matches/${match.id}"))
+            .andExpect(status().isOk)
+            .andExpect(
+                jsonPath("$.teams[0].participants[?(@.participantId == '$playerId')].photoUrl")
+                    .value(hasItem(photoUrl)),
+            )
+    }
+
+    @Test
+    fun `OpenAPI документирует nullable photoUrl участника матча`() {
+        mockMvc.perform(get("/v3/api-docs"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.components.schemas.MatchParticipantResponse.properties.photoUrl").exists())
+            .andExpect(jsonPath("$.components.schemas.MatchParticipantResponse.required", not(hasItem("photoUrl"))))
     }
 
     @Test
@@ -557,6 +605,165 @@ class MatchControllerTest {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.teams.length()").value(2))
+    }
+
+    @Test
+    fun `Устаревший PUT матча сохраняет no-op семантику для пустого запроса и null`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val plannedStart = Instant.parse("2026-08-14T10:00:00Z")
+        val match = createTestMatchWithTimestamp(team1, team2, plannedStart)
+
+        listOf("{}", """{"plannedStartTimestamp":null}""").forEach { body ->
+            mockMvc.perform(
+                put("/api/v1/matches/${match.id}")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body),
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.plannedStartTimestamp").value(plannedStart.toString()))
+                .andExpect(jsonPath("$.playersPerTeam").value(Match.DEFAULT_PLAYERS_PER_TEAM))
+        }
+    }
+
+    @Test
+    fun `PATCH матча обновляет переданное поле и сохраняет пропущенные`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val plannedStart = Instant.parse("2026-08-14T10:00:00Z")
+        val match = createTestMatchWithTimestamp(team1, team2, plannedStart)
+
+        mockMvc.perform(
+            patch("/api/v1/matches/${match.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"playersPerTeam":5}"""),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.playersPerTeam").value(5))
+            .andExpect(jsonPath("$.plannedStartTimestamp").value(plannedStart.toString()))
+            .andExpect(jsonPath("$.teams[*].teamId").value(hasItem(team1.id.toString())))
+            .andExpect(jsonPath("$.teams[*].teamId").value(hasItem(team2.id.toString())))
+    }
+
+    @Test
+    fun `PATCH матча очищает plannedStartTimestamp при явном null`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val match = createTestMatchWithTimestamp(team1, team2, Instant.parse("2026-08-14T10:00:00Z"))
+
+        mockMvc.perform(
+            patch("/api/v1/matches/${match.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"plannedStartTimestamp":null}"""),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.plannedStartTimestamp").doesNotExist())
+
+        mockMvc.perform(get("/api/v1/matches/${match.id}"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.plannedStartTimestamp").doesNotExist())
+    }
+
+    @Test
+    fun `PATCH матча отклоняет null для обязательных полей`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val match = createTestMatch(team1, team2)
+
+        listOf("teamIds", "playersPerTeam").forEach { field ->
+            mockMvc.perform(
+                patch("/api/v1/matches/${match.id}")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"$field":null}"""),
+            )
+                .andExpectProblem(
+                    expectedStatus = 400,
+                    code = "INVALID_REQUEST",
+                    instance = "/api/v1/matches/${match.id}",
+                )
+        }
+    }
+
+    @Test
+    fun `PATCH матча отклоняет пустой объект`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val match = createTestMatch(team1, team2)
+
+        mockMvc.perform(
+            patch("/api/v1/matches/${match.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"),
+        )
+            .andExpectProblem(
+                expectedStatus = 400,
+                code = "INVALID_REQUEST",
+                instance = "/api/v1/matches/${match.id}",
+            )
+    }
+
+    @Test
+    fun `Пустой PATCH несуществующего матча возвращает 404`() {
+        val matchId = UUID.randomUUID()
+
+        mockMvc.perform(
+            patch("/api/v1/matches/$matchId")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"),
+        )
+            .andExpectProblem(
+                expectedStatus = 404,
+                code = "RESOURCE_NOT_FOUND",
+                instance = "/api/v1/matches/$matchId",
+            )
+    }
+
+    @Test
+    fun `PATCH начатого матча возвращает конфликт состояния`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val match = createTestMatch(team1, team2)
+        matchService.startMatch(match.id, Instant.parse("2026-08-14T10:00:00Z"))
+
+        mockMvc.perform(
+            patch("/api/v1/matches/${match.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"playersPerTeam":5}"""),
+        )
+            .andExpectProblem(
+                expectedStatus = 409,
+                code = "MATCH_UPDATE_LOCKED",
+                instance = "/api/v1/matches/${match.id}",
+                currentStatus = "IN_PROGRESS",
+            )
+    }
+
+    @Test
+    fun `Отклоненный PATCH матча не сохраняет часть изменений`() {
+        val team1 = createTestTeam("Команда 1")
+        val team2 = createTestTeam("Команда 2")
+        val match = createTestMatch(team1, team2)
+
+        mockMvc.perform(
+            patch("/api/v1/matches/${match.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    objectMapper.writeValueAsString(
+                        mapOf("teamIds" to listOf(team1.id), "playersPerTeam" to 5),
+                    ),
+                ),
+        )
+            .andExpectProblem(
+                expectedStatus = 400,
+                code = "INVALID_REQUEST",
+                instance = "/api/v1/matches/${match.id}",
+            )
+
+        mockMvc.perform(get("/api/v1/matches/${match.id}"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.playersPerTeam").value(Match.DEFAULT_PLAYERS_PER_TEAM))
+            .andExpect(jsonPath("$.teams[*].teamId").value(hasItem(team1.id.toString())))
+            .andExpect(jsonPath("$.teams[*].teamId").value(hasItem(team2.id.toString())))
     }
 
     @Test

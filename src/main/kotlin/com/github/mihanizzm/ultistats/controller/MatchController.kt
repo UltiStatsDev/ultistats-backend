@@ -1,27 +1,35 @@
 package com.github.mihanizzm.ultistats.controller
 
+import com.github.mihanizzm.ultistats.dto.request.PaginationRequest
+import com.github.mihanizzm.ultistats.validation.query.validateScalarQueryParameters
+import jakarta.validation.Valid
 import com.github.mihanizzm.ultistats.dto.common.PageResponse
-import com.github.mihanizzm.ultistats.dto.common.SortParam
 import com.github.mihanizzm.ultistats.dto.request.CreateMatchRequest
 import com.github.mihanizzm.ultistats.dto.request.MatchFilterRequest
+import com.github.mihanizzm.ultistats.dto.request.MatchSortRequest
 import com.github.mihanizzm.ultistats.dto.request.MatchTimestampRequest
+import com.github.mihanizzm.ultistats.dto.request.PatchMatchRequest
 import com.github.mihanizzm.ultistats.dto.request.UpdateMatchRequest
 import com.github.mihanizzm.ultistats.dto.response.MatchListItemResponse
 import com.github.mihanizzm.ultistats.dto.response.MatchResponse
 import com.github.mihanizzm.ultistats.facade.MatchFacade
-import com.github.mihanizzm.ultistats.model.MatchStatus
 import com.github.mihanizzm.ultistats.service.result.MatchCommandResult
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
 import io.swagger.v3.oas.annotations.Operation
-import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
+import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import jakarta.servlet.http.HttpServletRequest
 import java.net.URI
-import java.time.Instant
 import java.util.UUID
 
 @RestController
@@ -30,49 +38,37 @@ import java.util.UUID
 class MatchController(
     private val matchFacade: MatchFacade,
 ) {
+    @InitBinder("paginationRequest", "matchFilterRequest")
+    fun validateListQuery(servletRequest: HttpServletRequest) {
+        validateScalarQueryParameters(servletRequest.parameterMap, setOf("page", "size", "teamId", "status", "dateFrom", "dateTo"))
+    }
+
     @GetMapping
     @Operation(summary = "Получить матчи с пагинацией, фильтрацией и сортировкой")
+    @ApiResponses(value = [
+        ApiResponse(responseCode = "200", description = "Страница результатов", useReturnTypeSchema = true),
+        ApiResponse(
+            responseCode = "400", description = "Некорректные или неоднозначные параметры пагинации, фильтрации или сортировки",
+            content = [Content(
+                mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                schema = Schema(implementation = ProblemDetail::class),
+            )],
+        ),
+    ])
     fun getAll(
-        @Parameter(description = "Номер страницы (начиная с 0)")
-        @RequestParam(defaultValue = "0")
-        page: Int,
+        @Valid @ParameterObject @ModelAttribute
+        pagination: PaginationRequest,
 
-        @Parameter(description = "Размер страницы")
-        @RequestParam(defaultValue = "20")
-        size: Int,
+        @Valid @ParameterObject @ModelAttribute
+        filter: MatchFilterRequest,
 
-        @Parameter(description = "Фильтр по ID команды-участника")
-        @RequestParam(required = false)
-        teamId: UUID?,
-
-        @Parameter(description = "Фильтр по статусу матча (PLANNED, IN_PROGRESS, FINISHED)")
-        @RequestParam(required = false)
-        status: MatchStatus?,
-
-        @Parameter(description = "Фильтр по дате начиная с (ISO 8601)")
-        @RequestParam(required = false)
-        dateFrom: Instant?,
-
-        @Parameter(description = "Фильтр по дате до (ISO 8601)")
-        @RequestParam(required = false)
-        dateTo: Instant?,
-
-        @Parameter(
-            description = "Сортировка. Формат: field:direction. " +
-                "Доступные поля: plannedStartTimestamp, startedAt, endedAt, status. " +
-                "По умолчанию: plannedStartTimestamp:asc",
-            example = "plannedStartTimestamp:asc"
-        )
-        @RequestParam(required = false)
-        sort: SortParam?,
+        @ParameterObject @ModelAttribute
+        sorting: MatchSortRequest,
+        servletRequest: HttpServletRequest,
     ): PageResponse<MatchListItemResponse> {
-        val filter = MatchFilterRequest(
-            teamId = teamId,
-            status = status,
-            dateFrom = dateFrom,
-            dateTo = dateTo,
+        return matchFacade.getAllPaged(
+            pagination.page, pagination.size, filter, sorting.toSortParam(servletRequest.parameterMap),
         )
-        return matchFacade.getAllPaged(page, size, filter, sort ?: MatchFacade.DEFAULT_SORT)
     }
 
     @GetMapping("/{id}")
@@ -94,12 +90,24 @@ class MatchController(
     )
 
     @PutMapping("/{id}")
-    @Operation(summary = "Обновить матч (частичное обновление)")
+    @Operation(summary = "Устаревшее частичное обновление матча", deprecated = true)
     fun update(
         @PathVariable id: UUID,
         @RequestBody request: UpdateMatchRequest,
         servletRequest: HttpServletRequest,
     ): ResponseEntity<*> = matchFacade.update(id, request).toResponse(
+        successStatus = HttpStatus.OK,
+        instance = URI.create(servletRequest.requestURI),
+        matchId = id,
+    )
+
+    @PatchMapping("/{id}")
+    @Operation(summary = "Частично обновить матч")
+    fun patch(
+        @PathVariable id: UUID,
+        @RequestBody request: PatchMatchRequest,
+        servletRequest: HttpServletRequest,
+    ): ResponseEntity<*> = matchFacade.patch(id, request).toResponse(
         successStatus = HttpStatus.OK,
         instance = URI.create(servletRequest.requestURI),
         matchId = id,
