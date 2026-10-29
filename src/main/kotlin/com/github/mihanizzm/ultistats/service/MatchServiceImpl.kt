@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.service
 
+import com.github.mihanizzm.ultistats.repository.ListPage
+import com.github.mihanizzm.ultistats.repository.ListPageRequest
+import com.github.mihanizzm.ultistats.repository.jpa.ListQueryRepository
 import com.github.mihanizzm.ultistats.dto.request.MatchFilterRequest
 import com.github.mihanizzm.ultistats.exception.EntityNotFoundException
 import com.github.mihanizzm.ultistats.model.Match
@@ -17,6 +20,8 @@ import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchTeamReposito
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataPlayerRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataTeamRepository
 import com.github.mihanizzm.ultistats.service.result.MatchCommandResult
+import com.github.mihanizzm.ultistats.service.patch.FieldPatch
+import com.github.mihanizzm.ultistats.service.patch.MatchPatch
 import com.github.mihanizzm.ultistats.validation.event.EventSequenceDecision
 import com.github.mihanizzm.ultistats.validation.event.EventSequencePolicy
 import com.github.mihanizzm.ultistats.validation.match.MatchLifecycleDecision
@@ -31,6 +36,7 @@ import java.util.UUID
 
 @Service
 class MatchServiceImpl(
+    private val listQueries: ListQueryRepository,
     private val matchRepository: SpringDataMatchRepository,
     private val matchTeamRepository: SpringDataMatchTeamRepository,
     private val matchParticipantRepository: SpringDataMatchParticipantRepository,
@@ -60,17 +66,52 @@ class MatchServiceImpl(
         teamIds: List<UUID>?,
         plannedStartTimestamp: Instant?,
         playersPerTeam: Int?,
+    ): MatchCommandResult<Match> = updateLocked(
+        matchId,
+        MatchPatch(
+            teamIds = teamIds?.let { FieldPatch.Value(it) } ?: FieldPatch.Omitted,
+            plannedStartTimestamp = plannedStartTimestamp?.let { FieldPatch.Value(it) } ?: FieldPatch.Omitted,
+            playersPerTeam = playersPerTeam?.let { FieldPatch.Value(it) } ?: FieldPatch.Omitted,
+        ),
+        rejectEmptyPatch = false,
+    )
+
+    @Transactional
+    override fun patch(matchId: UUID, patch: MatchPatch): MatchCommandResult<Match> =
+        updateLocked(matchId, patch, rejectEmptyPatch = true)
+
+    private fun updateLocked(
+        matchId: UUID,
+        patch: MatchPatch,
+        rejectEmptyPatch: Boolean,
     ): MatchCommandResult<Match> {
         val match = getForUpdate(matchId)?.hydrate(includeEvents = true) ?: return MatchCommandResult.NotFound
-        val updatedTeamIds = teamIds ?: match.teamIds
+        if (rejectEmptyPatch && patch.isEmpty()) {
+            return invalidRequest("Patch request must contain at least one supported field")
+        }
+        val updatedTeamIds = when (val teamIds = patch.teamIds) {
+            FieldPatch.Omitted -> match.teamIds
+            FieldPatch.Null -> return invalidRequest("'teamIds' cannot be null")
+            is FieldPatch.Value -> teamIds.value
+        }
+        val updatedPlayersPerTeam = when (val playersPerTeam = patch.playersPerTeam) {
+            FieldPatch.Omitted -> match.playersPerTeam
+            FieldPatch.Null -> return invalidRequest("'playersPerTeam' cannot be null")
+            is FieldPatch.Value -> playersPerTeam.value
+        }
+        val updatedPlannedStartTimestamp = when (val plannedStartTimestamp = patch.plannedStartTimestamp) {
+            FieldPatch.Omitted -> match.plannedStartTimestamp
+            FieldPatch.Null -> null
+            is FieldPatch.Value -> plannedStartTimestamp.value
+        }
         invalidTeamSelection(updatedTeamIds, updatedTeamIds != match.teamIds && match.events.isNotEmpty())?.let { return it }
-        invalidPlayersPerTeam(playersPerTeam)?.let { return it }
+        invalidPlayersPerTeam(updatedPlayersPerTeam)?.let { return it }
         lifecyclePolicy.validateUpdate(match).toCommandRejection()?.let { return it }
 
         val updatedMatch = match.copy(
             teamIds = updatedTeamIds,
-            plannedStartTimestamp = plannedStartTimestamp ?: match.plannedStartTimestamp,
-            playersPerTeam = playersPerTeam ?: match.playersPerTeam,
+            plannedStartTimestamp = updatedPlannedStartTimestamp,
+            playersPerTeam = updatedPlayersPerTeam,
         )
         matchRepository.save(updatedMatch)
         if (updatedTeamIds != match.teamIds) replaceParticipants(matchId, updatedTeamIds)
@@ -102,9 +143,14 @@ class MatchServiceImpl(
                 (filter.dateTo == null || match.plannedStartTimestamp?.let { it <= filter.dateTo } == true)
         }
 
+    override fun findPage(filter: MatchFilterRequest, request: ListPageRequest): ListPage<Match> =
+        listQueries.matches(filter, request).let { result ->
+            result.copy(content = result.content.map { it.hydrate(includeEvents = false) })
+        }
+
     override fun count(): Long = matchRepository.countByDeletedAtIsNull()
 
-    override fun countFiltered(filter: MatchFilterRequest): Long = findAllFiltered(filter).size.toLong()
+    override fun countFiltered(filter: MatchFilterRequest): Long = listQueries.countMatches(filter)
 
     @Transactional
     override fun recalculateScore(matchId: UUID) {

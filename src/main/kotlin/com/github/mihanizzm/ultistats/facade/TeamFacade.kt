@@ -3,6 +3,7 @@ package com.github.mihanizzm.ultistats.facade
 import com.github.mihanizzm.ultistats.dto.common.PageResponse
 import com.github.mihanizzm.ultistats.dto.common.SortParam
 import com.github.mihanizzm.ultistats.dto.request.CreateTeamRequest
+import com.github.mihanizzm.ultistats.dto.request.PatchTeamRequest
 import com.github.mihanizzm.ultistats.dto.request.TeamFilterRequest
 import com.github.mihanizzm.ultistats.dto.request.UpdateTeamRequest
 import com.github.mihanizzm.ultistats.dto.response.PhotoUrlResponse
@@ -11,11 +12,14 @@ import com.github.mihanizzm.ultistats.dto.response.TeamDetailResponse
 import com.github.mihanizzm.ultistats.dto.response.TeamListItemResponse
 import com.github.mihanizzm.ultistats.dto.response.TeamPlayerResponse
 import com.github.mihanizzm.ultistats.model.Team
+import com.github.mihanizzm.ultistats.exception.InvalidPatchException
 import com.github.mihanizzm.ultistats.service.PhotoLifecycleService
 import com.github.mihanizzm.ultistats.service.PlayerService
 import com.github.mihanizzm.ultistats.service.TeamPlayerService
 import com.github.mihanizzm.ultistats.service.TeamService
-import com.github.mihanizzm.ultistats.util.SortingUtils.applySorting
+import com.github.mihanizzm.ultistats.repository.ListPageRequest
+import com.github.mihanizzm.ultistats.service.patch.FieldPatch
+import com.github.mihanizzm.ultistats.service.patch.toFieldPatch
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
@@ -40,10 +44,8 @@ class TeamFacade(
     }
 
     fun getAllPaged(page: Int, size: Int, filter: TeamFilterRequest, sortParam: SortParam = DEFAULT_SORT): PageResponse<TeamListItemResponse> {
-        val teams = teamService.findAllFiltered(filter)
-        val content = teams.applySorting(sortParam, SORT_FIELD_EXTRACTORS)
-            .drop((page.toLong() * size).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()).take(size).map(TeamListItemResponse::from)
-        return PageResponse.of(content, teams.size.toLong(), page, size)
+        val result = teamService.findPage(filter, ListPageRequest(page, size, sortParam))
+        return PageResponse.of(result.content.map(TeamListItemResponse::from), result.totalElements, page, size)
     }
 
     fun getById(id: UUID): TeamDetailResponse? = teamService.get(id)?.let(::detail)
@@ -64,6 +66,21 @@ class TeamFacade(
         val updated = existing.copy(
             name = request.name ?: existing.name,
             city = request.city ?: existing.city,
+        )
+        teamService.update(updated)
+        return detail(updated)
+    }
+
+    fun patch(id: UUID, request: PatchTeamRequest): TeamDetailResponse? {
+        val existing = teamService.get(id) ?: return null
+        val name = request.name.toFieldPatch()
+        val city = request.city.toFieldPatch()
+        if (name == FieldPatch.Omitted && city == FieldPatch.Omitted) {
+            throw InvalidPatchException("Patch request must contain at least one supported field")
+        }
+        val updated = existing.copy(
+            name = name.resolveRequired(existing.name, "name"),
+            city = city.resolveNullable(existing.city),
         )
         teamService.update(updated)
         return detail(updated)
@@ -108,5 +125,17 @@ class TeamFacade(
             teamService.update(team.copy(photoUrl = photoUrl))
         }
         return PhotoUrlResponse(oldUrl)
+    }
+
+    private fun FieldPatch<String>.resolveRequired(current: String, fieldName: String): String = when (this) {
+        FieldPatch.Omitted -> current
+        FieldPatch.Null -> throw InvalidPatchException("'$fieldName' cannot be null")
+        is FieldPatch.Value -> value
+    }
+
+    private fun FieldPatch<String>.resolveNullable(current: String?): String? = when (this) {
+        FieldPatch.Omitted -> current
+        FieldPatch.Null -> null
+        is FieldPatch.Value -> value
     }
 }

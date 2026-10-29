@@ -8,6 +8,7 @@ import com.github.mihanizzm.ultistats.dto.request.CreatePlayerRequest
 import com.github.mihanizzm.ultistats.dto.request.PlayerFilterRequest
 import com.github.mihanizzm.ultistats.dto.request.PlayerSortRequest
 import com.github.mihanizzm.ultistats.dto.request.PhotoUploadRequest
+import com.github.mihanizzm.ultistats.dto.request.PatchPlayerRequest
 import com.github.mihanizzm.ultistats.dto.request.UpdatePlayerRequest
 import com.github.mihanizzm.ultistats.dto.response.PhotoUrlResponse
 import com.github.mihanizzm.ultistats.dto.response.PlayerDetailResponse
@@ -90,9 +91,16 @@ class PlayerController(
         ResponseEntity.status(HttpStatus.CREATED).body(playerFacade.create(request))
 
     @PutMapping("/{id}")
-    @Operation(summary = "Обновить игрока (частичное обновление)")
+    @Operation(summary = "Устаревшее частичное обновление игрока", deprecated = true)
     fun update(@PathVariable id: UUID, @RequestBody request: UpdatePlayerRequest): ResponseEntity<PlayerDetailResponse> =
         playerFacade.update(id, request)
+            ?.let { ResponseEntity.ok(it) }
+            ?: ResponseEntity.notFound().build()
+
+    @PatchMapping("/{id}")
+    @Operation(summary = "Частично обновить игрока")
+    fun patch(@PathVariable id: UUID, @RequestBody request: PatchPlayerRequest): ResponseEntity<PlayerDetailResponse> =
+        playerFacade.patch(id, request)
             ?.let { ResponseEntity.ok(it) }
             ?: ResponseEntity.notFound().build()
 
