@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.service
 
+import com.github.mihanizzm.ultistats.repository.ListPage
+import com.github.mihanizzm.ultistats.repository.ListPageRequest
+import com.github.mihanizzm.ultistats.repository.jpa.ListQueryRepository
 import com.github.mihanizzm.ultistats.dto.request.MatchFilterRequest
 import com.github.mihanizzm.ultistats.exception.EntityNotFoundException
 import com.github.mihanizzm.ultistats.model.Match
@@ -33,6 +36,7 @@ import java.util.UUID
 
 @Service
 class MatchServiceImpl(
+    private val listQueries: ListQueryRepository,
     private val matchRepository: SpringDataMatchRepository,
     private val matchTeamRepository: SpringDataMatchTeamRepository,
     private val matchParticipantRepository: SpringDataMatchParticipantRepository,
@@ -139,9 +143,14 @@ class MatchServiceImpl(
                 (filter.dateTo == null || match.plannedStartTimestamp?.let { it <= filter.dateTo } == true)
         }
 
+    override fun findPage(filter: MatchFilterRequest, request: ListPageRequest): ListPage<Match> =
+        listQueries.matches(filter, request).let { result ->
+            result.copy(content = result.content.map { it.hydrate(includeEvents = false) })
+        }
+
     override fun count(): Long = matchRepository.countByDeletedAtIsNull()
 
-    override fun countFiltered(filter: MatchFilterRequest): Long = findAllFiltered(filter).size.toLong()
+    override fun countFiltered(filter: MatchFilterRequest): Long = listQueries.countMatches(filter)
 
     @Transactional
     override fun recalculateScore(matchId: UUID) {
