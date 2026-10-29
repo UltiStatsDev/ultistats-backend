@@ -242,6 +242,53 @@ GET /api/v1/matches?sortBy=STARTED_AT&sortDirection=DESC
 
 ---
 
+## Offline-first Events API v2
+
+`GET /api/v2/matches/{matchId}/events` возвращает согласованный снимок:
+`events` в порядке `sequenceNumber`, `lastSequenceNumber` (включая номера
+удалённых событий) и `logRevision`. Для нового batch передайте оба значения
+в `POST /api/v2/matches/{matchId}/events/batch`:
+
+```json
+{
+  "expectedLastSequenceNumber": 0,
+  "expectedLogRevision": 0,
+  "events": [
+    {
+      "eventId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "type": "PULL",
+      "occurredAt": "2026-07-28T12:00:00Z",
+      "participantId": "11111111-1111-1111-1111-111111111111"
+    }
+  ]
+}
+```
+
+Замените UUID участника на `participantId` из состава матча. Каждый элемент
+использует payload v1, но клиентский `eventId` обязателен. Допускается 1–100
+событий. Сервер сохраняет их атомарно под lock матча и назначает номера
+в порядке массива. Одинаковые timestamps допустимы; время назад — конфликт.
+
+Новый batch возвращает `201`; точный повтор с исходными базами, UUID,
+payload и порядком — `200`, исходные события и актуальную позицию журнала.
+Последующие append не мешают retry. Любой успешный PATCH, DELETE или undo
+после исходного batch инвалидирует его retry, включая PATCH без изменения
+значений. Ревизия растёт один раз на команду изменения, не на каждый элемент;
+retry её не увеличивает. Переставленный, частично сохранённый или сокращённый
+batch не применяется.
+
+При `409` остановите отправку зависимого хвоста, загрузите GET v2 и предложите
+оператору reconciliation. `ProblemDetail` содержит `code`, `lastSequenceNumber`,
+`logRevision`, а при ошибке конкретного события — `eventId` и нулевой
+`eventIndex`. Основные коды: `EVENT_LOG_STALE`, `EVENT_BATCH_CONFLICT`,
+`EVENT_IDEMPOTENCY_CONFLICT`, `EVENT_SEQUENCE_VIOLATION`; действуют также
+существующие lifecycle/timestamp коды. Ошибки формы, отсутствующие UUID,
+повтор UUID внутри запроса и неверные участники возвращают `400`.
+
+Events API v1 остаётся поддерживаемым и **не deprecated**. Backend v2 не означает,
+что frontend уже мигрировал или прошёл полевые матчи: эти этапы #71 выполняются
+отдельно; deprecated для v1 допустим только после их успешного завершения.
+
 ## Отмена последнего события
 
 ```http
