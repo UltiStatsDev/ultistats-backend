@@ -6,6 +6,7 @@ import jakarta.validation.Valid
 import com.github.mihanizzm.ultistats.dto.common.PageResponse
 import com.github.mihanizzm.ultistats.dto.request.CreateTeamRequest
 import com.github.mihanizzm.ultistats.dto.request.PhotoUploadRequest
+import com.github.mihanizzm.ultistats.dto.request.PatchTeamRequest
 import com.github.mihanizzm.ultistats.dto.request.TeamFilterRequest
 import com.github.mihanizzm.ultistats.dto.request.TeamSortRequest
 import com.github.mihanizzm.ultistats.dto.request.UpdateTeamRequest
@@ -87,9 +88,16 @@ class TeamController(
         ResponseEntity.status(HttpStatus.CREATED).body(teamFacade.create(request))
 
     @PutMapping("/{id}")
-    @Operation(summary = "Обновить команду (частичное обновление)")
+    @Operation(summary = "Устаревшее частичное обновление команды", deprecated = true)
     fun update(@PathVariable id: UUID, @RequestBody request: UpdateTeamRequest): ResponseEntity<TeamDetailResponse> =
         teamFacade.update(id, request)
+            ?.let { ResponseEntity.ok(it) }
+            ?: ResponseEntity.notFound().build()
+
+    @PatchMapping("/{id}")
+    @Operation(summary = "Частично обновить команду")
+    fun patch(@PathVariable id: UUID, @RequestBody request: PatchTeamRequest): ResponseEntity<TeamDetailResponse> =
+        teamFacade.patch(id, request)
             ?.let { ResponseEntity.ok(it) }
             ?: ResponseEntity.notFound().build()
 

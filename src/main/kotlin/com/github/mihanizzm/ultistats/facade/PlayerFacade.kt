@@ -4,17 +4,21 @@ import com.github.mihanizzm.ultistats.dto.common.PageResponse
 import com.github.mihanizzm.ultistats.dto.common.SortParam
 import com.github.mihanizzm.ultistats.dto.request.CreatePlayerRequest
 import com.github.mihanizzm.ultistats.dto.request.PlayerFilterRequest
+import com.github.mihanizzm.ultistats.dto.request.PatchPlayerRequest
 import com.github.mihanizzm.ultistats.dto.request.UpdatePlayerRequest
 import com.github.mihanizzm.ultistats.dto.response.PhotoUrlResponse
 import com.github.mihanizzm.ultistats.dto.response.PlayerDetailResponse
 import com.github.mihanizzm.ultistats.dto.response.PlayerListItemResponse
 import com.github.mihanizzm.ultistats.dto.response.PlayerTeamMembershipResponse
 import com.github.mihanizzm.ultistats.model.Player
+import com.github.mihanizzm.ultistats.exception.InvalidPatchException
 import com.github.mihanizzm.ultistats.service.PhotoLifecycleService
 import com.github.mihanizzm.ultistats.service.PlayerService
 import com.github.mihanizzm.ultistats.service.TeamPlayerService
 import com.github.mihanizzm.ultistats.service.TeamService
 import com.github.mihanizzm.ultistats.util.SortingUtils.applySorting
+import com.github.mihanizzm.ultistats.service.patch.FieldPatch
+import com.github.mihanizzm.ultistats.service.patch.toFieldPatch
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
@@ -67,6 +71,21 @@ class PlayerFacade(
         return PlayerDetailResponse.from(updated, getMembershipResponses(id))
     }
 
+    fun patch(id: UUID, request: PatchPlayerRequest): PlayerDetailResponse? {
+        val existing = playerService.get(id) ?: return null
+        val firstName = request.firstName.toFieldPatch()
+        val lastName = request.lastName.toFieldPatch()
+        if (firstName == FieldPatch.Omitted && lastName == FieldPatch.Omitted) {
+            throw InvalidPatchException("Patch request must contain at least one supported field")
+        }
+        val updated = existing.copy(
+            firstName = firstName.resolveRequired(existing.firstName, "firstName"),
+            lastName = lastName.resolveRequired(existing.lastName, "lastName"),
+        )
+        playerService.update(updated)
+        return PlayerDetailResponse.from(updated, getMembershipResponses(id))
+    }
+
     @Transactional
     fun delete(id: UUID): Boolean {
         if (playerService.get(id) == null) return false
@@ -109,5 +128,11 @@ class PlayerFacade(
                 },
             )
         }
+    }
+
+    private fun FieldPatch<String>.resolveRequired(current: String, fieldName: String): String = when (this) {
+        FieldPatch.Omitted -> current
+        FieldPatch.Null -> throw InvalidPatchException("'$fieldName' cannot be null")
+        is FieldPatch.Value -> value
     }
 }

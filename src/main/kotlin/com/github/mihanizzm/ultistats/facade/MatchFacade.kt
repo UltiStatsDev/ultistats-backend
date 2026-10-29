@@ -5,6 +5,7 @@ import com.github.mihanizzm.ultistats.dto.common.SortParam
 import com.github.mihanizzm.ultistats.dto.request.CreateMatchRequest
 import com.github.mihanizzm.ultistats.dto.request.MatchFilterRequest
 import com.github.mihanizzm.ultistats.dto.request.MatchTimestampRequest
+import com.github.mihanizzm.ultistats.dto.request.PatchMatchRequest
 import com.github.mihanizzm.ultistats.dto.request.UpdateMatchRequest
 import com.github.mihanizzm.ultistats.dto.response.MatchListItemResponse
 import com.github.mihanizzm.ultistats.dto.response.MatchResponse
@@ -14,6 +15,8 @@ import com.github.mihanizzm.ultistats.service.MatchService
 import com.github.mihanizzm.ultistats.service.PlayerService
 import com.github.mihanizzm.ultistats.service.TeamService
 import com.github.mihanizzm.ultistats.service.result.MatchCommandResult
+import com.github.mihanizzm.ultistats.service.patch.MatchPatch
+import com.github.mihanizzm.ultistats.service.patch.toFieldPatch
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
 import com.github.mihanizzm.ultistats.util.SortingUtils.applySorting
@@ -82,6 +85,15 @@ class MatchFacade(
     fun update(id: UUID, request: UpdateMatchRequest): MatchCommandResult<MatchResponse> {
         val result = matchService.update(id, request.teamIds, request.plannedStartTimestamp, request.playersPerTeam)
         return result.toResponse()
+    }
+
+    fun patch(id: UUID, request: PatchMatchRequest): MatchCommandResult<MatchResponse> {
+        val patch = MatchPatch(
+            teamIds = request.teamIds.toFieldPatch(),
+            playersPerTeam = request.playersPerTeam.toFieldPatch(),
+            plannedStartTimestamp = request.plannedStartTimestamp.toFieldPatch(),
+        )
+        return matchService.patch(id, patch).toResponse()
     }
 
     fun delete(id: UUID): Boolean {

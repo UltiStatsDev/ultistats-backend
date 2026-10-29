@@ -50,6 +50,60 @@ class PlayerControllerTest {
     }
 
     @Test
+    fun `player patch updates provided field and preserves omitted field`() {
+        val player = Player(UUID.randomUUID(), "Old", "Name")
+        playerService.create(player)
+
+        mockMvc.perform(
+            patch("/api/v1/players/${player.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"firstName":"New"}"""),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.firstName").value("New"))
+            .andExpect(jsonPath("$.lastName").value("Name"))
+    }
+
+    @Test
+    fun `player patch rejects explicit null for required field`() {
+        val player = Player(UUID.randomUUID(), "First", "Player")
+        playerService.create(player)
+
+        mockMvc.perform(
+            patch("/api/v1/players/${player.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"firstName":null}"""),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+    }
+
+    @Test
+    fun `player patch rejects empty object`() {
+        val player = Player(UUID.randomUUID(), "First", "Player")
+        playerService.create(player)
+
+        mockMvc.perform(
+            patch("/api/v1/players/${player.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+            .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+    }
+
+    @Test
+    fun `player patch returns not found for missing player`() {
+        mockMvc.perform(
+            patch("/api/v1/players/${UUID.randomUUID()}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"firstName":"New"}"""),
+        ).andExpect(status().isNotFound)
+    }
+
+    @Test
     fun `player detail and teams endpoint return every explicit membership`() {
         val player = Player(UUID.randomUUID(), "Multi", "Player")
         val team1 = Team(UUID.randomUUID(), "One")

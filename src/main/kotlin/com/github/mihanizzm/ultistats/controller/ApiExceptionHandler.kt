@@ -5,6 +5,7 @@ import com.github.mihanizzm.ultistats.validation.query.InvalidQueryParameterExce
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
 import com.github.mihanizzm.ultistats.service.EventIdempotencyConflictException
+import com.github.mihanizzm.ultistats.exception.InvalidPatchException
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -17,6 +18,20 @@ import java.net.URI
 
 @RestControllerAdvice
 class ApiExceptionHandler {
+    @ExceptionHandler(InvalidPatchException::class)
+    fun handleInvalidPatch(
+        exception: InvalidPatchException,
+        request: HttpServletRequest,
+    ): ResponseEntity<ProblemDetail> {
+        val problem = MatchProblem(
+            code = MatchProblemCode.INVALID_REQUEST,
+            title = "Invalid patch request",
+            detail = exception.message ?: "Patch request is invalid",
+        )
+        return ResponseEntity.badRequest()
+            .body(problem.toProblemDetail(HttpStatus.BAD_REQUEST, URI.create(request.requestURI)))
+    }
+
     @ExceptionHandler(EventIdempotencyConflictException::class)
     fun handleEventIdempotencyConflict(
         exception: EventIdempotencyConflictException,

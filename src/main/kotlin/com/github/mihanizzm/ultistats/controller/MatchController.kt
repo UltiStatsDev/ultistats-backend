@@ -8,6 +8,7 @@ import com.github.mihanizzm.ultistats.dto.request.CreateMatchRequest
 import com.github.mihanizzm.ultistats.dto.request.MatchFilterRequest
 import com.github.mihanizzm.ultistats.dto.request.MatchSortRequest
 import com.github.mihanizzm.ultistats.dto.request.MatchTimestampRequest
+import com.github.mihanizzm.ultistats.dto.request.PatchMatchRequest
 import com.github.mihanizzm.ultistats.dto.request.UpdateMatchRequest
 import com.github.mihanizzm.ultistats.dto.response.MatchListItemResponse
 import com.github.mihanizzm.ultistats.dto.response.MatchResponse
@@ -89,12 +90,24 @@ class MatchController(
     )
 
     @PutMapping("/{id}")
-    @Operation(summary = "Обновить матч (частичное обновление)")
+    @Operation(summary = "Устаревшее частичное обновление матча", deprecated = true)
     fun update(
         @PathVariable id: UUID,
         @RequestBody request: UpdateMatchRequest,
         servletRequest: HttpServletRequest,
     ): ResponseEntity<*> = matchFacade.update(id, request).toResponse(
+        successStatus = HttpStatus.OK,
+        instance = URI.create(servletRequest.requestURI),
+        matchId = id,
+    )
+
+    @PatchMapping("/{id}")
+    @Operation(summary = "Частично обновить матч")
+    fun patch(
+        @PathVariable id: UUID,
+        @RequestBody request: PatchMatchRequest,
+        servletRequest: HttpServletRequest,
+    ): ResponseEntity<*> = matchFacade.patch(id, request).toResponse(
         successStatus = HttpStatus.OK,
         instance = URI.create(servletRequest.requestURI),
         matchId = id,

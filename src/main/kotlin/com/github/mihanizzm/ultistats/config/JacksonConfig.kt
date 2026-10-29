@@ -13,6 +13,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.ProblemDetail
 import org.springframework.http.converter.json.ProblemDetailJacksonMixin
+import org.openapitools.jackson.nullable.JsonNullableModule
 import java.time.Duration
 
 @Configuration
@@ -22,6 +23,7 @@ class JacksonConfig {
         .addMixIn(ProblemDetail::class.java, ProblemDetailJacksonMixin::class.java)
         .registerModule(JavaTimeModule())
         .registerModule(KotlinModule.Builder().build())
+        .registerModule(JsonNullableModule())
         .setSerializationInclusion(JsonInclude.Include.NON_NULL)
         .enable(SerializationFeature.INDENT_OUTPUT)
         .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
