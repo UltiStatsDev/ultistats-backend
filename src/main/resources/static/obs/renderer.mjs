@@ -28,7 +28,14 @@ export class Renderer {
    const path=document.createElementNS(icon.namespaceURI,'path');path.setAttribute('d',paths[row.category]);
    icon.append(title,path);node.replaceChildren(side(row.left,'left'),icon,side(row.right,'right'));
   }
-  // Keep stable nodes so updates never replay entry animation.
-  for(const row of [...rows].reverse()) {const node=this.nodes.get(row.event.id);if(node)this.root.prepend(node);}
+  // Reinserting even the same node restarts its CSS entrance in Chromium.
+  // Only insert new/out-of-order rows; leave correctly placed rows connected.
+  let cursor=this.root.firstElementChild;
+  for(const row of rows) {
+   while(cursor?.classList.contains('leaving'))cursor=cursor.nextElementSibling;
+   const node=this.nodes.get(row.event.id);if(!node)continue;
+   if(node===cursor)cursor=cursor.nextElementSibling;
+   else this.root.insertBefore(node,cursor);
+  }
  }
 }
