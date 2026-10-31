@@ -16,3 +16,6 @@ data class EventLogChangedSignal(
 data class MatchFinishedSignal(
     override val matchId: UUID,
 ) : MatchRealtimeSignal
+
+/** Additive OBS invalidation; existing match SSE event contracts do not consume it. */
+data class MatchChangedSignal(override val matchId: UUID) : MatchRealtimeSignal
