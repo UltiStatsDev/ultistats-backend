@@ -31,7 +31,7 @@ class EventBatchController(private val events: EventService) {
         description = "Returns active events in sequenceNumber order, the highest ever allocated number (including deleted events), and logRevision under the match lock. Use both position fields for the next batch. No events are reordered by occurredAt.")
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Consistent snapshot", content = [Content(schema = Schema(implementation = EventLogResponse::class))]),
-        ApiResponse(responseCode = "404", description = "Match not found"),
+        ApiResponse(responseCode = "404", description = "Match not found: empty body, no Content-Type header", content = [Content()]),
     )
     fun snapshot(@PathVariable matchId: UUID): ResponseEntity<EventLogResponse> =
         events.snapshot(matchId)?.let { ResponseEntity.ok(it) } ?: ResponseEntity.notFound().build()

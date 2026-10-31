@@ -285,6 +285,15 @@ batch не применяется.
 существующие lifecycle/timestamp коды. Ошибки формы, отсутствующие UUID,
 повтор UUID внутри запроса и неверные участники возвращают `400`.
 
+В `application/problem+json` поле `instance` — URI reference (`uri-reference`
+в raw OpenAPI), обычно относительный путь запроса, например
+`/api/v1/players` или `/api/v2/matches/{matchId}/events/batch`.
+Это относится к обычному `ProblemDetail` и batch-ошибкам. Malformed JSON
+может вернуть общий `INVALID_REQUEST` без `lastSequenceNumber` и `logRevision`.
+GET `/api/v2/matches/{matchId}/events` для несуществующего матча возвращает
+`404` с **пустым телом и без заголовка Content-Type**; клиент не должен
+ожидать JSON в этом ответе. Это существующее wire-поведение сохраняется.
+
 Events API v1 остаётся поддерживаемым и **не deprecated**. Backend v2 не означает,
 что frontend уже мигрировал или прошёл полевые матчи: эти этапы #71 выполняются
 отдельно; deprecated для v1 допустим только после их успешного завершения.
