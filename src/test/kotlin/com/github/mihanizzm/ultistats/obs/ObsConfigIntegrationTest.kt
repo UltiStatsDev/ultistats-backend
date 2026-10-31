@@ -24,6 +24,8 @@ class ObsConfigIntegrationTest {
     @Autowired lateinit var service: ObsConfigService
     @Autowired lateinit var transaction: TransactionTemplate
 
+    @Autowired lateinit var realtime: com.github.mihanizzm.ultistats.realtime.MatchRealtimePublisher
+
     @BeforeEach fun reset() { database.resetConfig() }
 
     private fun defaults() = mvc.perform(get("/api/v1/obs/config"))
@@ -81,4 +83,37 @@ class ObsConfigIntegrationTest {
         org.junit.jupiter.api.Assertions.assertEquals(5, service.get().maxRows)
         org.junit.jupiter.api.Assertions.assertFalse(stream.response.contentAsString.contains("config-changed"))
     }
+    @Test fun `shared OBS transport documents raw schema and delivers only committed notifications`() {
+        val stream = mvc.perform(get("/api/v1/obs/stream")).andExpect(status().isOk)
+            .andExpect(request().asyncStarted()).andReturn()
+        try {
+            val matchId = java.util.UUID.randomUUID()
+            val eventId = java.util.UUID.randomUUID()
+            transaction.executeWithoutResult {
+                service.save(ObsConfig(maxRows = 9))
+                realtime.eventLogChanged(matchId, com.github.mihanizzm.ultistats.dto.response.realtime.MatchRealtimeOperation.UPDATED, eventId)
+                realtime.matchFinished(matchId)
+                org.assertj.core.api.Assertions.assertThat(stream.response.contentAsString)
+                    .doesNotContain("event:config-changed", "event:event-log-changed", "event:match-finished")
+            }
+            org.assertj.core.api.Assertions.assertThat(stream.response.contentAsString)
+                .contains("event:connected", "event:config-changed", "event:event-log-changed", "event:match-finished", matchId.toString(), eventId.toString())
+            // Shared config remains live after a finished match; this is not a terminal match subscription.
+            val before = stream.response.contentAsString
+            service.save(ObsConfig(maxRows = 10))
+            org.assertj.core.api.Assertions.assertThat(stream.response.contentAsString.length).isGreaterThan(before.length)
+            val committed = stream.response.contentAsString
+            transaction.executeWithoutResult { status ->
+                service.save(ObsConfig(maxRows = 11))
+                realtime.eventLogChanged(matchId, com.github.mihanizzm.ultistats.dto.response.realtime.MatchRealtimeOperation.DELETED, eventId)
+                realtime.matchFinished(matchId)
+                status.setRollbackOnly()
+            }
+            org.assertj.core.api.Assertions.assertThat(stream.response.contentAsString).isEqualTo(committed)
+            org.assertj.core.api.Assertions.assertThat(service.get().maxRows).isEqualTo(10)
+            mvc.perform(get("/v3/api-docs")).andExpect(status().isOk)
+                .andExpect(jsonPath("$.paths['/api/v1/obs/stream'].get.responses['200'].content['text/event-stream'].schema.type").value("string"))
+        } finally { runCatching { stream.request.asyncContext?.complete() } }
+    }
+
 }

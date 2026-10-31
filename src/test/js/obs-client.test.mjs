@@ -20,24 +20,25 @@ test('requests arriving during failed fetch are retained and close cancels retri
 import {Feed,defaults} from '../../main/resources/static/obs/feed.mjs';
 const goal={id:'goal',type:'GOAL',sequenceNumber:1,fromParticipantId:'a',toParticipantId:'b'};
 const settle=()=>new Promise(setImmediate);
-function watcher(t,hasVisibleRows) {
+function watcher(t,hasVisibleRows,initiallyFinished=false) {
  t.mock.timers.enable({apis:['Date','setTimeout','setInterval'],now:0});
- const oldSource=globalThis.EventSource,oldFetch=globalThis.fetch;
+ const oldWorker=globalThis.SharedWorker,oldFetch=globalThis.fetch;
  const state={snapshot:{events:[],logRevision:0},reads:0,fail:false};
- class Source {
-  constructor(){this.closed=false;this.handlers=new Map();state.source=this;}
-  addEventListener(name,handler){this.handlers.set(name,handler);}
-  emit(name){if(!this.closed)this.handlers.get(name)?.();}
+ class Port {
+  constructor(){this.closed=false;state.source=this;}
+  start(){}
+  postMessage(message){if(message.type==='unsubscribe')this.closed=true;}
+  emit(name){if(!this.closed)this.onmessage?.({data:{type:'event',name,data:{}}});}
   close(){this.closed=true;}
  }
- globalThis.EventSource=Source;
+ globalThis.SharedWorker=class {constructor(){this.port=new Port();}};
  globalThis.fetch=async()=>{
   state.reads++;if(state.fail)throw Error('offline');
   return {ok:true,json:async()=>state.snapshot};
  };
  state.feed=new Feed(defaults,()=>Date.now());
- state.stop=watchMatch('match',value=>state.feed.reconcile(value),()=>{},hasVisibleRows??(()=>state.feed.rows().length>0));
- t.after(()=>{state.stop();globalThis.EventSource=oldSource;globalThis.fetch=oldFetch;});
+ state.stop=watchMatch('match',value=>state.feed.reconcile(value),()=>{},hasVisibleRows??(()=>state.feed.rows().length>0),initiallyFinished);
+ t.after(()=>{state.stop();globalThis.SharedWorker=oldWorker;globalThis.fetch=oldFetch;});
  return state;
 }
 test('terminal window updates and deletes visible rows without replay or extending TTL',async t=>{
@@ -83,4 +84,11 @@ test('successful empty final snapshot starts no polling window',async t=>{
  const s=watcher(t);s.source.emit('connected');await settle();
  s.source.emit('match-finished');await settle();assert.equal(s.reads,2);
  t.mock.timers.tick(120000);await settle();assert.equal(s.reads,2);
+});
+
+test('source opened for an already finished match keeps history quiet and terminates match subscription',async t=>{
+ const s=watcher(t,undefined,true);s.snapshot={events:[goal],logRevision:1};
+ s.source.emit('connected');await settle();
+ assert.equal(s.source.closed,true);assert.equal(s.feed.rows().length,0);assert.equal(s.reads,1);
+ t.mock.timers.tick(120000);await settle();assert.equal(s.reads,1);
 });

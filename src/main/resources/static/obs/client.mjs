@@ -1,3 +1,5 @@
+import {SharedSource} from './transport.mjs';
+
 export async function readJson(url) {
     const response=await fetch(url,{cache:'no-store'});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -40,21 +42,21 @@ export class Reconciler {
 
 export function watchConfig(onConfig,onStatus=()=>{}) {
     const reader=new Reconciler(()=>readJson('/api/v1/obs/config'),onConfig,onStatus);
-    const source=new EventSource('/api/v1/obs/config/stream');
+    const source=new SharedSource();
     source.addEventListener('connected',()=>void reader.request());
     source.addEventListener('config-changed',()=>void reader.request());
     source.onerror=()=>onStatus('Настройки: переподключение…');
     return ()=>{source.close();reader.close();};
 }
 
-export function watchMatch(matchId,onSnapshot,onStatus=()=>{},hasVisibleRows=()=>false) {
+export function watchMatch(matchId,onSnapshot,onStatus=()=>{},hasVisibleRows=()=>false,initiallyFinished=false) {
     const reader=new Reconciler(()=>readJson(`/api/v2/matches/${encodeURIComponent(matchId)}/events`),onSnapshot,onStatus);
-    const source=new EventSource(`/api/v1/matches/${encodeURIComponent(matchId)}/events/stream`);
+    const source=new SharedSource(matchId);
     let terminalTimer=null,disposed=false;
     const stopTerminal=()=>{clearInterval(terminalTimer);terminalTimer=null;reader.close();};
-    source.addEventListener('connected',()=>void reader.request());
+    source.addEventListener('connected',()=>{if(initiallyFinished)finish();else void reader.request();});
     source.addEventListener('event-log-changed',()=>void reader.request());
-    source.addEventListener('match-finished',()=>{
+    const finish=()=>{
         source.close();
         // First obtain the final committed snapshot even if the feed is empty or
         // REST temporarily fails. Only then start the bounded correction window.
@@ -68,7 +70,8 @@ export function watchMatch(matchId,onSnapshot,onStatus=()=>{},hasVisibleRows=()=
                 void reader.request();
             },1000);
         });
-    });
+    };
+    source.addEventListener('match-finished',finish);
     source.onerror=()=>onStatus('Матч: переподключение…');
     return ()=>{disposed=true;source.close();stopTerminal();};
 }
