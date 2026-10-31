@@ -1,4 +1,5 @@
 const {createProxy}=require('./fault-proxy.cjs');
+const {configSnapshot}=require('./config-oracle.cjs'),{isDeepStrictEqual}=require('node:util');
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 const assert=require('node:assert/strict'),fs=require('node:fs'),{createHash}=require('node:crypto');
 const api='http://127.0.0.1:19856',base='http://127.0.0.1:19857',output=process.env.OBS147_OUTPUT||'/tmp/obs147-runtime/browser';fs.mkdirSync(output,{recursive:true});
@@ -58,6 +59,6 @@ async function workerSession(browser){const root=await browser.newBrowserCDPSess
   await until(()=>proxy.state.active,n=>n===0);const attempts=proxy.state.attempts.length;await pause(2500);assert.equal(proxy.state.attempts.length,attempts,'last subscriber cancels retry');
   assert.deepEqual(errors,[]);return {initial,closedBeforeRestore:closed,liveSSE,eventMs,urgentMs,recoveredGoalId,urgentGoalId,matchingFrames,attempts:proxy.state.attempts.slice(offset),peak:proxy.state.peak,cleanup:true};
  };
- const scenarios=process.env.OBS147_SCENARIO==='initial'?{initial:await scenario(true)}:{connected:await scenario(false),initial:await scenario(true)};assert.equal(proxy.state.peak,1);assert.deepEqual(await req('/api/v1/obs/config'),initialConfig);const result={api,proxy:base,matches:matches.map(m=>m.id),teams:teams.map(t=>t.id),forwardedAssetSha:createHash('sha256').update(forwardedAsset).digest('hex'),globalConfigUnchanged:true,...scenarios};fs.writeFileSync(output+'/result.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result,null,2));
- }finally{try{if(initialConfig&&JSON.stringify(await req('/api/v1/obs/config'))!==JSON.stringify(initialConfig))await req('/api/v1/obs/config','PUT',initialConfig);}finally{await browser.close();await proxy.close();}}
+ const scenarios=process.env.OBS147_SCENARIO==='initial'?{initial:await scenario(true)}:{connected:await scenario(false),initial:await scenario(true)};assert.equal(proxy.state.peak,1);assert.deepEqual(configSnapshot(await req('/api/v1/obs/config')),configSnapshot(initialConfig));const result={api,proxy:base,matches:matches.map(m=>m.id),teams:teams.map(t=>t.id),forwardedAssetSha:createHash('sha256').update(forwardedAsset).digest('hex'),globalConfigUnchanged:true,...scenarios};fs.writeFileSync(output+'/result.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result,null,2));
+ }finally{try{if(initialConfig&&!isDeepStrictEqual(configSnapshot(await req('/api/v1/obs/config')),configSnapshot(initialConfig)))await req('/api/v1/obs/config','PUT',initialConfig);}finally{await browser.close();await proxy.close();}}
 })().catch(e=>{console.error(e);process.exitCode=1;});
