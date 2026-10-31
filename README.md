@@ -294,6 +294,56 @@ GET `/api/v2/matches/{matchId}/events` для несуществующего м�
 `404` с **пустым телом и без заголовка Content-Type**; клиент не должен
 ожидать JSON в этом ответе. Это существующее wire-поведение сохраняется.
 
+### Replay-safe undo (v2)
+
+Для одной отмены наблюдаемого хвоста сохраните весь envelope **до первого HTTP**:
+
+```http
+POST /api/v2/matches/{matchId}/events/undo
+Content-Type: application/json
+
+{"commandId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","expectedLastEventId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","expectedLogRevision":7}
+```
+
+Identity — `(matchId,commandId)`, без TTL на lifetime матча. Parsed UUID и Long
+привязывают identity к обоим preconditions, независимо от JSON formatting.
+Под match lock сначала проверяется receipt. Точный повтор возвращает исторический
+результат без записи, новой revision или SSE, даже после дальнейших изменений.
+Новый запрос удаляет только указанный active tail при совпадении revision, соблюдая
+обычные lifecycle/FINISHED правила. Счёт, invalidation batch retry, revision и
+receipt фиксируются атомарно. Durable terminal rejection также привязывает identity.
+
+`200` содержит `UndoCommandResponse`:
+
+```json
+{"matchId":"11111111-1111-1111-1111-111111111111","commandId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","expectedLastEventId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","expectedLogRevision":7,"outcome":"APPLIED","resultLogRevision":8,"removedEventId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","removedSequenceNumber":6,"rejection":null}
+```
+
+Все поля обязательны. Для `REJECTED` removedEventId/removedSequenceNumber равны
+`null`, rejection — `{code,detail}`. resultLogRevision — фактически наблюдавшаяся
+revision транзакции отказа или committed revision успешной отмены, **не текущая
+canonical position**. Новый и replayed `REJECTED` возвращают `409` ProblemDetail
+с `code` и `commandResult: UndoCommandResponse`. Коды: `EVENT_LOG_STALE` при другом
+UUID хвоста/revision; `UNDO_LOG_EMPTY` для пустого журнала; существующие
+lifecycle/sequence коды. Другой payload того же ID возвращает
+`409 UNDO_COMMAND_CONFLICT` **без commandResult**. `400 INVALID_REQUEST` означает
+malformed body/UUID, отсутствующее/null поле или отрицательную revision; identity
+не резервируется. `404 RESOURCE_NOT_FOUND` — отсутствующий/удалённый матч.
+
+После потери ответа/reload используйте
+`GET /api/v2/matches/{matchId}/events/undo/{commandId}`: `200` возвращает тот же
+исторический `APPLIED` **или `REJECTED`**. `404 RESOURCE_NOT_FOUND` означает
+отсутствие видимого receipt на момент lookup или недоступный матч; запрос ещё
+может быть in flight. **Не создавайте новый ID, не снимайте unresolved guard**:
+повторите исходный envelope с тем же ID/payload. После доказанного исхода отдельно
+загрузите canonical `GET /api/v2/matches/{matchId}/events` перед возобновлением ввода.
+Soft-deleted матч скрывает receipt; физически receipt не истекает. Старому
+неизвестному результату v1 нельзя задним числом назначить commandId.
+
+Legacy bodyless `POST /api/v1/matches/{matchId}/events/undo` сохраняет прежние
+ответы и неидемпотентность. Транспорт может повторить POST без JS retry;
+replay safety предоставляется только новым guarded v2 контрактом.
+
 Events API v1 остаётся поддерживаемым и **не deprecated**. Backend v2 не означает,
 что frontend уже мигрировал или прошёл полевые матчи: эти этапы #71 выполняются
 отдельно; deprecated для v1 допустим только после их успешного завершения.

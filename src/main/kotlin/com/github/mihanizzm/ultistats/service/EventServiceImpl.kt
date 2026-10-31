@@ -1,5 +1,13 @@
 package com.github.mihanizzm.ultistats.service
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.github.mihanizzm.ultistats.dto.request.UndoEventRequest
+import com.github.mihanizzm.ultistats.dto.response.UndoCommandResponse
+import com.github.mihanizzm.ultistats.dto.response.UndoCommandOutcome
+import com.github.mihanizzm.ultistats.dto.response.UndoCommandRejection
+import com.github.mihanizzm.ultistats.model.UndoCommandReceipt
+import com.github.mihanizzm.ultistats.repository.jpa.SpringDataUndoCommandReceiptRepository
+import com.github.mihanizzm.ultistats.service.result.UndoCommandResult
 import com.github.mihanizzm.ultistats.dto.request.CreateEventBatchRequest
 import com.github.mihanizzm.ultistats.dto.response.EventLogResponse
 import com.github.mihanizzm.ultistats.dto.response.EventResponse
@@ -42,6 +50,8 @@ class EventServiceImpl(
     private val realtimePublisher: MatchRealtimePublisher,
     private val eventFactory: EventFactory,
     private val receiptRepository: SpringDataEventBatchReceiptRepository,
+    private val undoReceipts: SpringDataUndoCommandReceiptRepository,
+    private val objectMapper: ObjectMapper,
 ) : EventService {
     @Transactional
     override fun create(event: Event, matchId: UUID, eventId: UUID?): EventCommandResult {
@@ -243,6 +253,68 @@ class EventServiceImpl(
             else -> result
         }
     }
+
+    @Transactional
+    override fun undoOutcome(matchId: UUID, commandId: UUID): UndoCommandResponse? {
+        // Serialize lookup with an in-flight command holding this match lock.
+        matchService.getForUpdate(matchId) ?: return null
+        return undoReceipts.findByMatchIdAndCommandId(matchId, commandId)?.outcome()
+    }
+
+    @Transactional
+    override fun undo(matchId: UUID, request: UndoEventRequest): UndoCommandResult {
+        val commandId = request.commandId
+        val expectedTail = request.expectedLastEventId
+        val expectedRevision = request.expectedLogRevision
+        if (commandId == null || expectedTail == null || expectedRevision == null || expectedRevision < 0) {
+            return UndoCommandResult.Invalid(MatchProblem(
+                MatchProblemCode.INVALID_REQUEST, "Invalid undo command",
+                "commandId, expectedLastEventId and a non-negative expectedLogRevision are required",
+            ))
+        }
+        val match = matchService.getForUpdate(matchId) ?: return UndoCommandResult.NotFound
+        undoReceipts.findByMatchIdAndCommandId(matchId, commandId)?.let { receipt ->
+            return if (receipt.expectedLastEventId == expectedTail && receipt.expectedLogRevision == expectedRevision) {
+                UndoCommandResult.Recorded(receipt.outcome())
+            } else {
+                UndoCommandResult.Conflict(MatchProblem(
+                    MatchProblemCode.UNDO_COMMAND_CONFLICT, "Undo command identity conflict",
+                    "This commandId is already bound to a different undo payload; recover the original command outcome",
+                ))
+            }
+        }
+        fun record(removed: EventEntity? = null, problem: MatchProblem? = null): UndoCommandResult.Recorded {
+            val response = UndoCommandResponse(
+                matchId, commandId, expectedTail, expectedRevision,
+                if (removed != null) UndoCommandOutcome.APPLIED else UndoCommandOutcome.REJECTED,
+                match.eventLogRevision, removed?.id, removed?.sequenceNumber,
+                problem?.let { UndoCommandRejection(it.code, it.detail) },
+            )
+            // Flush failure rolls back deletion, score, revision and AFTER_COMMIT notification too.
+            undoReceipts.saveAndFlush(UndoCommandReceipt(
+                matchId = matchId, commandId = commandId, expectedLastEventId = expectedTail,
+                expectedLogRevision = expectedRevision, resultJson = objectMapper.writeValueAsString(response),
+            ))
+            return UndoCommandResult.Recorded(response)
+        }
+        val tail = eventRepository.findFirstByMatchIdAndDeletedAtIsNullOrderBySequenceNumberDesc(matchId)
+            ?: return record(problem = MatchProblem(MatchProblemCode.UNDO_LOG_EMPTY, "Empty event log", "There is no active event to undo"))
+        if (tail.id != expectedTail || match.eventLogRevision != expectedRevision) {
+            return record(problem = MatchProblem(
+                MatchProblemCode.EVENT_LOG_STALE, "Stale undo position",
+                "The active tail or logRevision differs from the observed undo position",
+            ))
+        }
+        return when (val result = removeLocked(match, tail)) {
+            EventCommandResult.Deleted -> record(removed = tail)
+            is EventCommandResult.Conflict -> record(problem = result.problem)
+            is EventCommandResult.InvalidState -> record(problem = result.problem)
+            else -> error("Unexpected result while removing a locked undo tail: $result")
+        }
+    }
+
+    private fun UndoCommandReceipt.outcome(): UndoCommandResponse =
+        objectMapper.readValue(resultJson, UndoCommandResponse::class.java)
 
     /** Both deletion commands hold the match lock for selection, validation and persistence. */
     private fun removeLocked(match: Match, existing: EventEntity): EventCommandResult {

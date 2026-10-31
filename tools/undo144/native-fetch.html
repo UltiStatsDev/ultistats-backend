@@ -1,0 +1,26 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Replay-safe undo native fetch control</title>
+<style>body{font:18px system-ui;margin:40px;max-width:1000px}button{font:inherit;padding:12px}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style>
+<h1>Replay-safe undo native fetch control</h1>
+<p>One onclick, one native undo fetch. No React, RTK, application session or JavaScript retry.</p>
+<p>Warmup: <output id="warmup">loading</output></p>
+<p>Native undo fetch invocations: <output id="invocations">0</output></p>
+<button id="undo" disabled>Run one native undo fetch</button><pre id="result">Not started</pre>
+<script>
+const fixture=__FIXTURE__;
+let invocations=0;
+document.querySelector('#undo').onclick=async()=>{
+  document.querySelector('#undo').disabled=true;
+  document.querySelector('#invocations').textContent=String(++invocations);
+  try {
+    const response=await fetch(`/api/v2/matches/${fixture.matchId}/events/undo`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(fixture.command)});
+    const body=await response.text();
+    document.querySelector('#result').textContent=`HTTP ${response.status}\n${body}`;
+  }catch(error){document.querySelector('#result').textContent=String(error);}
+};
+(async()=>{
+  const response=await fetch(`/api/v2/matches/${fixture.matchId}/events`,{cache:'no-store'});
+  const log=await response.json();
+  document.querySelector('#warmup').textContent=`HTTP ${response.status}, canonical events ${log.events.length}, revision ${log.logRevision}`;
+  document.querySelector('#undo').disabled=false;
+})();
+</script></html>
