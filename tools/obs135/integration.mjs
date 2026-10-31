@@ -29,7 +29,8 @@ try {
  const root=await browser.newBrowserCDPSession();
  const targets=async()=>(await root.send('Target.getTargets')).targetInfos.filter(t=>t.type==='shared_worker'&&t.url===base+'/obs/shared-worker.js');
  for(let i=0;i<6;i++){
-  const page=await context.newPage();pages.push(page);await page.goto(`${base}/obs-scoreboard.html?matchId=${i<4?match.id:other.id}`);await page.locator('.scoreboard-score').waitFor();
+  const id=i<4?match.id:other.id,input=i===1?id.toUpperCase():i===2?id.replace(/[a-f]/g,(c,index)=>index%2?c.toUpperCase():c):id;
+  const page=await context.newPage();pages.push(page);await page.goto(`${base}/obs-scoreboard.html?matchId=${input}`);await page.locator('.scoreboard-score').waitFor();
  }
  const log=await context.newPage();await log.goto(`${base}/obs-battle-log.html?matchId=${match.id}`);await log.locator('#feed').waitFor({state:'attached'});
  const admin=await context.newPage();await admin.setViewportSize({width:1440,height:1100});await admin.goto(base+'/obs-admin.html');
@@ -44,6 +45,7 @@ try {
   root.send('Target.sendMessageToTarget',{sessionId,message:JSON.stringify({id,method:'Runtime.evaluate',params:{expression,returnByValue:true}})}).catch(reject);
  });}
  const transport=await worker('({ports:clients.size,stream:source.url,readyState:source.readyState})');
+ assert.ok(await worker(`([...clients.values()].every(c=>c.matchId===null||c.matchId==='${match.id}'||c.matchId==='${other.id}'))`),'all worker match subscriptions use canonical UUIDs');
  assert.equal(transport.readyState,1);assert.equal(transport.stream,base+'/api/v1/obs/stream');assert.equal((await targets()).length,1);
  const begin=performance.now();await Promise.all(pages.map(p=>p.evaluate(()=>fetch('/api/v1/obs/config').then(r=>{if(!r.ok)throw Error(r.status);return r.json();}))));const restMs=performance.now()-begin;assert.ok(restMs<2000);
  assert.equal(await pages[0].locator('.scoreboard-clock').textContent(),'00:00');assert.equal(await pages[0].locator('.scoreboard-score').textContent(),'0 : 0');

@@ -78,3 +78,18 @@ test('browser online resumes reconciliation before EventSource retry and removes
  }finally{stop();}
  const count=calls;onlineTarget.dispatchEvent(new Event('online'));await pause(5);assert.equal(calls,count);
 });
+test('uppercase and mixed UUID subscriptions normalize before REST validation and worker routing while preserving match isolation',async()=>{
+ const id='abcdefab-cdef-abcd-efab-cdefabcdefab',priorFetch=globalThis.fetch,requests=[];
+ globalThis.fetch=async url=>{requests.push(url);return {ok:true,json:async()=>({...sample(),matchId:id})};};
+ try {
+  for(const input of [id,id.toUpperCase(),'AbCdEfAb-cDEF-aBcD-eFaB-CDEFabcdefAB']) {
+   const seen=[];const stop=watchScoreboard(input,s=>seen.push(s),()=>{},{Source,pollMs:100000});
+   try{await pause(0);assert.equal(seen.length,1);assert.equal(Source.instances.at(-1).id,id);
+    assert.equal(requests.at(-1),`/api/v1/obs/scoreboard/${id}`);
+   }finally{stop();}
+  }
+  globalThis.fetch=async()=>({ok:true,json:async()=>({...sample(),matchId:'ffffffff-ffff-ffff-ffff-ffffffffffff'})});
+  const seen=[],statuses=[];const stop=watchScoreboard(id.toUpperCase(),s=>seen.push(s),s=>statuses.push(s),{Source,pollMs:100000});
+  try{await pause(0);assert.equal(seen.length,0);assert.ok(statuses.some(s=>s.includes('Некорректные')));}finally{stop();}
+ }finally{globalThis.fetch=priorFetch;}
+});

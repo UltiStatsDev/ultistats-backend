@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonSetter
 import com.fasterxml.jackson.annotation.Nulls
 import com.github.mihanizzm.ultistats.model.MatchStatus
 import jakarta.validation.constraints.Size
+import io.swagger.v3.oas.annotations.media.Schema
 import java.time.Instant
 import java.util.UUID
 
@@ -23,7 +24,9 @@ data class ObsScoreboardSnapshot(
     val matchId: UUID,
     val teams: List<ObsScoreboardTeam>,
     val status: MatchStatus,
+    @field:Schema(types = ["string", "null"], format = "date-time", requiredMode = Schema.RequiredMode.REQUIRED)
     val startedAt: Instant?,
+    @field:Schema(types = ["string", "null"], format = "date-time", requiredMode = Schema.RequiredMode.REQUIRED)
     val endedAt: Instant?,
     val serverNow: Instant,
     val profile: ObsScoreboardProfile,

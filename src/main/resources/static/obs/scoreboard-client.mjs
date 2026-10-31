@@ -4,6 +4,8 @@ import {validateSnapshot} from './scoreboard-model.mjs';
 
 // Stays subscribed after FINISHED: permitted result corrections must reach an idle overlay too.
 export function watchScoreboard(matchId,onSnapshot,onStatus=()=>{},options={}) {
+ // UUID text is case-insensitive; canonicalize before REST, strict snapshot identity and worker routing.
+ matchId=matchId.toLowerCase();
  const {Source=SharedSource,pollMs=1000,timeoutMs=1500,retryMs=1000,onlineTarget=globalThis}=options;
  let controller=null,closed=false;
  const fetchSnapshot=options.fetchSnapshot??(async()=>{
