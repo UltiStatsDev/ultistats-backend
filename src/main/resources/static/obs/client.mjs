@@ -12,9 +12,10 @@ export class Reconciler {
         Object.assign(this,{fetchSnapshot,onSnapshot,onStatus,retryMs});
         this.pending=false; this.closed=false; this.loop=null; this.timer=null; this.wake=null;
     }
-    request() {
+    request(wakeRetry=false) {
         if(this.closed) return Promise.resolve();
         this.pending=true;
+        if(wakeRetry){clearTimeout(this.timer);this.wake?.();}
         if(!this.loop) this.loop=this.run().finally(()=>{this.loop=null;});
         return this.loop;
     }

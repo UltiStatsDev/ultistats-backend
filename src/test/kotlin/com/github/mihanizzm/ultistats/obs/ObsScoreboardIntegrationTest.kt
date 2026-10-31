@@ -133,4 +133,33 @@ class ObsScoreboardIntegrationTest {
         } finally { runCatching { stream.request.asyncContext?.complete() } }
     }
 
+    @Test fun `replacing planned teams cannot expose stale team overrides in canonical profile`() {
+        save(profile()).andExpect(status().isOk)
+        val replacement = UUID.randomUUID()
+        teams.create(Team(replacement, "Новая команда"))
+        matches.update(match, listOf(replacement, second), null, null)
+        mvc.perform(get(url())).andExpect(jsonPath("$.teams[0].teamId").value(replacement.toString()))
+            .andExpect(jsonPath("$.profile.shortNames").isEmpty).andExpect(jsonPath("$.profile.teamColors").isEmpty)
+        save(profile()).andExpect(status().isBadRequest)
+        save("{}").andExpect(status().isOk)
+    }
+
+    @Test fun `concurrent initial profile saves serialize as whole documents on match row`() {
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(2)
+        try {
+            val gate = java.util.concurrent.CountDownLatch(1)
+            val jobs = listOf("Первый", "Второй").map { name ->
+                pool.submit(java.util.concurrent.Callable {
+                    gate.await()
+                    save(profile(name)).andExpect(status().isOk)
+                })
+            }
+            gate.countDown();jobs.forEach { it.get(10, java.util.concurrent.TimeUnit.SECONDS) }
+            val persisted = jdbc.queryForList("SELECT payload FROM obs_scoreboard_profiles WHERE match_id = ?", match)
+            assertThat(persisted).hasSize(1)
+            assertThat(json.readTree(persisted[0]["payload"].toString())["shortNames"][first.toString()].asText())
+                .isIn("Первый", "Второй")
+        } finally { pool.shutdownNow() }
+    }
+
 }

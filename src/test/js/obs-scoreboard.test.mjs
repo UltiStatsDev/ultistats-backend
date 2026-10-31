@@ -59,3 +59,22 @@ test('bounded fetch timeout retries and disposal aborts outstanding work with no
   stop();const count=calls;await pause(25);assert.equal(calls,count);assert.equal(seen.length,0);
  }finally{globalThis.fetch=priorFetch;}
 });
+test('reconnect invalidation immediately wakes a pending REST backoff instead of waiting for stale retry deadline',async()=>{
+ let fail=true;const seen=[];
+ const stop=watchScoreboard('a',s=>seen.push(s),()=>{},{Source,pollMs:100000,retryMs:1000,
+  fetchSnapshot:async()=>{if(fail)throw Error('offline');return sample();}});
+ try {
+  await pause(0);fail=false;Source.instances.at(-1).emit('connected');await pause(20);
+  assert.equal(seen.length,1,'fresh connection must reconcile immediately');
+ }finally{stop();}
+});
+test('browser online resumes reconciliation before EventSource retry and removes online listener on dispose',async()=>{
+ const onlineTarget=new EventTarget(),seen=[];let fail=true,calls=0;
+ const stop=watchScoreboard('a',s=>seen.push(s),()=>{},{Source,pollMs:100000,retryMs:1000,onlineTarget,
+  fetchSnapshot:async()=>{calls++;if(fail)throw Error('offline');return sample();}});
+ try {
+  await pause(0);fail=false;onlineTarget.dispatchEvent(new Event('online'));await pause(20);
+  assert.equal(seen.length,1,'restored browser network should reconcile without waiting for SSE');
+ }finally{stop();}
+ const count=calls;onlineTarget.dispatchEvent(new Event('online'));await pause(5);assert.equal(calls,count);
+});

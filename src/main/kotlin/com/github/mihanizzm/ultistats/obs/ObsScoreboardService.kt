@@ -34,11 +34,18 @@ class ObsScoreboardService(
         val profile = jdbc.query("SELECT payload FROM obs_scoreboard_profiles WHERE match_id = ?",
             { rs, _ -> json.readValue(rs.getString(1), ObsScoreboardProfile::class.java) }, matchId)
             .firstOrNull() ?: ObsScoreboardProfile()
+        // A planned match may legitimately replace its teams after a profile was saved.
+        // Expose only current team overrides so an unchanged admin save remains valid.
+        val members = teams.map { it.teamId }.toSet()
+        val currentProfile = profile.copy(
+            shortNames = profile.shortNames.filterKeys { it in members },
+            teamColors = profile.teamColors.filterKeys { it in members },
+        )
         return ObsScoreboardSnapshot(matchId, teams, when {
             times.second != null -> MatchStatus.FINISHED
             times.first != null -> MatchStatus.IN_PROGRESS
             else -> MatchStatus.PLANNED
-        }, times.first, times.second, Instant.now(), profile)
+        }, times.first, times.second, Instant.now(), currentProfile)
     }
 
     @Transactional
