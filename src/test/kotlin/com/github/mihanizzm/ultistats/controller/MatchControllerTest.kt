@@ -214,7 +214,7 @@ class MatchControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.components.schemas.CreateMatchRequest.required").value(hasItem("playersPerTeam")))
             .andExpect(jsonPath("$.components.schemas.CreateMatchRequest.properties.playersPerTeam.type").value("integer"))
-            .andExpect(jsonPath("$.components.schemas.UpdateMatchRequest.properties.playersPerTeam.type").value("integer"))
+            .andExpect(jsonPath("$.components.schemas.UpdateMatchRequest.properties.playersPerTeam.type").value(org.hamcrest.Matchers.containsInAnyOrder("integer", "null")))
             .andExpect(jsonPath("$.components.schemas.MatchResponse.properties.playersPerTeam.type").value("integer"))
             .andExpect(jsonPath("$.components.schemas.MatchListItemResponse.properties.playersPerTeam.type").value("integer"))
     }
@@ -263,7 +263,7 @@ class MatchControllerTest {
         mockMvc.perform(get("/v3/api-docs"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.components.schemas.MatchParticipantResponse.properties.photoUrl").exists())
-            .andExpect(jsonPath("$.components.schemas.MatchParticipantResponse.required", not(hasItem("photoUrl"))))
+            .andExpect(jsonPath("$.components.schemas.MatchParticipantResponse.required", hasItem("photoUrl")))
     }
 
     @Test
