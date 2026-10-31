@@ -116,5 +116,6 @@ class StatisticsResponseMapper {
     private fun PlayerTimeStatistics.toResponse() = PlayerTimeStatisticsResponse(
         possessionTimeMs = totalPossessionTime.toMillis(),
         averagePossessionTimeMs = averagePossessionTime.toMillis(),
+        averagePossessionTimeAvailable = averagePossessionTimeAvailable,
     )
 }
