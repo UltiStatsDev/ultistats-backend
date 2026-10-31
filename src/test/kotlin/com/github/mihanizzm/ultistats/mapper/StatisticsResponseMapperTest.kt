@@ -93,6 +93,7 @@ class StatisticsResponseMapperTest {
                                 time = PlayerTimeStatisticsResponse(
                                     possessionTimeMs = 21_000L,
                                     averagePossessionTimeMs = 1_500L,
+                                    averagePossessionTimeAvailable = true,
                                 ),
                             ),
                             ParticipantStatisticsResponse(
@@ -126,6 +127,7 @@ class StatisticsResponseMapperTest {
                                 time = PlayerTimeStatisticsResponse(
                                     possessionTimeMs = 9_000L,
                                     averagePossessionTimeMs = 1_000L,
+                                    averagePossessionTimeAvailable = true,
                                 ),
                             ),
                         ),
@@ -255,6 +257,7 @@ class StatisticsResponseMapperTest {
                 time = PlayerTimeStatistics(
                     totalPossessionTime = Duration.ofSeconds(9),
                     averagePossessionTime = Duration.ofSeconds(1),
+                    averagePossessionTimeAvailable = true,
                 ),
             ),
             PlayerStatistics(
@@ -282,6 +285,7 @@ class StatisticsResponseMapperTest {
                 time = PlayerTimeStatistics(
                     totalPossessionTime = Duration.ofSeconds(21),
                     averagePossessionTime = Duration.ofMillis(1_500),
+                    averagePossessionTimeAvailable = true,
                 ),
             ),
         ),

@@ -74,6 +74,7 @@ class StatisticsResponseMapper {
         pulls = pulls,
         bricks = bricks,
         possessions = possessions,
+        breaks = breaks,
     )
 
     private fun PlayerAttackStatistics.toResponse() = PlayerAttackStatisticsResponse(
@@ -115,5 +116,6 @@ class StatisticsResponseMapper {
     private fun PlayerTimeStatistics.toResponse() = PlayerTimeStatisticsResponse(
         possessionTimeMs = totalPossessionTime.toMillis(),
         averagePossessionTimeMs = averagePossessionTime.toMillis(),
+        averagePossessionTimeAvailable = averagePossessionTimeAvailable,
     )
 }

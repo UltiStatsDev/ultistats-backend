@@ -97,7 +97,7 @@ class StatisticsZipExporterTest {
             number = 17,
             attack = PlayerAttackStatisticsResponse(11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21),
             defense = DefenseStatisticsResponse(22, 23, 24, 25, 26),
-            time = PlayerTimeStatisticsResponse(27_000, 28_000),
+            time = PlayerTimeStatisticsResponse(27_000, 28_000, true),
         )
         val unknown = ParticipantStatisticsResponse(
             participantId = UNKNOWN_ID,
@@ -129,9 +129,9 @@ class StatisticsZipExporterTest {
         val participantsCsv = readEntries(exporter.export(response)).getValue("participants.csv")
 
         assertThat(participantsCsv).isEqualTo(
-            "match_id,team_id,team_name,participant_id,kind,unknown_slot,first_name,last_name,display_name,number,passes,catches,assists,goals,drops_on_marker,drops_on_field,incomplete_passes,callahan_drops,disc_possessions,pulls,bricks,blocks,blocks_as_marker,blocks_as_field_player,interceptions,callahans,possession_time_ms,average_possession_time_ms\r\n" +
-                "$MATCH_ID,$TEAM_ID,Команда 1,$PLAYER_ID,PLAYER,,Иван,Иванов,\"Иван, \"\"Молния\"\"\nИванов\",17,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27000,28000\r\n" +
-                "$MATCH_ID,$TEAM_ID,Команда 1,$UNKNOWN_ID,UNKNOWN,2,,,Неизвестный игрок 2,,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\r\n",
+            "match_id,team_id,team_name,participant_id,kind,unknown_slot,first_name,last_name,display_name,number,passes,catches,assists,goals,drops_on_marker,drops_on_field,incomplete_passes,callahan_drops,disc_possessions,pulls,bricks,blocks,blocks_as_marker,blocks_as_field_player,interceptions,callahans,possession_time_ms,average_possession_time_ms,average_possession_time_available\r\n" +
+                "$MATCH_ID,$TEAM_ID,Команда 1,$PLAYER_ID,PLAYER,,Иван,Иванов,\"Иван, \"\"Молния\"\"\nИванов\",17,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27000,28000,true\r\n" +
+                "$MATCH_ID,$TEAM_ID,Команда 1,$UNKNOWN_ID,UNKNOWN,2,,,Неизвестный игрок 2,,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,false\r\n",
         )
     }
 

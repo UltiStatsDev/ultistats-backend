@@ -1,0 +1,1 @@
+{"private":true,"type":"module","scripts":{"check":"node check.mjs ../../build/contracts/nullable-openapi.json"},"devDependencies":{"openapi-typescript":"7.13.0","typescript":"6.0.3"}}
