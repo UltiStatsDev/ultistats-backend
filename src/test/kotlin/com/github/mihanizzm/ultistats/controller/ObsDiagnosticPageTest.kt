@@ -24,4 +24,10 @@ class ObsDiagnosticPageTest {
             .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
             .andExpect(content().string(org.hamcrest.Matchers.containsString("UltiStats OBS diagnostics")))
     }
+    @Test
+    fun `broadcast and admin pages share renderer assets`() {
+        listOf("/obs-battle-log.html", "/obs-admin.html", "/obs/renderer.mjs", "/obs/overlay.mjs").forEach { path ->
+            mockMvc.perform(get(path)).andExpect(status().isOk)
+        }
+    }
 }
