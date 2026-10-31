@@ -1,8 +1,9 @@
 import {resolveRow} from './feed.mjs';
 import {teamAccent,readableText} from './colors.mjs';
 const labels={GOAL:'Гол',BLOCK:'Блок',INTERCEPTION:'Перехват',CALLAHAN:'Кэллахан'};
-const paths={GOAL:'M4 12h14m-5-5 5 5-5 5M20 4v16',BLOCK:'M12 3 4 7v5c0 5 8 9 8 9s8-4 8-9V7z',
- INTERCEPTION:'m5 5 14 14M19 5 5 19m0-6v6h6m2-14h6v6',CALLAHAN:'m13 2-9 12h7l-1 8 10-13h-7z'};
+// Original INTERCEPTION outline: flat disc on the left, upright catching hand on the right.
+const paths={GOAL:'M4 12h16m-6-6 6 6-6 6',BLOCK:'M12 3 4 7v5c0 5 8 9 8 9s8-4 8-9V7z',
+ INTERCEPTION:'M10 11c0 1-2 1.8-4.5 1.8S1 12 1 11s2-1.8 4.5-1.8S10 10 10 11ZM13 12V6a1.5 1.5 0 0 1 3 0v4-6a1.5 1.5 0 0 1 3 0v6-4a1.5 1.5 0 0 1 3 0v9c0 4-2 6-5 6h-1c-2 0-3-1-4-3l-2-4a1.3 1.3 0 0 1 2-1.5l2 2.5',CALLAHAN:'m13 2-9 12h7l-1 8 10-13h-7z'};
 export class Renderer {
  constructor(root) {this.root=root;this.nodes=new Map();}
  render(rows,match,config,autoColors={}) {
