@@ -74,6 +74,7 @@ class StatisticsResponseMapper {
         pulls = pulls,
         bricks = bricks,
         possessions = possessions,
+        breaks = breaks,
     )
 
     private fun PlayerAttackStatistics.toResponse() = PlayerAttackStatisticsResponse(
