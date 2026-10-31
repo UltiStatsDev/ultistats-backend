@@ -11,10 +11,13 @@ import org.springframework.context.annotation.Configuration
 class EventBatchOpenApiConfig {
     @Bean
     fun eventBatchOpenApi(): OpenApiCustomizer = OpenApiCustomizer { api ->
-        // Reuse v1's polymorphic shapes while requiring UUID only at the v2 boundary.
-        // springdoc does not register an annotation-only allOf item schema reliably.
+        // Reuse v1 leaves without inheriting the union: client generators infer
+        // an allOf child as another discriminator variant ("BatchEventRequest").
+        val create = api.components.schemas.getValue("CreateEventRequest")
         api.components.addSchemas("BatchEventRequest", ComposedSchema().apply {
-            addAllOfItem(Schema<Any>().`$ref`("#/components/schemas/CreateEventRequest"))
+            oneOf = create.oneOf
+            discriminator = create.discriminator
+            properties = mapOf("eventId" to create.properties.getValue("eventId"))
             required = listOf("eventId")
             description = "Same event payloads as v1, with a mandatory stable client eventId."
         })

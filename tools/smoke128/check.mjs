@@ -37,6 +37,7 @@ for (const [types, fields] of groups) for (const type of types) {
     for (const field of Object.keys(fields)) {const bad={...valid};delete bad[field];check(name,bad,false);}
   }
   check('BatchEventRequest',create,false);
+  check('BatchEventRequest',{...create,eventId:null},false);
   const read = {...create,id:uuid,sequenceNumber:1};
   check('EventResponse',read,true);
   check('EventResponse',{...read,type:'INVALID'},false);
@@ -60,11 +61,18 @@ for (const events of [[], Array(101).fill({type:'HALFTIME_START',occurredAt:'202
 fs.writeFileSync('generated.ts', astToString(await openapiTS(JSON.parse(raw))));
 const semantic = ['import type {components} from "./generated";'];
 for (const [i, fixture] of runtimeFixtures.entries()) {
-  const mapping = api.components.schemas[fixture.schema].discriminator.mapping;
-  const leaf = mapping[fixture.payload.type].split('/').at(-1);
-  for (const name of [fixture.schema, leaf]) {
+  const mapping = api.components.schemas[fixture.schema].discriminator?.mapping;
+  const leaf = mapping?.[fixture.payload.type]?.split('/').at(-1);
+  for (const name of new Set([fixture.schema, leaf].filter(Boolean))) {
     semantic.push(`const fixture${i}${name} = ${JSON.stringify(fixture.payload)} satisfies components["schemas"]["${name}"];`);
   }
+}
+for (const [types, fields] of groups) for (const type of types) {
+  const batch = {type, occurredAt:'2026-07-28T12:30:00Z', eventId:uuid, ...fields};
+  semantic.push(`const batch${semantic.length} = ${JSON.stringify(batch)} satisfies components["schemas"]["BatchEventRequest"];`);
+  const noId = {...batch}; delete noId.eventId;
+  semantic.push('// @ts-expect-error v2 batch requires eventId');
+  semantic.push(`const noEventId${semantic.length} = ${JSON.stringify(noId)} satisfies components["schemas"]["BatchEventRequest"];`);
 }
 for (const base of ['CreateEventRequest','UpdateEventRequest','EventResponse']) {
   for (const ref of api.components.schemas[base].oneOf) {
