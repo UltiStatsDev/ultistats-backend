@@ -77,8 +77,8 @@ test('event markers preserve player roles, accessible names and shared block gly
   assert.equal(glyphs.BLOCK,'M12 3 4 7v5c0 5 8 9 8 9s8-4 8-9V7z');
   assert.equal(glyphs.BLOCK_MARKER,glyphs.BLOCK);
   assert.equal(glyphs.BLOCK_FIELD,glyphs.BLOCK);
-  assert.ok(glyphs.INTERCEPTION.startsWith('M21 5c0 1.1-3.6 2-8 2S5 6.1 5 5s3.6-2 8-2 8 .9 8 2Z'),'interception includes the approved flat oval disc');
-  assert.ok(glyphs.INTERCEPTION.includes('M2 12h12a2 2 0 0 1 0 4h-2'),'interception retains the supporting hand');
+  assert.ok(glyphs.INTERCEPTION.startsWith('M10 11c0 1-2 1.8-4.5 1.8S1 12 1 11s2-1.8 4.5-1.8S10 10 10 11Z'),'interception includes the flat oval disc on the left');
+  assert.ok(glyphs.INTERCEPTION.includes('M13 12V6a1.5 1.5 0 0 1 3 0v4-6'),'interception includes the upright catching hand on the right');
   assert.equal(glyphs.CALLAHAN,'m13 2-9 12h7l-1 8 10-13h-7z');
   assert.equal(new Set([glyphs.GOAL,glyphs.BLOCK,glyphs.INTERCEPTION,glyphs.CALLAHAN]).size,4);
   renderer.render([{event:{id:'unknown',type:'INTERCEPTION'}}],{teams:[]},defaults);

@@ -62,9 +62,12 @@ window.ready=true;
   await page.evaluate(()=>renderer.render(rows,match,{...config,backgroundColor:'#f2f4f8',textColor:'#17202e'}));
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'long Cyrillic names do not overflow the viewport');
   await page.screenshot({path:path.join(output,'markers-narrow-light-27px.png')});
-  await page.evaluate(()=>renderer.render(rows,match,{...config,backgroundColor:'#17202e00'}));
-  assert.equal(await page.locator('.feed-row').first().evaluate(n=>getComputedStyle(n).backgroundColor),'rgba(23, 32, 46, 0)');
-  await page.screenshot({path:path.join(output,'markers-transparent-27px.png')});
+  // The API accepts opaque row colors. Transparency belongs to the page
+  // outside the cards; remove only this probe's backdrop to inspect it.
+  await page.addStyleTag({content:'body{background:transparent}'});
+  assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).backgroundColor),'rgba(0, 0, 0, 0)');
+  assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundColor),'rgba(0, 0, 0, 0)');
+  await page.screenshot({path:path.join(output,'markers-transparent-27px.png'),omitBackground:true});
   assert.deepEqual(errors,[]);fs.writeFileSync(path.join(output,'browser-result.json'),JSON.stringify(result,null,2)+'\n');
   console.log('PASS: 7 rows; player roles, SVG accessibility, real 27px size, stable rows/animations, narrow Cyrillic/UNKNOWN layout, custom colors and transparency.');
  } finally {if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));}

@@ -23,9 +23,9 @@ legend, never as feed badges.
 Human readability and actual OBS Browser Source acceptance remain QA/PO checks;
 geometry assertions and Chromium screenshots alone do not establish those.
 
-The approved interception shape adapts the lower hand from Lucide hand-platter
-and replaces the covered dish with an original flat oval disc. Its complete
-license/provenance ships beside the renderer in `lucide-LICENSE.txt`.
+The interception is an original SVG outline: a flat disc on the left and an
+upright catching hand on the right, matching the user correction. No external
+vector paths or icon dependencies are included.
 
 Reference Chromium captures (device scale 1):
 
