@@ -15,6 +15,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -29,6 +30,8 @@ class EventSchemaGenerationTest {
         Files.createDirectories(Path.of("build/smoke128"))
         Files.writeString(Path.of("build/smoke128/openapi.json"), raw)
         val schemas = objectMapper.readTree(raw)["components"]["schemas"]
+        val batchId = schemas["BatchEventRequest"]["properties"]["eventId"]
+        assertTrue(batchId["description"].asText().contains("Required"), "batch eventId must describe its requirement")
         val fixtures = mutableListOf<Map<String, Any>>()
         listOf("CreateEventRequest", "UpdateEventRequest", "EventResponse").forEach { base ->
             val union = schemas[base]
@@ -41,6 +44,8 @@ class EventSchemaGenerationTest {
 
                 assertEquals("string", leaf["properties"]["type"].path("type").asText(), "$name discriminator must be a string")
                 assertEquals(types, leaf["properties"]["type"]["enum"].map { it.asText() }.toSet(), name)
+                val example = leaf["properties"]["type"]["example"]
+                if (example != null) assertTrue(example.asText() in types, "$name discriminator example")
                 types.forEach { eventType ->
                     val payload = objectMapper.createObjectNode()
                     leaf["properties"].properties().forEach { (field, _) ->

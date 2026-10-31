@@ -79,6 +79,8 @@ for (const base of ['CreateEventRequest','UpdateEventRequest','EventResponse']) 
     const name = ref.$ref.split('/').at(-1);
     const schema = api.components.schemas[name];
     assert.equal(schema.properties.type.type, 'string', name);
+    if (schema.properties.type.example !== undefined)
+      assert.ok(schema.properties.type.enum.includes(schema.properties.type.example), name+' example outside enum');
     for (const invalid of [{}, 'INVALID', 1, null]) {
       semantic.push('// @ts-expect-error discriminator rejects invalid values');
       semantic.push(`const invalid${semantic.length} = ${JSON.stringify(invalid)} satisfies components["schemas"]["${name}"]["type"];`);

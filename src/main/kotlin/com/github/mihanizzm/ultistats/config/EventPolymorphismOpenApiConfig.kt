@@ -34,11 +34,14 @@ class EventPolymorphismOpenApiConfig {
                 // schema through it loses the string type and defaults to object.
                 val type = StringSchema().apply {
                     description = commonType.description
-                    example = commonType.example
+                    commonType.example?.let { example = it }
                 }
                 type.enum = base.discriminator.mapping.filterValues {
                     it == reference.`$ref`
                 }.keys.toList()
+                if (type.example != null && type.example !in type.enum) {
+                    type.example = type.enum.first()
+                }
                 leaf.properties["type"] = type
                 schemas[name] = leaf
             }
