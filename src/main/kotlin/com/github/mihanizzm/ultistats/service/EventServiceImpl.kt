@@ -261,7 +261,9 @@ class EventServiceImpl(
         return undoReceipts.findByMatchIdAndCommandId(matchId, commandId)?.outcome()
     }
 
-    @Transactional
+    // Jackson receipt encoding can throw checked JsonProcessingException after removeLocked.
+    // Any failure must roll back the mutation and the durable outcome together.
+    @Transactional(rollbackOn = [Exception::class])
     override fun undo(matchId: UUID, request: UndoEventRequest): UndoCommandResult {
         val commandId = request.commandId
         val expectedTail = request.expectedLastEventId

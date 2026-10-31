@@ -1,0 +1,13 @@
+event:connected
+data:{
+data:  "matchId" : "a739c7df-6043-480d-bc36-2bcade8134f7"
+data:}
+retry:2000
+
+event:event-log-changed
+data:{
+data:  "matchId" : "a739c7df-6043-480d-bc36-2bcade8134f7",
+data:  "operation" : "DELETED",
+data:  "eventId" : "c5239955-797f-4287-a1f8-75737aa6e190"
+data:}
+

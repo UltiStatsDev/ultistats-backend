@@ -43,18 +43,18 @@
 
 **Interfaces:** Persisted outcome is immutable response; POST409 commandResult references it, GET200 returns it.
 
-- [ ] Add tests for concurrent exact replay, changed payload, append/undo race, stale tail/revision, empty/FINISHED, score, batch invalidation, single AFTER_COMMIT SSE and rollback (including receipt failure).
-- [ ] Run new tests RED before implementation corrections; then GREEN.
+- [x] Add tests for concurrent exact replay, changed payload, append/undo race, stale tail/revision, empty/FINISHED, score, batch invalidation, single AFTER_COMMIT SSE and rollback (including receipt failure).
+- [x] Run new tests RED before implementation corrections; then GREEN.
 - [ ] Run same focused tests with isolated real PostgreSQL and Flyway, verify V1..V9 history after actual master sync and restart receipt persistence. Verify DB uniqueness.
-- [ ] Fetch raw OpenAPI and actual fixtures; generate TS and strict compile accepted/rejected/error fixtures, validate required and nullable schema. Commit.
+- [x] Fetch raw OpenAPI and actual fixtures; generate TS and strict compile accepted/rejected/error fixtures, validate required and nullable schema. Commit.
 
 ### Task 3: Real transport evidence and review delivery
 
 **Files:** tools/undo144 reproducible native fetch/fault proxy controls and synthetic evidence report.
 
-- [ ] Build exact JAR under JVM lock; start isolated persistent foreground API and verify readiness separately.
-- [ ] Run real Chromium warmed keepalive single-fetch headerless-close-aftercommit and afterheaders controls; assert incoming requests, exact canonical UUIDs, revision, outcome and SSE. Preserve raw evidence; no fabricated upstream success or suite retries.
-- [ ] Full gradle build, JS/deploy checks; push PR Refs144 and inspect actual CI.
+- [x] Build exact JAR under JVM lock; start isolated persistent foreground API and verify readiness separately.
+- [x] Run real Chromium warmed keepalive single-fetch headerless-close-aftercommit and afterheaders controls; assert incoming requests, exact canonical UUIDs, revision, outcome and SSE. Preserve raw evidence; no fabricated upstream success or suite retries.
+- [x] Full gradle build, JS/deploy checks; push PR Refs144 and inspect actual CI.
 - [ ] Request permanent independent reviewer with exact head, spec/plan, commands and immutable evidence. Fix actionable findings in same PR, verify changed paths and full checks.
 - [ ] Supply immutable JAR SHA/runtime/fixtures handoff to lead; do not self merge. Lead owns technical callback to Web after merge/checks/availability and shared QA+PO.
 
@@ -69,3 +69,9 @@
 - Ruling: reject fractional/string/boolean revision coercion only on UndoEventRequest — the observed integer position must match documented JSON types — clients sending a string revision must send an integer instead; frozen append is unchanged. Regression demonstrated fractional1.5 applied as1 (RED); scoped deserializer added.
 
 - Task2 proof: strict revision regression RED→GREEN; fullbuild459 PASS, fresh own PostgreSQL focused45 PASS, rawAJV/TS11fixtures PASS before generator + deepclone/immutability. ActualChromium headerless1nativefetch/2POST→1deletion/revision/SSE and afterheaders1POST controls PASS atc961181; processrestart2receipt equality+exactretry canonicalunchanged PASS. Final orderedV8→V9 and permanentreview remain gated on actualmaster.
+
+- Exacthead68b31d9: full459+CI3SUCCESS; immutablejar4c93bf3...; bothnativecontrolsPASS and2APPLIED/1REJECTED processrecoveryPASS, archive docs/qa/undo144/68b31d9. Permanent reviewer independently459JVM/45PG PASS; preliminarycode/runtime review ongoing. Portablehelperbase/proxyportfixed; compiled UpgradeProbe refuses missingV8. Finalmaster sync/orderedhistory/finalreview stilloutstanding.
+
+- ReviewP2: checkedJsonProcessingException afterremoveLocked committedmutationwithoutreceipt underdefaulttransactionpolicy. OwnGOAL regressionRED expectedrev3actual4; fix scopedundo rollbackOnException; full460JVM GREEN verifiesprojection/event/revision/receipt/SSE rollback andexactenveloperetryonce. RealPGrecheck inprogress.
+
+- Final: fixed reviewerP2 checkedreceiptexception atomicity — checked receipt encoding failure rolls back mutation projection revision and SSE RED→GREEN, suite460/460 and realPG46/46; noSQL/schema/wire/frozenappendchanges. PortablehelperbothcontrolsPASS onalternate19849; UpgradeProbe compiled/missingV8guardPASS (actualorderedupgradepending).

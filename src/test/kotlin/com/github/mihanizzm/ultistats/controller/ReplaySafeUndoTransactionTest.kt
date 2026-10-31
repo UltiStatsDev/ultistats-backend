@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.controller
 
+import com.fasterxml.jackson.core.JsonProcessingException
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.github.mihanizzm.ultistats.dto.response.UndoCommandResponse
 import com.github.mihanizzm.ultistats.MatchAbstractTest
 import com.github.mihanizzm.ultistats.dto.request.UndoEventRequest
 import com.github.mihanizzm.ultistats.dto.request.CreateEventBatchRequest
@@ -26,6 +29,7 @@ import java.util.concurrent.*
 import kotlin.test.*
 
 class ReplaySafeUndoTransactionTest : MatchAbstractTest() {
+    @MockitoSpyBean lateinit var objectMapper: ObjectMapper
     @Autowired lateinit var tx: TransactionTemplate
     @MockitoSpyBean lateinit var streams: MatchEventStreamService
     @MockitoSpyBean lateinit var receipts: SpringDataUndoCommandReceiptRepository
@@ -91,6 +95,30 @@ class ReplaySafeUndoTransactionTest : MatchAbstractTest() {
         assertEquals(1, matchService.getOrThrow(match.id).teamScores.single { it.teamId == TEAM_1.id }.score)
         verify(streams, after(150).never()).eventLogChanged(match.id, MatchRealtimeOperation.DELETED, goal.id)
         assertEquals(UndoCommandOutcome.APPLIED, assertIs<UndoCommandResult.Recorded>(eventService.undo(match.id, command)).response.outcome)
+    }
+
+    @Test fun `checked receipt encoding failure rolls back mutation projection revision and SSE`() {
+        val goal = point()
+        val command = envelope(goal)
+        clearInvocations(streams)
+        val failure = object : JsonProcessingException("synthetic checked receipt encoding failure") {}
+        doThrow(failure).`when`(objectMapper).writeValueAsString(any(UndoCommandResponse::class.java))
+        try {
+            assertFailsWith<JsonProcessingException> { eventService.undo(match.id, command) }
+        } finally {
+            reset(objectMapper)
+        }
+        assertEquals(3, eventService.snapshot(match.id)!!.logRevision)
+        assertEquals(goal, eventService.get(goal.id, match.id))
+        assertEquals(1, matchService.getOrThrow(match.id).teamScores.single { it.teamId == TEAM_1.id }.score)
+        assertNull(eventService.undoOutcome(match.id, command.commandId!!))
+        verify(streams, after(150).never()).eventLogChanged(match.id, MatchRealtimeOperation.DELETED, goal.id)
+        val recovered = assertIs<UndoCommandResult.Recorded>(eventService.undo(match.id, command)).response
+        assertEquals(UndoCommandOutcome.APPLIED, recovered.outcome)
+        assertEquals(goal.id, recovered.removedEventId)
+        assertEquals(4, recovered.resultLogRevision)
+        assertEquals(recovered, eventService.undoOutcome(match.id, command.commandId!!))
+        verify(streams, after(150).times(1)).eventLogChanged(match.id, MatchRealtimeOperation.DELETED, goal.id)
     }
 
     @Test fun `two different intents on observed tail yield one success and durable stale rejection`() {

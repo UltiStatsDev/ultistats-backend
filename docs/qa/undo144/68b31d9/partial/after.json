@@ -1,0 +1,20 @@
+{
+  "events": [
+    {
+      "id": "40b9363f-0b55-4411-8038-e7c79fce5264",
+      "sequenceNumber": 1,
+      "type": "PULL",
+      "occurredAt": "2026-10-24T10:00:00Z",
+      "participantId": "efeb9c5a-9cfd-4294-8ff3-6cddce4964fa"
+    },
+    {
+      "id": "9505a65f-80ef-4979-b120-4bee4ba9415a",
+      "sequenceNumber": 2,
+      "type": "PICKUP",
+      "occurredAt": "2026-10-24T10:00:00Z",
+      "participantId": "c5a7dbe3-d065-4a80-b9fc-a6e4e9c36419"
+    }
+  ],
+  "lastSequenceNumber": 3,
+  "logRevision": 2
+}

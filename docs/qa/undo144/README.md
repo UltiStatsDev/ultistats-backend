@@ -58,3 +58,42 @@ actual fixtures, with generator clone/raw immutability and negative request chec
 The c961181 native transport evidence predates this parser hardening; its envelopes
 are valid JSON integers. Final exact-source runtime proof will be linked after
 master/V8 ordering synchronization.
+
+## Exact strict-parser head68b31d9
+
+Exact source `68b31d9bf76d227aea6e6a1af673ff2e31d8c987` was rebuilt (459 JVM tests)
+and all three actual GitHub CI checks succeeded. Its immutable JAR SHA256 is
+`4c93bf3167449bdb1437eb3a710fcc229bcbdaeda1d3579b3579a305ff296a4b`.
+The [exact-head native controls](68b31d9/conclusion.json) both pass with the same
+one-intent/one-mutation properties as above. Raw files and screenshots are under
+[68b31d9](68b31d9/sha256.json). Independent HTTP read confirmed runtime raw paths
+and schemas equal the built document.
+
+[Restart recovery](68b31d9/restart-recovery.json) confirms two APPLIED and one
+REJECTED receipt survive process replacement with this JAR; exact retries retain
+the outcome and canonical log/revision. [Parsed binding](68b31d9/parsed-binding.json)
+confirms reordered JSON keys, formatting and uppercase UUID strings recover the
+same receipt without writes. An [independent SQL duplicate attempt](68b31d9/constraint-proof.sql)
+was rejected by the actual PostgreSQL unique constraint, leaving its receipt count
+unchanged. Final ordered V8/V9 integration and permanent review remain separate.
+
+The portable browser helper was corrected after preliminary review setup: its
+proxy upstream now derives from UNDO144_BASE and its listening port is explicitly
+configurable. Earlier worker proofs used the correct defaults19844/19845. The
+parameterization correction changes verification tooling only, not JVM production
+code. UpgradeProbe.java is compiled and its missing-V8 refusal is verified;
+complete ordered upgrade is still pending actual master synchronization.
+
+## Independent review atomicity correction
+
+Preliminary independent review of68b31d9 found P2: checked Jackson
+JsonProcessingException during receipt encoding happened after removeLocked,
+and the default Jakarta transaction rule committed deletion/projection/revision
+without a receipt. The author's GOAL regression reproduced RED (revision4 instead
+of unchanged3). `undo` now explicitly rolls back all Exception subclasses; this
+is scoped to the new command transaction. The regression verifies no deletion,
+score/revision change, receipt or SSE on failure, followed by exactly one successful
+same-envelope retry. Full build460 tests PASS; real PostgreSQL focused46 tests PASS, including
+the checked-failure rollback and same-envelope retry regression.
+The earlier normal transport/recovery controls are historical evidence and do not
+claim this checked-failure path was safe at the old source.

@@ -10,6 +10,10 @@ import {randomUUID,createHash} from 'node:crypto';
 const require=createRequire(import.meta.url);
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base=process.env.UNDO144_BASE || 'http://127.0.0.1:19844';
+const apiURL=new URL(base);
+assert.equal(apiURL.protocol,'http:');assert.equal(apiURL.hostname,'127.0.0.1');
+const apiPort=Number(apiURL.port || 80),proxyPort=Number(process.env.UNDO144_PROXY_PORT || 19845);
+assert.ok(Number.isInteger(proxyPort) && proxyPort>0 && proxyPort<=65535);
 const root=path.resolve(process.env.UNDO144_OUT || '/tmp/ultistats-undo144/browser');
 fs.mkdirSync(root,{recursive:true});
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
@@ -41,7 +45,7 @@ try{
   const fixture={matchId:mid,command:{commandId:randomUUID(),expectedLastEventId:events[2].eventId,expectedLogRevision:before.logRevision}};
   const fixtureFile=path.join(dir,'fixture.json');fs.writeFileSync(fixtureFile,JSON.stringify(fixture,null,2));
   fs.writeFileSync(path.join(dir,'before.json'),JSON.stringify(before,null,2));
-  const proxy=spawn('python3',[fileURLToPath(new URL('fault_proxy.py',import.meta.url)),'--fixture',fixtureFile,'--out',dir,'--mode',mode],{stdio:['ignore','pipe','pipe']});
+  const proxy=spawn('python3',[fileURLToPath(new URL('fault_proxy.py',import.meta.url)),'--fixture',fixtureFile,'--out',dir,'--mode',mode,'--api-port',String(apiPort),'--port',String(proxyPort)],{stdio:['ignore','pipe','pipe']});
   let proxyOut='',proxyError='';proxy.stdout.on('data',d=>proxyOut+=d);proxy.stderr.on('data',d=>proxyError+=d);
   await until(()=>proxyOut.includes('ownedMatch') || proxy.exitCode!==null);
   assert.equal(proxy.exitCode,null,proxyError);
@@ -52,7 +56,7 @@ try{
   const page=await browser.newPage();
   try{
    await until(()=>sse.includes('event:connected'));
-   await page.goto('http://127.0.0.1:19845/control');
+   await page.goto(`http://127.0.0.1:${proxyPort}/control`);
    await page.locator('#undo').waitFor({state:'visible'});
    await page.waitForFunction(()=>!document.querySelector('#undo').disabled);
    await page.locator('#undo').click();
@@ -86,7 +90,7 @@ try{
    const changes=sse.split('\n\n').filter(frame=>frame.includes('event:event-log-changed'));
    assert.equal(changes.length,1,sse);
    assert.ok(changes[0].includes(events[2].eventId));assert.ok(changes[0].includes('DELETED'));
-   const evidence={mode,browser:await browser.version(),userAgent:await page.evaluate(()=>navigator.userAgent),nativeFetchInvocations:1,incomingPosts:posts.length,warmedClientPort:warm.clientPort,postClientPorts:posts.map(p=>p.clientPort),browserResult,beforeIds:before.events.map(e=>e.id),afterIds:after.events.map(e=>e.id),beforeRevision:before.logRevision,afterRevision:after.logRevision,outcome,committedOutcomeSha256:createHash('sha256').update(JSON.stringify(committed)).digest('hex'),eventLogChangedCount:changes.length};
+   const evidence={mode,apiBase:base,proxyPort,browser:await browser.version(),userAgent:await page.evaluate(()=>navigator.userAgent),nativeFetchInvocations:1,incomingPosts:posts.length,warmedClientPort:warm.clientPort,postClientPorts:posts.map(p=>p.clientPort),browserResult,beforeIds:before.events.map(e=>e.id),afterIds:after.events.map(e=>e.id),beforeRevision:before.logRevision,afterRevision:after.logRevision,outcome,committedOutcomeSha256:createHash('sha256').update(JSON.stringify(committed)).digest('hex'),eventLogChangedCount:changes.length};
    fs.writeFileSync(path.join(dir,'after.json'),JSON.stringify(after,null,2));
    fs.writeFileSync(path.join(dir,'receipt.json'),JSON.stringify(outcome,null,2));
    fs.writeFileSync(path.join(dir,'sse.txt'),sse);
