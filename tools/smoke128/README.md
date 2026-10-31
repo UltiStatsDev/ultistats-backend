@@ -19,3 +19,16 @@ event ordering and other semantic business rules remain controller/service tests
 
 In coordinated local environments wrap all Gradle invocations with the shared
 flock and configured JAVA_HOME/GRADLE_USER_HOME as instructed by the lead.
+
+For an actual HTTP capture, pass the unchanged downloaded file and the fixture
+file explicitly:
+
+    curl -fsS http://127.0.0.1:PORT/v3/api-docs -o /tmp/raw.json
+    node check.mjs /tmp/raw.json ../../build/smoke128/runtime-fixtures.json
+
+AJV validates the untouched JSON before generation. openapi-typescript mutates
+discriminator properties on its input, including replacing an erroneous object
+type with string. The generator therefore receives a separate fresh parse.
+Sharing its input with AJV caused the original smoke to report a false raw-schema
+PASS. Generated fixtures now also use satisfies for union and leaf DTOs, with
+negative type checks for invalid discriminators and omitted required fields.

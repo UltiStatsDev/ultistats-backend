@@ -1,9 +1,7 @@
 package com.github.mihanizzm.ultistats.config
 
-import com.fasterxml.jackson.core.type.TypeReference
-import io.swagger.v3.core.util.Json
 import io.swagger.v3.oas.models.media.ObjectSchema
-import io.swagger.v3.oas.models.media.Schema
+import io.swagger.v3.oas.models.media.StringSchema
 import org.springdoc.core.customizers.OpenApiCustomizer
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -31,10 +29,19 @@ class EventPolymorphismOpenApiConfig {
                 }
                 // OpenAPI's discriminator is a selection hint, not validation.
                 // Disjoint enums make the oneOf meaningful to JSON Schema too.
-                val type = Json.mapper().convertValue(leaf.properties.getValue("type"), object : TypeReference<Schema<Any>>() {})
+                val commonType = leaf.properties.getValue("type")
+                // Json.mapper() uses OpenAPI 3.0 deserialization. Cloning a 3.1
+                // schema through it loses the string type and defaults to object.
+                val type = StringSchema().apply {
+                    description = commonType.description
+                    commonType.example?.let { example = it }
+                }
                 type.enum = base.discriminator.mapping.filterValues {
                     it == reference.`$ref`
                 }.keys.toList()
+                if (type.example != null && type.example !in type.enum) {
+                    type.example = type.enum.first()
+                }
                 leaf.properties["type"] = type
                 schemas[name] = leaf
             }
