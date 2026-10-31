@@ -10,14 +10,19 @@ import java.util.UUID
 data class MatchParticipantResponse(
     val participantId: UUID,
     val kind: MatchParticipantKind,
+    @field:Schema(types = ["integer", "null"], requiredMode = Schema.RequiredMode.REQUIRED)
     val unknownSlot: Int?,
+    @field:Schema(types = ["string", "null"], requiredMode = Schema.RequiredMode.REQUIRED)
     val firstName: String?,
+    @field:Schema(types = ["string", "null"], requiredMode = Schema.RequiredMode.REQUIRED)
     val lastName: String?,
     val displayName: String,
+    @field:Schema(types = ["integer", "null"], requiredMode = Schema.RequiredMode.REQUIRED)
     val number: Int?,
     @field:Schema(
         description = "URL фотографии игрока; null для неизвестного участника или игрока без фотографии",
-        nullable = true,
+        types = ["string", "null"],
+        requiredMode = Schema.RequiredMode.REQUIRED,
     )
     val photoUrl: String?,
 ) {

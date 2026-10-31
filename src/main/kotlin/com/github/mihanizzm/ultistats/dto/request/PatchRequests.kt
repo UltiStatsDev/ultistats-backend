@@ -11,11 +11,13 @@ import java.util.UUID
 )
 data class PatchPlayerRequest(
     @field:Schema(
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED,
         description = "Новое имя. Поле можно пропустить; null недопустим.",
         example = "Иван",
     )
     val firstName: JsonNullable<String> = JsonNullable.undefined(),
     @field:Schema(
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED,
         description = "Новая фамилия. Поле можно пропустить; null недопустим.",
         example = "Петров",
     )
@@ -28,11 +30,13 @@ data class PatchPlayerRequest(
 )
 data class PatchTeamRequest(
     @field:Schema(
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED,
         description = "Новое название. Поле можно пропустить; null недопустим.",
         example = "Соколы",
     )
     val name: JsonNullable<String> = JsonNullable.undefined(),
     @field:Schema(
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED,
         description = "Новый город. Поле можно пропустить; null очищает город.",
         example = "Новосибирск",
         types = ["string", "null"],
@@ -46,16 +50,19 @@ data class PatchTeamRequest(
 )
 data class PatchMatchRequest(
     @field:Schema(
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED,
         description = "Ровно два UUID разных активных команд. Поле можно пропустить; null недопустим.",
         example = """["11111111-1111-1111-1111-111111111111","22222222-2222-2222-2222-222222222222"]""",
     )
     val teamIds: JsonNullable<List<UUID>> = JsonNullable.undefined(),
     @field:Schema(
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED,
         description = "Число игроков от каждой команды. Минимум 2; null недопустим.",
         example = "7",
     )
     val playersPerTeam: JsonNullable<Int> = JsonNullable.undefined(),
     @field:Schema(
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED,
         description = "Новое плановое время. Поле можно пропустить; null очищает плановое время.",
         example = "2026-08-14T10:00:00Z",
         types = ["string", "null"],
