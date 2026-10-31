@@ -1,0 +1,154 @@
+[ {
+  "schema" : "UndoEventRequest",
+  "payload" : {
+    "commandId" : "61a4c935-7075-4196-b2c1-d7761c61d969",
+    "expectedLastEventId" : "f22a8667-c863-4f27-a5af-28bd4c5db9f3",
+    "expectedLogRevision" : 1
+  },
+  "status" : 0
+}, {
+  "schema" : "UndoCommandResponse",
+  "payload" : {
+    "matchId" : "2142c050-98f9-4a64-9878-6c43375f5c3d",
+    "commandId" : "61a4c935-7075-4196-b2c1-d7761c61d969",
+    "expectedLastEventId" : "f22a8667-c863-4f27-a5af-28bd4c5db9f3",
+    "expectedLogRevision" : 1,
+    "outcome" : "APPLIED",
+    "resultLogRevision" : 2,
+    "removedEventId" : "f22a8667-c863-4f27-a5af-28bd4c5db9f3",
+    "removedSequenceNumber" : 1,
+    "rejection" : null
+  },
+  "status" : 200
+}, {
+  "schema" : "UndoCommandResponse",
+  "payload" : {
+    "matchId" : "2142c050-98f9-4a64-9878-6c43375f5c3d",
+    "commandId" : "61a4c935-7075-4196-b2c1-d7761c61d969",
+    "expectedLastEventId" : "f22a8667-c863-4f27-a5af-28bd4c5db9f3",
+    "expectedLogRevision" : 1,
+    "outcome" : "APPLIED",
+    "resultLogRevision" : 2,
+    "removedEventId" : "f22a8667-c863-4f27-a5af-28bd4c5db9f3",
+    "removedSequenceNumber" : 1,
+    "rejection" : null
+  },
+  "status" : 200
+}, {
+  "schema" : "UndoCommandResponse",
+  "payload" : {
+    "matchId" : "2142c050-98f9-4a64-9878-6c43375f5c3d",
+    "commandId" : "61a4c935-7075-4196-b2c1-d7761c61d969",
+    "expectedLastEventId" : "f22a8667-c863-4f27-a5af-28bd4c5db9f3",
+    "expectedLogRevision" : 1,
+    "outcome" : "APPLIED",
+    "resultLogRevision" : 2,
+    "removedEventId" : "f22a8667-c863-4f27-a5af-28bd4c5db9f3",
+    "removedSequenceNumber" : 1,
+    "rejection" : null
+  },
+  "status" : 200
+}, {
+  "schema" : "UndoCommandProblem",
+  "payload" : {
+    "type" : "about:blank",
+    "title" : "Undo command identity conflict",
+    "status" : 409,
+    "detail" : "This commandId is already bound to a different undo payload; recover the original command outcome",
+    "instance" : "/api/v2/matches/2142c050-98f9-4a64-9878-6c43375f5c3d/events/undo",
+    "code" : "UNDO_COMMAND_CONFLICT"
+  },
+  "status" : 409
+}, {
+  "schema" : "UndoCommandProblem",
+  "payload" : {
+    "type" : "about:blank",
+    "title" : "Undo command rejected",
+    "status" : 409,
+    "detail" : "There is no active event to undo",
+    "instance" : "/api/v2/matches/2142c050-98f9-4a64-9878-6c43375f5c3d/events/undo",
+    "code" : "UNDO_LOG_EMPTY",
+    "commandResult" : {
+      "matchId" : "2142c050-98f9-4a64-9878-6c43375f5c3d",
+      "commandId" : "4354d73d-05c4-4932-ac26-75fcec6f1584",
+      "expectedLastEventId" : "f22a8667-c863-4f27-a5af-28bd4c5db9f3",
+      "expectedLogRevision" : 1,
+      "outcome" : "REJECTED",
+      "resultLogRevision" : 2,
+      "removedEventId" : null,
+      "removedSequenceNumber" : null,
+      "rejection" : {
+        "code" : "UNDO_LOG_EMPTY",
+        "detail" : "There is no active event to undo"
+      }
+    }
+  },
+  "status" : 409
+}, {
+  "schema" : "UndoCommandResponse",
+  "payload" : {
+    "matchId" : "2142c050-98f9-4a64-9878-6c43375f5c3d",
+    "commandId" : "4354d73d-05c4-4932-ac26-75fcec6f1584",
+    "expectedLastEventId" : "f22a8667-c863-4f27-a5af-28bd4c5db9f3",
+    "expectedLogRevision" : 1,
+    "outcome" : "REJECTED",
+    "resultLogRevision" : 2,
+    "removedEventId" : null,
+    "removedSequenceNumber" : null,
+    "rejection" : {
+      "code" : "UNDO_LOG_EMPTY",
+      "detail" : "There is no active event to undo"
+    }
+  },
+  "status" : 409
+}, {
+  "schema" : "UndoCommandResponse",
+  "payload" : {
+    "matchId" : "2142c050-98f9-4a64-9878-6c43375f5c3d",
+    "commandId" : "4354d73d-05c4-4932-ac26-75fcec6f1584",
+    "expectedLastEventId" : "f22a8667-c863-4f27-a5af-28bd4c5db9f3",
+    "expectedLogRevision" : 1,
+    "outcome" : "REJECTED",
+    "resultLogRevision" : 2,
+    "removedEventId" : null,
+    "removedSequenceNumber" : null,
+    "rejection" : {
+      "code" : "UNDO_LOG_EMPTY",
+      "detail" : "There is no active event to undo"
+    }
+  },
+  "status" : 200
+}, {
+  "schema" : "ProblemDetail",
+  "payload" : {
+    "type" : "about:blank",
+    "title" : "Invalid undo command",
+    "status" : 400,
+    "detail" : "commandId, expectedLastEventId and a non-negative expectedLogRevision are required",
+    "instance" : "/api/v2/matches/2142c050-98f9-4a64-9878-6c43375f5c3d/events/undo",
+    "code" : "INVALID_REQUEST"
+  },
+  "status" : 400
+}, {
+  "schema" : "ProblemDetail",
+  "payload" : {
+    "type" : "about:blank",
+    "title" : "Resource not found",
+    "status" : 404,
+    "detail" : "Match not found",
+    "instance" : "/api/v2/matches/4a8b7987-66d6-4087-879a-aaa1871197d3/events/undo",
+    "code" : "RESOURCE_NOT_FOUND"
+  },
+  "status" : 404
+}, {
+  "schema" : "ProblemDetail",
+  "payload" : {
+    "type" : "about:blank",
+    "title" : "Resource not found",
+    "status" : 404,
+    "detail" : "Undo receipt unknown or match unavailable; an in-flight command may still commit",
+    "instance" : "/api/v2/matches/2142c050-98f9-4a64-9878-6c43375f5c3d/events/undo/c148931a-fc0a-45c9-ae7f-b1eb84c7f832",
+    "code" : "RESOURCE_NOT_FOUND"
+  },
+  "status" : 404
+} ]

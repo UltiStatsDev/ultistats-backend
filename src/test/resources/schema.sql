@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS undo_command_receipts;
 DROP TABLE IF EXISTS obs_scoreboard_profiles;
 DROP TABLE IF EXISTS event_batch_receipts;
 DROP TABLE IF EXISTS events;
@@ -122,6 +123,16 @@ CREATE TABLE IF NOT EXISTS obs_config (
     payload TEXT NOT NULL
 );
 INSERT INTO obs_config (id, payload) SELECT 1, '{}' WHERE NOT EXISTS (SELECT 1 FROM obs_config WHERE id = 1);
+
+CREATE TABLE undo_command_receipts (
+    id UUID PRIMARY KEY,
+    match_id UUID NOT NULL REFERENCES matches(id),
+    command_id UUID NOT NULL,
+    expected_last_event_id UUID NOT NULL,
+    expected_log_revision BIGINT NOT NULL CHECK (expected_log_revision >= 0),
+    result_json TEXT NOT NULL,
+    UNIQUE (match_id, command_id)
+);
 
 CREATE TABLE IF NOT EXISTS obs_scoreboard_profiles (
     match_id UUID PRIMARY KEY REFERENCES matches(id),

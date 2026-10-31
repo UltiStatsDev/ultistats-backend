@@ -1,0 +1,36 @@
+{
+  "mode": "partial",
+  "browser": "156.0.8078.79",
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+  "nativeFetchInvocations": 1,
+  "incomingPosts": 1,
+  "warmedClientPort": 54058,
+  "postClientPorts": [
+    54058
+  ],
+  "browserResult": "TypeError: Failed to fetch",
+  "beforeIds": [
+    "24ade4d4-b3d1-4ccb-b0ec-b825de69b378",
+    "13dc94f6-5a87-4510-aefd-9799516e7996",
+    "680e0767-d096-42c5-be7c-91c3b92eb4fd"
+  ],
+  "afterIds": [
+    "24ade4d4-b3d1-4ccb-b0ec-b825de69b378",
+    "13dc94f6-5a87-4510-aefd-9799516e7996"
+  ],
+  "beforeRevision": 1,
+  "afterRevision": 2,
+  "outcome": {
+    "matchId": "2c1f4498-0cbc-45f4-a0d0-ecb53e3e88fc",
+    "commandId": "b982b4cb-6408-487b-aeb9-bdc7dbd64397",
+    "expectedLastEventId": "680e0767-d096-42c5-be7c-91c3b92eb4fd",
+    "expectedLogRevision": 1,
+    "outcome": "APPLIED",
+    "resultLogRevision": 2,
+    "removedEventId": "680e0767-d096-42c5-be7c-91c3b92eb4fd",
+    "removedSequenceNumber": 3,
+    "rejection": null
+  },
+  "committedOutcomeSha256": "749cedc8ca85a69e84377680dd5cb4f9986cc6278d708d0a1b6e586eb918b85a",
+  "eventLogChangedCount": 1
+}

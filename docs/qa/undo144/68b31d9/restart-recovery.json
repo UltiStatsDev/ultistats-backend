@@ -1,0 +1,53 @@
+[
+  {
+    "outcome": "APPLIED",
+    "receipt": {
+      "matchId": "ba8da12e-07b2-4a40-8ad3-7d79b5e9e4c2",
+      "commandId": "4b754805-fcfb-4cbf-8fc2-1e846d4b8835",
+      "expectedLastEventId": "8be45b84-bf06-4652-81d3-a9e7ea424732",
+      "expectedLogRevision": 1,
+      "outcome": "APPLIED",
+      "resultLogRevision": 2,
+      "removedEventId": "8be45b84-bf06-4652-81d3-a9e7ea424732",
+      "removedSequenceNumber": 3,
+      "rejection": null
+    },
+    "exactRetryEqual": true,
+    "canonicalUnchanged": true
+  },
+  {
+    "outcome": "APPLIED",
+    "receipt": {
+      "matchId": "2c1f4498-0cbc-45f4-a0d0-ecb53e3e88fc",
+      "commandId": "b982b4cb-6408-487b-aeb9-bdc7dbd64397",
+      "expectedLastEventId": "680e0767-d096-42c5-be7c-91c3b92eb4fd",
+      "expectedLogRevision": 1,
+      "outcome": "APPLIED",
+      "resultLogRevision": 2,
+      "removedEventId": "680e0767-d096-42c5-be7c-91c3b92eb4fd",
+      "removedSequenceNumber": 3,
+      "rejection": null
+    },
+    "exactRetryEqual": true,
+    "canonicalUnchanged": true
+  },
+  {
+    "outcome": "REJECTED",
+    "receipt": {
+      "matchId": "ba8da12e-07b2-4a40-8ad3-7d79b5e9e4c2",
+      "commandId": "7ceca9b6-4895-43eb-aeca-4819d732f2f0",
+      "expectedLastEventId": "8be45b84-bf06-4652-81d3-a9e7ea424732",
+      "expectedLogRevision": 1,
+      "outcome": "REJECTED",
+      "resultLogRevision": 2,
+      "removedEventId": null,
+      "removedSequenceNumber": null,
+      "rejection": {
+        "code": "EVENT_LOG_STALE",
+        "detail": "The active tail or logRevision differs from the observed undo position"
+      }
+    },
+    "exactRetryEqual": true,
+    "canonicalUnchanged": true
+  }
+]

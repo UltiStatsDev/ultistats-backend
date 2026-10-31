@@ -1,0 +1,4501 @@
+{
+  "openapi" : "3.1.0",
+  "info" : {
+    "title" : "OpenAPI definition",
+    "version" : "v0"
+  },
+  "servers" : [ {
+    "url" : "http://localhost",
+    "description" : "Generated server url"
+  } ],
+  "tags" : [ {
+    "name" : "Teams",
+    "description" : "Управление командами"
+  }, {
+    "name" : "Events",
+    "description" : "Управление событиями матча"
+  }, {
+    "name" : "Statistics",
+    "description" : "Получение статистики матча"
+  }, {
+    "name" : "Matches",
+    "description" : "Управление матчами"
+  }, {
+    "name" : "Events v2",
+    "description" : "Offline-first event synchronization. v1 remains supported and is not deprecated pending frontend migration and field acceptance."
+  }, {
+    "name" : "Players",
+    "description" : "Управление игроками"
+  } ],
+  "paths" : {
+    "/api/v1/teams/{teamId}/players/{playerId}" : {
+      "put" : {
+        "tags" : [ "Teams" ],
+        "summary" : "Создать или обновить членство игрока в команде",
+        "operationId" : "putPlayer",
+        "parameters" : [ {
+          "name" : "teamId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "playerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpsertTeamPlayerRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PlayerTeamMembershipResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete" : {
+        "tags" : [ "Teams" ],
+        "summary" : "Убрать игрока из команды",
+        "operationId" : "removePlayer",
+        "parameters" : [ {
+          "name" : "teamId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "playerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : { }
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{teamId}/photo" : {
+      "get" : {
+        "tags" : [ "Teams" ],
+        "summary" : "Получить фотографию команды",
+        "operationId" : "getPhoto",
+        "parameters" : [ {
+          "name" : "teamId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PhotoUrlResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put" : {
+        "tags" : [ "Teams" ],
+        "summary" : "Создать или заменить фотографию команды",
+        "operationId" : "putPhoto",
+        "parameters" : [ {
+          "name" : "teamId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "multipart/form-data" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PhotoUploadRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "400" : {
+            "description" : "Файл не прошел валидацию",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "Хранилище файлов недоступно",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete" : {
+        "tags" : [ "Teams" ],
+        "summary" : "Удалить фотографию команды",
+        "operationId" : "removePhoto",
+        "parameters" : [ {
+          "name" : "teamId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "503" : {
+            "description" : "Хранилище файлов недоступно",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{id}" : {
+      "get" : {
+        "tags" : [ "Teams" ],
+        "summary" : "Получить команду по ID",
+        "operationId" : "getById",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TeamDetailResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put" : {
+        "tags" : [ "Teams" ],
+        "summary" : "Устаревшее частичное обновление команды",
+        "operationId" : "update",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateTeamRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TeamDetailResponse"
+                }
+              }
+            }
+          }
+        },
+        "deprecated" : true
+      },
+      "delete" : {
+        "tags" : [ "Teams" ],
+        "summary" : "Удалить команду",
+        "operationId" : "delete",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content",
+            "content" : { }
+          }
+        }
+      },
+      "patch" : {
+        "tags" : [ "Teams" ],
+        "summary" : "Частично обновить команду",
+        "operationId" : "patch",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PatchTeamRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TeamDetailResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/players/{playerId}/photo" : {
+      "get" : {
+        "tags" : [ "Players" ],
+        "summary" : "Получить фотографию игрока",
+        "operationId" : "getPhoto_1",
+        "parameters" : [ {
+          "name" : "playerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PhotoUrlResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put" : {
+        "tags" : [ "Players" ],
+        "summary" : "Создать или заменить фотографию игрока",
+        "operationId" : "putPhoto_1",
+        "parameters" : [ {
+          "name" : "playerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "multipart/form-data" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PhotoUploadRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "400" : {
+            "description" : "Файл не прошел валидацию",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "503" : {
+            "description" : "Хранилище файлов недоступно",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete" : {
+        "tags" : [ "Players" ],
+        "summary" : "Удалить фотографию игрока",
+        "operationId" : "removePhoto_1",
+        "parameters" : [ {
+          "name" : "playerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "503" : {
+            "description" : "Хранилище файлов недоступно",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/players/{id}" : {
+      "get" : {
+        "tags" : [ "Players" ],
+        "summary" : "Получить игрока по ID",
+        "operationId" : "getById_1",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PlayerDetailResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put" : {
+        "tags" : [ "Players" ],
+        "summary" : "Устаревшее частичное обновление игрока",
+        "operationId" : "update_1",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdatePlayerRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PlayerDetailResponse"
+                }
+              }
+            }
+          }
+        },
+        "deprecated" : true
+      },
+      "delete" : {
+        "tags" : [ "Players" ],
+        "summary" : "Удалить игрока",
+        "operationId" : "delete_1",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content",
+            "content" : { }
+          }
+        }
+      },
+      "patch" : {
+        "tags" : [ "Players" ],
+        "summary" : "Частично обновить игрока",
+        "operationId" : "patch_1",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PatchPlayerRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PlayerDetailResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/obs/config" : {
+      "get" : {
+        "tags" : [ "obs-config-controller" ],
+        "summary" : "Прочитать общие настройки OBS",
+        "description" : "Один набор для всего сервиса. GET не изменяет журнал игры.",
+        "operationId" : "get",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ObsConfig"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put" : {
+        "tags" : [ "obs-config-controller" ],
+        "summary" : "Заменить общие настройки OBS",
+        "description" : "Последнее сохранение побеждает. 1–20 строк, 1–60 секунд, цвета #RRGGBB, до 500 UUID команд. После commit — config-changed. Доверенная сеть без авторизации.",
+        "operationId" : "put",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ObsConfig"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ObsConfig"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/matches/{id}" : {
+      "get" : {
+        "tags" : [ "Matches" ],
+        "summary" : "Получить матч по ID",
+        "operationId" : "getById_2",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MatchResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put" : {
+        "tags" : [ "Matches" ],
+        "summary" : "Устаревшее частичное обновление матча",
+        "operationId" : "update_2",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateMatchRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "object"
+                }
+              }
+            }
+          }
+        },
+        "deprecated" : true
+      },
+      "delete" : {
+        "tags" : [ "Matches" ],
+        "summary" : "Удалить матч",
+        "operationId" : "delete_2",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "No Content",
+            "content" : { }
+          }
+        }
+      },
+      "patch" : {
+        "tags" : [ "Matches" ],
+        "summary" : "Частично обновить матч",
+        "operationId" : "patch_2",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PatchMatchRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/matches/{matchId}/events/undo" : {
+      "post" : {
+        "tags" : [ "Events v2" ],
+        "summary" : "Undo one observed tail with a durable command identity",
+        "description" : "Persist commandId and both preconditions before sending. Identity is (matchId,commandId), with no TTL for the match lifetime. Exact replay returns the immutable recorded outcome before checking current state, without writes, revision increments or SSE. Valid terminal rejections are also recorded; changed payload is UNDO_COMMAND_CONFLICT. resultLogRevision is the committed revision for APPLIED or actually observed revision for REJECTED, never a refreshed canonical position. After uncertainty/reload GET the outcome or retry this exact envelope; never replace its identity. Separately GET v2 events before resuming input. Invalid bodies and missing matches do not reserve identity. Legacy v1 bodyless undo remains non-idempotent; use this route for replay safety.",
+        "operationId" : "undo",
+        "parameters" : [ {
+          "name" : "matchId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UndoEventRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "Applied or exact successful replay; historical outcome",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UndoCommandResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "INVALID_REQUEST: malformed JSON, missing/null UUIDs or missing/null/negative revision; identity not reserved",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "RESOURCE_NOT_FOUND: match missing or soft deleted; identity not reserved",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "Recorded rejection (EVENT_LOG_STALE, UNDO_LOG_EMPTY, existing lifecycle/sequence code), including exact replay: commandResult present. UNDO_COMMAND_CONFLICT for different payload: commandResult absent; recover original using GET.",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UndoCommandProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/matches/{matchId}/events/batch" : {
+      "post" : {
+        "tags" : [ "Events v2" ],
+        "summary" : "Atomically append 1–100 ordered events with stable client UUIDs",
+        "description" : "Server assigns consecutive sequence numbers in request order. Both expected bases are required. The entire batch commits or nothing commits; lifecycle, participants, timestamps and EventSequencePolicy match v1. Equal timestamps are allowed; backwards timestamps are rejected. Score is recalculated once. 201 confirms a new batch; 200 replays the exact original batch (same bases, UUIDs, payloads and order), even after later appends. PATCH/DELETE/undo through either API invalidate earlier batch retries. Partial, reordered and subset retries are 409. On 409 stop sending the dependent queue, GET this v2 log and reconcile with the operator; the server never merges or repairs events. v1 remains supported without deprecation until frontend migration and real field acceptance are completed separately.",
+        "operationId" : "append",
+        "parameters" : [ {
+          "name" : "matchId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateEventBatchRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "New batch committed",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EventLogResponse"
+                }
+              }
+            }
+          },
+          "200" : {
+            "description" : "Exact retry, no writes or repeated notifications",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EventLogResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Invalid body, bases, batch size, missing/repeated UUID or invalid event participants",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EventBatchProblem"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "Match not found",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "object"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "EVENT_LOG_STALE, EVENT_BATCH_CONFLICT, EVENT_IDEMPOTENCY_CONFLICT, EVENT_SEQUENCE_VIOLATION or existing lifecycle/timestamp code. No writes. Includes current position and offending eventId/eventIndex when applicable (zero-based index).",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EventBatchProblem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/teams" : {
+      "get" : {
+        "tags" : [ "Teams" ],
+        "summary" : "Получить команды с пагинацией, фильтрацией и сортировкой",
+        "operationId" : "getAll",
+        "parameters" : [ {
+          "name" : "page",
+          "in" : "query",
+          "description" : "Номер страницы (начиная с 0)",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0,
+            "minimum" : 0
+          }
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "description" : "Размер страницы (1–100)",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20,
+            "maximum" : 100,
+            "minimum" : 1
+          }
+        }, {
+          "name" : "name",
+          "in" : "query",
+          "description" : "Фильтр по названию (частичное совпадение)",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "sortBy",
+          "in" : "query",
+          "description" : "Поле сортировки. По умолчанию NAME.",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "default" : "NAME",
+            "enum" : [ "NAME" ]
+          }
+        }, {
+          "name" : "sortDirection",
+          "in" : "query",
+          "description" : "Направление сортировки. По умолчанию ASC.",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "default" : "ASC",
+            "enum" : [ "ASC", "DESC" ]
+          }
+        }, {
+          "name" : "sort",
+          "in" : "query",
+          "description" : "Устаревший формат field:direction. Поля: name. Нельзя совмещать с sortBy/sortDirection.",
+          "required" : false,
+          "deprecated" : true,
+          "schema" : {
+            "type" : "string"
+          },
+          "example" : "name:asc"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Страница результатов",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PageResponseTeamListItemResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Некорректные или неоднозначные параметры пагинации, фильтрации или сортировки",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "Teams" ],
+        "summary" : "Создать команду",
+        "operationId" : "create",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateTeamRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TeamDetailResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{teamId}/uploadPhoto" : {
+      "post" : {
+        "tags" : [ "Teams" ],
+        "summary" : "Загрузить аватар для команды",
+        "operationId" : "uploadPhoto",
+        "parameters" : [ {
+          "name" : "teamId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "multipart/form-data" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PhotoUploadRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "400" : {
+            "description" : "Файл пустой, слишком большой или не является поддерживаемым изображением",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        },
+        "deprecated" : true
+      }
+    },
+    "/api/v1/players" : {
+      "get" : {
+        "tags" : [ "Players" ],
+        "summary" : "Получить игроков с пагинацией, фильтрацией и сортировкой",
+        "operationId" : "getAll_1",
+        "parameters" : [ {
+          "name" : "page",
+          "in" : "query",
+          "description" : "Номер страницы (начиная с 0)",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0,
+            "minimum" : 0
+          }
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "description" : "Размер страницы (1–100)",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20,
+            "maximum" : 100,
+            "minimum" : 1
+          }
+        }, {
+          "name" : "name",
+          "in" : "query",
+          "description" : "Фильтр по имени (частичное совпадение)",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "teamId",
+          "in" : "query",
+          "description" : "Фильтр по ID команды",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "sortBy",
+          "in" : "query",
+          "description" : "Поле сортировки. По умолчанию LAST_NAME.",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "default" : "LAST_NAME",
+            "enum" : [ "LAST_NAME", "FIRST_NAME" ]
+          }
+        }, {
+          "name" : "sortDirection",
+          "in" : "query",
+          "description" : "Направление сортировки. По умолчанию ASC.",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "default" : "ASC",
+            "enum" : [ "ASC", "DESC" ]
+          }
+        }, {
+          "name" : "sort",
+          "in" : "query",
+          "description" : "Устаревший формат field:direction. Поля: lastName, firstName. Нельзя совмещать с sortBy/sortDirection.",
+          "required" : false,
+          "deprecated" : true,
+          "schema" : {
+            "type" : "string"
+          },
+          "example" : "lastName:asc"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Страница результатов",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PageResponsePlayerListItemResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Некорректные или неоднозначные параметры пагинации, фильтрации или сортировки",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "Players" ],
+        "summary" : "Создать игрока",
+        "operationId" : "create_1",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreatePlayerRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PlayerDetailResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/players/{playerId}/uploadPhoto" : {
+      "post" : {
+        "tags" : [ "Players" ],
+        "summary" : "Загрузить аватар для игрока",
+        "operationId" : "uploadPhoto_1",
+        "parameters" : [ {
+          "name" : "playerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "multipart/form-data" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/PhotoUploadRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "400" : {
+            "description" : "Файл пустой, слишком большой или не является поддерживаемым изображением",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        },
+        "deprecated" : true
+      }
+    },
+    "/api/v1/matches" : {
+      "get" : {
+        "tags" : [ "Matches" ],
+        "summary" : "Получить матчи с пагинацией, фильтрацией и сортировкой",
+        "operationId" : "getAll_2",
+        "parameters" : [ {
+          "name" : "page",
+          "in" : "query",
+          "description" : "Номер страницы (начиная с 0)",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0,
+            "minimum" : 0
+          }
+        }, {
+          "name" : "size",
+          "in" : "query",
+          "description" : "Размер страницы (1–100)",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20,
+            "maximum" : 100,
+            "minimum" : 1
+          }
+        }, {
+          "name" : "teamId",
+          "in" : "query",
+          "description" : "Фильтр по ID команды-участника",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "status",
+          "in" : "query",
+          "description" : "Фильтр по статусу матча",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "enum" : [ "PLANNED", "IN_PROGRESS", "FINISHED" ]
+          }
+        }, {
+          "name" : "dateFrom",
+          "in" : "query",
+          "description" : "Плановое начало матча: от (ISO 8601, включительно). Не позже dateTo.",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }, {
+          "name" : "dateTo",
+          "in" : "query",
+          "description" : "Плановое начало матча: до (ISO 8601, включительно). Не раньше dateFrom.",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }, {
+          "name" : "sortBy",
+          "in" : "query",
+          "description" : "Поле сортировки. По умолчанию PLANNED_START_TIMESTAMP.",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "default" : "PLANNED_START_TIMESTAMP",
+            "enum" : [ "PLANNED_START_TIMESTAMP", "STARTED_AT", "ENDED_AT", "STATUS" ]
+          }
+        }, {
+          "name" : "sortDirection",
+          "in" : "query",
+          "description" : "Направление сортировки. По умолчанию ASC.",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "default" : "ASC",
+            "enum" : [ "ASC", "DESC" ]
+          }
+        }, {
+          "name" : "sort",
+          "in" : "query",
+          "description" : "Устаревший формат field:direction. Поля: plannedStartTimestamp, startedAt, endedAt, status. Нельзя совмещать с sortBy/sortDirection.",
+          "required" : false,
+          "deprecated" : true,
+          "schema" : {
+            "type" : "string"
+          },
+          "example" : "plannedStartTimestamp:asc"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Страница результатов",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PageResponseMatchListItemResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Некорректные или неоднозначные параметры пагинации, фильтрации или сортировки",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "Matches" ],
+        "summary" : "Создать матч",
+        "operationId" : "create_2",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateMatchRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/matches/{matchId}/events" : {
+      "get" : {
+        "tags" : [ "Events" ],
+        "summary" : "Получить все события матча",
+        "operationId" : "getAll_3",
+        "parameters" : [ {
+          "name" : "matchId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/EventResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "Events" ],
+        "summary" : "Создать событие",
+        "description" : "Добавляет одно событие в журнал матча IN_PROGRESS. Обязательны type и occurredAt, а остальные поля зависят от type (см. отдельный пример каждого типа). participantId/fromParticipantId/toParticipantId — идентификаторы участников из состава этого матча, включая UNKNOWN; используйте participantId из ответа GET /api/v1/matches/{matchId}. Для PASS/GOAL нужны разные участники одной команды, для блоков и перехватов — противоположных команд. UUID в примерах условные: замените их идентификаторами своего матча. Для безопасного retry передайте сгенерированный клиентом eventId: первый запрос вернёт 201, повтор с тем же payload — 200 и исходные id/sequenceNumber, а другой payload — 409. После PATCH или DELETE этот eventId больше нельзя повторно использовать: POST вернёт 409. Без eventId сервер сохраняет прежнее поведение и генерирует UUID самостоятельно. occurredAt передаётся в ISO-8601 UTC, не раньше начала матча и последнего активного события; одинаковое время допустимо. Недопустимая последовательность событий возвращает 409.\n\n\n| `type` | Дополнительные обязательные поля | Смысл |\n|---|---|---|\n| `PASS` | `fromParticipantId`, `toParticipantId` | Успешный пас: бросающий и принимающий из одной команды. |\n| `GOAL` | `fromParticipantId`, `toParticipantId` | Голевой пас: бросающий и забивший из одной команды. Завершает поинт. |\n| `INCOMPLETE_PASS` | `participantId` | Незавершённый пас; `participantId` — бросающий. |\n| `PULL` | `participantId` | Пулл; `participantId` — выполнивший его игрок. |\n| `BRICK` | `participantId` | Brick на предыдущем пулле; `participantId` — выполнивший пулл игрок. |\n| `PICKUP` | `participantId` | Подбор свободного диска; указанный игрок становится владельцем. |\n| `BLOCK` | `fromParticipantId`, `toParticipantId` | Блок без уточнения: бросающий и защитник из разных команд. |\n| `BLOCK_MARKER` | `fromParticipantId`, `toParticipantId` | Блок маркером: бросающий и защитник из разных команд. |\n| `BLOCK_FIELD` | `fromParticipantId`, `toParticipantId` | Полевой блок: бросающий и защитник из разных команд. |\n| `INTERCEPTION` | `fromParticipantId`, `toParticipantId` | Перехват: бросающий и перехвативший защитник из разных команд. |\n| `CALLAHAN` | `fromParticipantId`, `toParticipantId` | Кэллахан: бросающий и перехвативший защитник из разных команд. Завершает поинт. |\n| `TIMEOUT_START` | `teamId` | Начало таймаута указанной команды. |\n| `TIMEOUT_END` | `teamId` | Окончание таймаута указанной команды. |\n| `HALFTIME_START` | — | Начало перерыва; дополнительных идентификаторов нет. |\n| `HALFTIME_END` | — | Окончание перерыва; дополнительных идентификаторов нет. |\n\n",
+        "operationId" : "create_3",
+        "parameters" : [ {
+          "name" : "matchId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "description" : "Создание события матча. Поле `type` обязательно и определяет остальные поля запроса.",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateEventRequest"
+              },
+              "examples" : {
+                "PASS" : {
+                  "summary" : "PASS — Успешный пас",
+                  "description" : "Пас партнёру: fromParticipantId — бросающий, toParticipantId — принимающий. Участники одной команды; принимающий становится владельцем диска.",
+                  "value" : {
+                    "eventId" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    "type" : "PASS",
+                    "occurredAt" : "2026-07-28T12:30:00Z",
+                    "fromParticipantId" : "11111111-1111-1111-1111-111111111111",
+                    "toParticipantId" : "22222222-2222-2222-2222-222222222222"
+                  }
+                },
+                "GOAL" : {
+                  "summary" : "GOAL — Гол с ассистом",
+                  "description" : "Голевой пас: fromParticipantId — автор ассиста, toParticipantId — поймавший диск в голевой зоне и забивший гол. Участники одной команды; розыгрыш завершается.",
+                  "value" : {
+                    "eventId" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    "type" : "GOAL",
+                    "occurredAt" : "2026-07-28T12:30:00Z",
+                    "fromParticipantId" : "11111111-1111-1111-1111-111111111111",
+                    "toParticipantId" : "22222222-2222-2222-2222-222222222222"
+                  }
+                },
+                "INCOMPLETE_PASS" : {
+                  "summary" : "INCOMPLETE_PASS — Незавершённый пас",
+                  "description" : "Пас без зафиксированного действия защиты: выброс, аут или неудачная ловля. participantId — бросающий, а не не поймавший игрок. Диск свободен до PICKUP.",
+                  "value" : {
+                    "eventId" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    "type" : "INCOMPLETE_PASS",
+                    "occurredAt" : "2026-07-28T12:30:00Z",
+                    "participantId" : "11111111-1111-1111-1111-111111111111"
+                  }
+                },
+                "PULL" : {
+                  "summary" : "PULL — Ввод диска в игру",
+                  "description" : "Пулл в начале матча, после гола или перерыва. participantId — выполнивший пулл игрок. Владение не устанавливается; далее ожидается BRICK или PICKUP.",
+                  "value" : {
+                    "eventId" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    "type" : "PULL",
+                    "occurredAt" : "2026-07-28T12:30:00Z",
+                    "participantId" : "11111111-1111-1111-1111-111111111111"
+                  }
+                },
+                "BRICK" : {
+                  "summary" : "BRICK — Брик после пулла",
+                  "description" : "Объявление брика непосредственно после PULL. participantId — игрок, выполнивший предшествующий пулл, а не объявивший брик. У него увеличивается статистика bricks; далее требуется PICKUP.",
+                  "value" : {
+                    "eventId" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    "type" : "BRICK",
+                    "occurredAt" : "2026-07-28T12:30:00Z",
+                    "participantId" : "11111111-1111-1111-1111-111111111111"
+                  }
+                },
+                "PICKUP" : {
+                  "summary" : "PICKUP — Подбор свободного диска",
+                  "description" : "participantId — подобравший диск участник. Применяется после PULL, BRICK, INCOMPLETE_PASS или блока; начинает новое владение.",
+                  "value" : {
+                    "eventId" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    "type" : "PICKUP",
+                    "occurredAt" : "2026-07-28T12:30:00Z",
+                    "participantId" : "11111111-1111-1111-1111-111111111111"
+                  }
+                },
+                "BLOCK" : {
+                  "summary" : "BLOCK — Блок без уточнения позиции",
+                  "description" : "fromParticipantId — бросающий, toParticipantId — блокирующий защитник противоположной команды. Позиция защитника не уточнена. Диск свободен до PICKUP.",
+                  "value" : {
+                    "eventId" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    "type" : "BLOCK",
+                    "occurredAt" : "2026-07-28T12:30:00Z",
+                    "fromParticipantId" : "11111111-1111-1111-1111-111111111111",
+                    "toParticipantId" : "44444444-4444-4444-4444-444444444444"
+                  }
+                },
+                "BLOCK_MARKER" : {
+                  "summary" : "BLOCK_MARKER — Блок на маркере",
+                  "description" : "fromParticipantId — бросающий, toParticipantId — маркировавший его защитник противоположной команды. Блок учитывается в marker-статистике; далее требуется PICKUP.",
+                  "value" : {
+                    "eventId" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    "type" : "BLOCK_MARKER",
+                    "occurredAt" : "2026-07-28T12:30:00Z",
+                    "fromParticipantId" : "11111111-1111-1111-1111-111111111111",
+                    "toParticipantId" : "44444444-4444-4444-4444-444444444444"
+                  }
+                },
+                "BLOCK_FIELD" : {
+                  "summary" : "BLOCK_FIELD — Полевой блок",
+                  "description" : "fromParticipantId — бросающий, toParticipantId — полевой защитник противоположной команды, выполнивший блок. Блок учитывается в field-статистике; далее требуется PICKUP.",
+                  "value" : {
+                    "eventId" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    "type" : "BLOCK_FIELD",
+                    "occurredAt" : "2026-07-28T12:30:00Z",
+                    "fromParticipantId" : "11111111-1111-1111-1111-111111111111",
+                    "toParticipantId" : "44444444-4444-4444-4444-444444444444"
+                  }
+                },
+                "INTERCEPTION" : {
+                  "summary" : "INTERCEPTION — Перехват с владением",
+                  "description" : "fromParticipantId — бросающий соперник, toParticipantId — поймавший его пас защитник противоположной команды. Защитник сразу получает владение, дополнительный PICKUP не нужен.",
+                  "value" : {
+                    "eventId" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    "type" : "INTERCEPTION",
+                    "occurredAt" : "2026-07-28T12:30:00Z",
+                    "fromParticipantId" : "11111111-1111-1111-1111-111111111111",
+                    "toParticipantId" : "44444444-4444-4444-4444-444444444444"
+                  }
+                },
+                "CALLAHAN" : {
+                  "summary" : "CALLAHAN — Перехват с голом",
+                  "description" : "fromParticipantId — бросающий соперник, toParticipantId — защитник противоположной команды, перехвативший диск в атакуемой им голевой зоне. Засчитываются перехват и гол; розыгрыш завершается.",
+                  "value" : {
+                    "eventId" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    "type" : "CALLAHAN",
+                    "occurredAt" : "2026-07-28T12:30:00Z",
+                    "fromParticipantId" : "11111111-1111-1111-1111-111111111111",
+                    "toParticipantId" : "44444444-4444-4444-4444-444444444444"
+                  }
+                },
+                "TIMEOUT_START" : {
+                  "summary" : "TIMEOUT_START — Начало таймаута",
+                  "description" : "teamId — команда-участница матча, взявшая таймаут. Игровой таймер останавливается, предыдущее состояние сохраняется до TIMEOUT_END.",
+                  "value" : {
+                    "eventId" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    "type" : "TIMEOUT_START",
+                    "occurredAt" : "2026-07-28T12:30:00Z",
+                    "teamId" : "33333333-3333-3333-3333-333333333333"
+                  }
+                },
+                "TIMEOUT_END" : {
+                  "summary" : "TIMEOUT_END — Окончание таймаута",
+                  "description" : "teamId — команда, чей таймаут заканчивается. После TIMEOUT_START возобновляются таймер и предыдущее игровое состояние.",
+                  "value" : {
+                    "eventId" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    "type" : "TIMEOUT_END",
+                    "occurredAt" : "2026-07-28T12:30:00Z",
+                    "teamId" : "33333333-3333-3333-3333-333333333333"
+                  }
+                },
+                "HALFTIME_START" : {
+                  "summary" : "HALFTIME_START — Начало перерыва",
+                  "description" : "Начинает перерыв после завершённого розыгрыша и останавливает игровой таймер. Требуются только type и occurredAt, без participantId/teamId.",
+                  "value" : {
+                    "eventId" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    "type" : "HALFTIME_START",
+                    "occurredAt" : "2026-07-28T12:30:00Z"
+                  }
+                },
+                "HALFTIME_END" : {
+                  "summary" : "HALFTIME_END — Окончание перерыва",
+                  "description" : "Завершает перерыв после HALFTIME_START. Далее ожидается PULL нового розыгрыша. Требуются только type и occurredAt, без participantId/teamId.",
+                  "value" : {
+                    "eventId" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    "type" : "HALFTIME_END",
+                    "occurredAt" : "2026-07-28T12:30:00Z"
+                  }
+                }
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "Идемпотентный повтор: возвращено ранее созданное событие с прежними id и sequenceNumber",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EventResponse"
+                }
+              }
+            }
+          },
+          "201" : {
+            "description" : "Создано новое событие",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EventResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Некорректное тело запроса или недопустимые участники события",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "Конфликт eventId, состояния матча или последовательности событий",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/matches/{matchId}/events/undo" : {
+      "post" : {
+        "tags" : [ "Events" ],
+        "summary" : "Отменить последнее событие матча",
+        "description" : "Без тела запроса. Мягко удаляет активное событие с наибольшим sequenceNumber\n            под блокировкой матча, пересчитывает счёт и после commit отправляет SSE event-log-changed\n            с operation=DELETED. Возвращает отменённое событие. Сохраняет правила удаления событий:\n            журнал завершённого матча должен оканчиваться завершённым розыгрышем.\n            Операция неидемпотентна: каждый повторный вызов отменяет следующее активное событие.\n            Транспорт может повторить запрос даже без JS retry. Для replay-safe отмены и восстановления результата\n            используйте POST /api/v2/matches/{matchId}/events/undo со стабильным commandId и observed position.",
+        "operationId" : "undoLast",
+        "parameters" : [ {
+          "name" : "matchId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Отменённое событие",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EventResponse"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "Матч не найден или активных событий нет",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "Отмена нарушает состояние матча или последовательность событий",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/matches/{id}/start" : {
+      "post" : {
+        "tags" : [ "Matches" ],
+        "summary" : "Начать матч",
+        "operationId" : "startMatch",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/MatchTimestampRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/matches/{id}/end" : {
+      "post" : {
+        "tags" : [ "Matches" ],
+        "summary" : "Завершить матч",
+        "operationId" : "endMatch",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/MatchTimestampRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/matches/import" : {
+      "post" : {
+        "tags" : [ "match-transfer-controller" ],
+        "summary" : "Import a portable package as independent copies",
+        "description" : "Only version 1 is accepted. New IDs are generated for every match/team/player/event and UNKNOWN participant; shared player/team identity is preserved within the package. Existing data is never overwritten. Repeat import creates another copy. Entire package is validated and committed atomically. Cards are active, without photos or current memberships. Status/timestamps/snapshots/event order are preserved and scores recalculated.",
+        "operationId" : "importPackage",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/MatchTransferPackage"
+              },
+              "examples" : {
+                "portableMatch" : {
+                  "description" : "portableMatch",
+                  "value" : {
+                    "formatVersion" : 1,
+                    "matches" : [ {
+                      "id" : "00000000-0000-0000-0000-000000000001",
+                      "playersPerTeam" : 5,
+                      "plannedStartTimestamp" : "2026-10-01T10:00:00Z",
+                      "startedAt" : "2026-10-01T10:00:00Z",
+                      "endedAt" : "2026-10-01T10:00:05Z",
+                      "teams" : [ {
+                        "teamId" : "00000000-0000-0000-0000-000000000002",
+                        "teamName" : "Соколы",
+                        "participants" : [ {
+                          "participantId" : "00000000-0000-0000-0000-000000000004",
+                          "kind" : "PLAYER",
+                          "firstName" : "Иван",
+                          "lastName" : "Иванов",
+                          "number" : 7
+                        }, {
+                          "participantId" : "00000000-0000-0000-0000-000000000005",
+                          "kind" : "UNKNOWN",
+                          "unknownSlot" : 1
+                        }, {
+                          "participantId" : "00000000-0000-0000-0000-000000000006",
+                          "kind" : "UNKNOWN",
+                          "unknownSlot" : 2
+                        } ]
+                      }, {
+                        "teamId" : "00000000-0000-0000-0000-000000000003",
+                        "teamName" : "Ветер",
+                        "participants" : [ {
+                          "participantId" : "00000000-0000-0000-0000-000000000007",
+                          "kind" : "UNKNOWN",
+                          "unknownSlot" : 1
+                        }, {
+                          "participantId" : "00000000-0000-0000-0000-000000000008",
+                          "kind" : "UNKNOWN",
+                          "unknownSlot" : 2
+                        } ]
+                      } ],
+                      "events" : [ {
+                        "id" : "00000000-0000-0000-0000-000000000009",
+                        "sequenceNumber" : 1,
+                        "type" : "PULL",
+                        "occurredAt" : "2026-10-01T10:00:01Z",
+                        "fromParticipantId" : "00000000-0000-0000-0000-000000000007"
+                      }, {
+                        "id" : "00000000-0000-0000-0000-000000000010",
+                        "sequenceNumber" : 2,
+                        "type" : "PICKUP",
+                        "occurredAt" : "2026-10-01T10:00:02Z",
+                        "fromParticipantId" : "00000000-0000-0000-0000-000000000004"
+                      }, {
+                        "id" : "00000000-0000-0000-0000-000000000011",
+                        "sequenceNumber" : 3,
+                        "type" : "GOAL",
+                        "occurredAt" : "2026-10-01T10:00:03Z",
+                        "fromParticipantId" : "00000000-0000-0000-0000-000000000004",
+                        "toParticipantId" : "00000000-0000-0000-0000-000000000005"
+                      } ]
+                    } ],
+                    "teams" : [ {
+                      "id" : "00000000-0000-0000-0000-000000000002",
+                      "name" : "Соколы",
+                      "city" : "Новосибирск"
+                    }, {
+                      "id" : "00000000-0000-0000-0000-000000000003",
+                      "name" : "Ветер"
+                    } ],
+                    "players" : [ {
+                      "id" : "00000000-0000-0000-0000-000000000004",
+                      "firstName" : "Иван",
+                      "lastName" : "Иванов"
+                    } ]
+                  }
+                }
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "Source-to-created identity maps",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MatchTransferResult"
+                },
+                "example" : {
+                  "matchIds" : {
+                    "00000000-0000-0000-0000-000000000001" : "00000000-0000-0000-0000-000000000012"
+                  },
+                  "teamIds" : {
+                    "00000000-0000-0000-0000-000000000002" : "00000000-0000-0000-0000-000000000013",
+                    "00000000-0000-0000-0000-000000000003" : "00000000-0000-0000-0000-000000000014"
+                  },
+                  "playerIds" : {
+                    "00000000-0000-0000-0000-000000000004" : "00000000-0000-0000-0000-000000000015"
+                  },
+                  "eventIds" : {
+                    "00000000-0000-0000-0000-000000000009" : "00000000-0000-0000-0000-000000000020",
+                    "00000000-0000-0000-0000-000000000010" : "00000000-0000-0000-0000-000000000021",
+                    "00000000-0000-0000-0000-000000000011" : "00000000-0000-0000-0000-000000000022"
+                  },
+                  "participantIds" : {
+                    "00000000-0000-0000-0000-000000000001" : {
+                      "00000000-0000-0000-0000-000000000004" : "00000000-0000-0000-0000-000000000015",
+                      "00000000-0000-0000-0000-000000000005" : "00000000-0000-0000-0000-000000000016",
+                      "00000000-0000-0000-0000-000000000006" : "00000000-0000-0000-0000-000000000017",
+                      "00000000-0000-0000-0000-000000000007" : "00000000-0000-0000-0000-000000000018",
+                      "00000000-0000-0000-0000-000000000008" : "00000000-0000-0000-0000-000000000019"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Malformed, unsupported or inconsistent package; nothing imported",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/matches/export" : {
+      "post" : {
+        "tags" : [ "match-transfer-controller" ],
+        "summary" : "Export selected matches as portable JSON version 1",
+        "description" : "Preserves selected order and historical snapshots. All statuses supported; missing/deleted matches return 404. Photos, current memberships, deleted events and idempotency metadata are excluded.",
+        "operationId" : "export",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/MatchExportRequest"
+              },
+              "example" : {
+                "matchIds" : [ "00000000-0000-0000-0000-000000000001" ]
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "Portable package",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MatchTransferPackage"
+                },
+                "examples" : {
+                  "portableMatch" : {
+                    "description" : "portableMatch",
+                    "value" : {
+                      "formatVersion" : 1,
+                      "matches" : [ {
+                        "id" : "00000000-0000-0000-0000-000000000001",
+                        "playersPerTeam" : 5,
+                        "plannedStartTimestamp" : "2026-10-01T10:00:00Z",
+                        "startedAt" : "2026-10-01T10:00:00Z",
+                        "endedAt" : "2026-10-01T10:00:05Z",
+                        "teams" : [ {
+                          "teamId" : "00000000-0000-0000-0000-000000000002",
+                          "teamName" : "Соколы",
+                          "participants" : [ {
+                            "participantId" : "00000000-0000-0000-0000-000000000004",
+                            "kind" : "PLAYER",
+                            "firstName" : "Иван",
+                            "lastName" : "Иванов",
+                            "number" : 7
+                          }, {
+                            "participantId" : "00000000-0000-0000-0000-000000000005",
+                            "kind" : "UNKNOWN",
+                            "unknownSlot" : 1
+                          }, {
+                            "participantId" : "00000000-0000-0000-0000-000000000006",
+                            "kind" : "UNKNOWN",
+                            "unknownSlot" : 2
+                          } ]
+                        }, {
+                          "teamId" : "00000000-0000-0000-0000-000000000003",
+                          "teamName" : "Ветер",
+                          "participants" : [ {
+                            "participantId" : "00000000-0000-0000-0000-000000000007",
+                            "kind" : "UNKNOWN",
+                            "unknownSlot" : 1
+                          }, {
+                            "participantId" : "00000000-0000-0000-0000-000000000008",
+                            "kind" : "UNKNOWN",
+                            "unknownSlot" : 2
+                          } ]
+                        } ],
+                        "events" : [ {
+                          "id" : "00000000-0000-0000-0000-000000000009",
+                          "sequenceNumber" : 1,
+                          "type" : "PULL",
+                          "occurredAt" : "2026-10-01T10:00:01Z",
+                          "fromParticipantId" : "00000000-0000-0000-0000-000000000007"
+                        }, {
+                          "id" : "00000000-0000-0000-0000-000000000010",
+                          "sequenceNumber" : 2,
+                          "type" : "PICKUP",
+                          "occurredAt" : "2026-10-01T10:00:02Z",
+                          "fromParticipantId" : "00000000-0000-0000-0000-000000000004"
+                        }, {
+                          "id" : "00000000-0000-0000-0000-000000000011",
+                          "sequenceNumber" : 3,
+                          "type" : "GOAL",
+                          "occurredAt" : "2026-10-01T10:00:03Z",
+                          "fromParticipantId" : "00000000-0000-0000-0000-000000000004",
+                          "toParticipantId" : "00000000-0000-0000-0000-000000000005"
+                        } ]
+                      } ],
+                      "teams" : [ {
+                        "id" : "00000000-0000-0000-0000-000000000002",
+                        "name" : "Соколы",
+                        "city" : "Новосибирск"
+                      }, {
+                        "id" : "00000000-0000-0000-0000-000000000003",
+                        "name" : "Ветер"
+                      } ],
+                      "players" : [ {
+                        "id" : "00000000-0000-0000-0000-000000000004",
+                        "firstName" : "Иван",
+                        "lastName" : "Иванов"
+                      } ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Invalid selection",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "A selected match does not exist or is deleted",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/matches/{matchId}/events/{eventId}" : {
+      "get" : {
+        "tags" : [ "Events" ],
+        "summary" : "Получить событие по ID",
+        "operationId" : "get_1",
+        "parameters" : [ {
+          "name" : "matchId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "eventId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EventResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete" : {
+        "tags" : [ "Events" ],
+        "summary" : "Удалить событие по ID",
+        "operationId" : "delete_3",
+        "parameters" : [ {
+          "name" : "matchId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "eventId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch" : {
+        "tags" : [ "Events" ],
+        "summary" : "Исправить участников, команду или разновидность блока",
+        "description" : "Обязательное поле type должно совпадать с сохранённым типом события. Исключение: разрешены взаимные замены BLOCK, BLOCK_MARKER и BLOCK_FIELD; другие смены дают 400. Для события с одним участником обязателен participantId, для командного — teamId. В событии с двумя участниками fromParticipantId и toParticipantId необязательны: отсутствие или null сохраняет прежнее значение; можно передать только type для уточнения блока. Роли участников и ограничения команд совпадают с POST. occurredAt неизменяем и не входит в PATCH; идентификатор и sequenceNumber также сохраняются. Системные события HALFTIME_START и HALFTIME_END не редактируются: PATCH с их сохранённым type возвращает 405 Method Not Allowed. Исправление допускается после начала матча, в том числе после завершения; нарушение последовательности событий или правил состояния возвращает 409.",
+        "operationId" : "update_3",
+        "parameters" : [ {
+          "name" : "matchId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "eventId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "description" : "Исправление существующего события без изменения его времени.",
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateEventRequest"
+              },
+              "examples" : {
+                "onePlayerEvent" : {
+                  "summary" : "Исправить выполнившего пулл",
+                  "description" : "Для сохранённого PULL заменяет participantId; оба поля обязательны.",
+                  "value" : {
+                    "type" : "PULL",
+                    "participantId" : "11111111-1111-1111-1111-111111111111"
+                  }
+                },
+                "twoPlayerEvent" : {
+                  "summary" : "Исправить только принимающего пас",
+                  "description" : "Для сохранённого PASS заменяет toParticipantId; прежний бросающий сохраняется. Участники должны остаться разными игроками одной команды.",
+                  "value" : {
+                    "type" : "PASS",
+                    "toParticipantId" : "22222222-2222-2222-2222-222222222222"
+                  }
+                },
+                "blockRefinement" : {
+                  "summary" : "Уточнить блок как блок на маркере",
+                  "description" : "Для BLOCK или BLOCK_FIELD меняет type на BLOCK_MARKER, сохраняя обоих участников.",
+                  "value" : {
+                    "type" : "BLOCK_MARKER"
+                  }
+                },
+                "teamEvent" : {
+                  "summary" : "Исправить команду таймаута",
+                  "description" : "Для сохранённого TIMEOUT_START заменяет teamId на другую команду-участницу матча; оба поля обязательны.",
+                  "value" : {
+                    "type" : "TIMEOUT_START",
+                    "teamId" : "33333333-3333-3333-3333-333333333333"
+                  }
+                }
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "Исправленное событие с прежними id, sequenceNumber и occurredAt",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EventResponse"
+                }
+              }
+            }
+          },
+          "405" : {
+            "description" : "Редактирование системного события не поддерживается",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "object"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "Конфликт состояния матча или последовательности событий",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Недопустимое изменение события",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/matches/{matchId}/events" : {
+      "get" : {
+        "tags" : [ "Events v2" ],
+        "summary" : "Read a consistent canonical event log and synchronization position",
+        "description" : "Returns active events in sequenceNumber order, the highest ever allocated number (including deleted events), and logRevision under the match lock. Use both position fields for the next batch. No events are reordered by occurredAt.",
+        "operationId" : "snapshot",
+        "parameters" : [ {
+          "name" : "matchId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Consistent snapshot",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EventLogResponse"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "Match not found: empty body, no Content-Type header"
+          }
+        }
+      }
+    },
+    "/api/v2/matches/{matchId}/events/undo/{commandId}" : {
+      "get" : {
+        "tags" : [ "Events v2" ],
+        "summary" : "Recover an immutable undo outcome after response loss or reload",
+        "description" : "Returns a historical APPLIED or REJECTED receipt, not current canonical state. Serialized with commands under the match lock. 404 means no visible receipt at lookup time, not proof that an in-flight command cannot commit. Keep the original envelope and retry the same ID/payload. Receipts have no expiry and are hidden when the match is deleted. GET v2 events separately after a known outcome.",
+        "operationId" : "outcome",
+        "parameters" : [ {
+          "name" : "matchId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "commandId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Recorded APPLIED or REJECTED outcome",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UndoCommandResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "INVALID_REQUEST: malformed UUID",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "RESOURCE_NOT_FOUND: receipt unknown or match missing/deleted; outcome may still be in flight",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{teamId}/players" : {
+      "get" : {
+        "tags" : [ "Teams" ],
+        "summary" : "Получить состав команды",
+        "operationId" : "getPlayers",
+        "parameters" : [ {
+          "name" : "teamId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/TeamPlayerResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/teams/{teamId}/photoUrl" : {
+      "get" : {
+        "tags" : [ "Teams" ],
+        "summary" : "Получить URL изображения команды",
+        "operationId" : "getPhotoUrl",
+        "parameters" : [ {
+          "name" : "teamId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PhotoUrlResponse"
+                }
+              }
+            }
+          }
+        },
+        "deprecated" : true
+      },
+      "delete" : {
+        "tags" : [ "Teams" ],
+        "summary" : "Удалить URL изображения команды",
+        "operationId" : "removePhotoUrl",
+        "parameters" : [ {
+          "name" : "teamId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PhotoUrlResponse"
+                }
+              }
+            }
+          }
+        },
+        "deprecated" : true
+      }
+    },
+    "/api/v1/players/{playerId}/teams" : {
+      "get" : {
+        "tags" : [ "Players" ],
+        "summary" : "Получить членства игрока в командах",
+        "operationId" : "getTeams",
+        "parameters" : [ {
+          "name" : "playerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/PlayerTeamMembershipResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/players/{playerId}/photoUrl" : {
+      "get" : {
+        "tags" : [ "Players" ],
+        "summary" : "Получить URL изображения игрока",
+        "operationId" : "getPhotoUrl_1",
+        "parameters" : [ {
+          "name" : "playerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PhotoUrlResponse"
+                }
+              }
+            }
+          }
+        },
+        "deprecated" : true
+      },
+      "delete" : {
+        "tags" : [ "Players" ],
+        "summary" : "Удалить URL изображения игрока",
+        "operationId" : "removePhotoUrl_1",
+        "parameters" : [ {
+          "name" : "playerId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PhotoUrlResponse"
+                }
+              }
+            }
+          }
+        },
+        "deprecated" : true
+      }
+    },
+    "/api/v1/obs/stream" : {
+      "get" : {
+        "tags" : [ "obs-notification-controller" ],
+        "summary" : "Общий поток уведомлений OBS для SharedWorker",
+        "description" : "Один поток на browser context: connected/config-changed/event-log-changed/match-finished. Только AFTER_COMMIT invalidations; canonical данные читаются через REST. Match-события содержат matchId для фильтрации. После match-finished поток остаётся открыт для общей конфигурации и других матчей. Process-local без durable replay; connected требует повторной сверки всех подписок. Доверенная сеть без авторизации.",
+        "operationId" : "subscribe",
+        "responses" : {
+          "200" : {
+            "description" : "OBS notification SSE",
+            "content" : {
+              "text/event-stream" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/obs/config/stream" : {
+      "get" : {
+        "tags" : [ "obs-config-controller" ],
+        "summary" : "SSE общих настроек OBS",
+        "description" : "connected/config-changed — перечитать GET. Process-local invalidation без durable replay; heartbeat 15 секунд.",
+        "operationId" : "stream",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "text/event-stream" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/SseEmitter"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/matches/{matchId}/statistics" : {
+      "get" : {
+        "tags" : [ "Statistics" ],
+        "summary" : "Получить статистику матча",
+        "operationId" : "getStatistics",
+        "parameters" : [ {
+          "name" : "matchId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Статистика матча",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/MatchStatisticsResponse"
+                },
+                "example" : {
+                  "matchId" : "00000000-0000-0000-0000-000000000100",
+                  "teams" : [ {
+                    "teamId" : "00000000-0000-0000-0000-000000000001",
+                    "teamName" : "Flying Bears",
+                    "attack" : {
+                      "score" : 1,
+                      "breaks" : 1,
+                      "completePasses" : 1,
+                      "allPasses" : 1,
+                      "pulls" : 1,
+                      "bricks" : 0,
+                      "possessions" : 1
+                    },
+                    "defense" : {
+                      "blocks" : 0,
+                      "blocksAsMarker" : 0,
+                      "blocksAsFieldPlayer" : 0,
+                      "interceptions" : 0,
+                      "callahans" : 0
+                    },
+                    "time" : {
+                      "possessionTimeMs" : 42000,
+                      "betweenPointsTimeMs" : 7000,
+                      "timeoutTimeMs" : 0
+                    },
+                    "participants" : [ {
+                      "participantId" : "00000000-0000-0000-0000-000000000010",
+                      "kind" : "PLAYER",
+                      "unknownSlot" : null,
+                      "firstName" : "Ivan",
+                      "lastName" : "Ivanov",
+                      "displayName" : "Ivan Ivanov",
+                      "number" : 17,
+                      "attack" : {
+                        "passes" : 1,
+                        "catches" : 1,
+                        "assists" : 1,
+                        "goals" : 0,
+                        "dropsOnMarker" : 0,
+                        "dropsOnField" : 0,
+                        "incompletePasses" : 0,
+                        "callahanDrops" : 0,
+                        "discPossessions" : 1,
+                        "pulls" : 0,
+                        "bricks" : 0
+                      },
+                      "defense" : {
+                        "blocks" : 0,
+                        "blocksAsMarker" : 0,
+                        "blocksAsFieldPlayer" : 0,
+                        "interceptions" : 0,
+                        "callahans" : 0
+                      },
+                      "time" : {
+                        "possessionTimeMs" : 42000,
+                        "averagePossessionTimeMs" : 42000,
+                        "averagePossessionTimeAvailable" : true
+                      }
+                    } ]
+                  } ],
+                  "time" : {
+                    "totalTimeMs" : 90000,
+                    "betweenPointsTimeMs" : 7000,
+                    "timeoutTimeMs" : 0,
+                    "halftimeTimeMs" : 0,
+                    "pureGameTimeMs" : 83000
+                  }
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "Матч не найден",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/matches/{matchId}/statistics/export" : {
+      "get" : {
+        "tags" : [ "Statistics" ],
+        "summary" : "Экспортировать статистику матча в ZIP с CSV-таблицами",
+        "operationId" : "exportStatistics",
+        "parameters" : [ {
+          "name" : "matchId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "ZIP-архив со статистикой матча",
+            "content" : {
+              "application/zip" : {
+                "schema" : {
+                  "type" : "string",
+                  "format" : "binary"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "Матч не найден",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/matches/{matchId}/events/stream" : {
+      "get" : {
+        "tags" : [ "match-event-stream-controller" ],
+        "summary" : "Подключиться к потоку событий матча",
+        "operationId" : "stream_1",
+        "parameters" : [ {
+          "name" : "matchId",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "SSE-поток событий матча",
+            "content" : {
+              "text/event-stream" : {
+                "schema" : {
+                  "type" : "string"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "Матч не найден",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "UpsertTeamPlayerRequest" : {
+        "type" : "object",
+        "properties" : {
+          "number" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32"
+          }
+        }
+      },
+      "PlayerTeamMembershipResponse" : {
+        "type" : "object",
+        "properties" : {
+          "teamId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "teamName" : {
+            "type" : "string"
+          },
+          "playerId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "number" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        },
+        "required" : [ "playerId", "teamId", "teamName" ]
+      },
+      "PhotoUploadRequest" : {
+        "type" : "object",
+        "description" : "Multipart-запрос загрузки фотографии",
+        "properties" : {
+          "file" : {
+            "type" : "string",
+            "format" : "binary"
+          }
+        },
+        "required" : [ "file" ]
+      },
+      "ProblemDetail" : {
+        "type" : "object",
+        "properties" : {
+          "type" : {
+            "type" : "string",
+            "format" : "uri"
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "detail" : {
+            "type" : "string"
+          },
+          "instance" : {
+            "type" : "string",
+            "format" : "uri-reference",
+            "description" : "URI reference identifying this occurrence, usually the relative request path."
+          },
+          "properties" : {
+            "type" : "object",
+            "additionalProperties" : { }
+          }
+        }
+      },
+      "UpdateTeamRequest" : {
+        "type" : "object",
+        "properties" : {
+          "name" : {
+            "type" : [ "string", "null" ]
+          },
+          "city" : {
+            "type" : [ "string", "null" ]
+          }
+        }
+      },
+      "TeamDetailResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "players" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/TeamRosterPlayerResponse"
+            }
+          },
+          "city" : {
+            "type" : "string"
+          },
+          "photoUrl" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "id", "name", "players" ]
+      },
+      "TeamRosterPlayerResponse" : {
+        "type" : "object",
+        "properties" : {
+          "teamId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "playerId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "number" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "firstName" : {
+            "type" : "string"
+          },
+          "lastName" : {
+            "type" : "string"
+          },
+          "photoUrl" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "firstName", "lastName", "playerId", "teamId" ]
+      },
+      "UpdatePlayerRequest" : {
+        "type" : "object",
+        "properties" : {
+          "firstName" : {
+            "type" : [ "string", "null" ]
+          },
+          "lastName" : {
+            "type" : [ "string", "null" ]
+          }
+        }
+      },
+      "PlayerDetailResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "firstName" : {
+            "type" : "string"
+          },
+          "lastName" : {
+            "type" : "string"
+          },
+          "photoUrl" : {
+            "type" : "string"
+          },
+          "memberships" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/PlayerTeamMembershipResponse"
+            }
+          }
+        },
+        "required" : [ "firstName", "id", "lastName", "memberships" ]
+      },
+      "ObsConfig" : {
+        "type" : "object",
+        "properties" : {
+          "categories" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "enum" : [ "GOAL", "BLOCK", "INTERCEPTION", "CALLAHAN" ]
+            },
+            "uniqueItems" : true
+          },
+          "maxRows" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 20,
+            "minimum" : 1
+          },
+          "ttlSeconds" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 60,
+            "minimum" : 1
+          },
+          "corner" : {
+            "type" : "string",
+            "enum" : [ "TOP_RIGHT", "TOP_LEFT", "BOTTOM_RIGHT", "BOTTOM_LEFT" ]
+          },
+          "backgroundColor" : {
+            "type" : "string",
+            "pattern" : "#[0-9a-fA-F]{6}"
+          },
+          "textColor" : {
+            "type" : "string",
+            "pattern" : "#[0-9a-fA-F]{6}"
+          },
+          "teamColors" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "string"
+            }
+          }
+        },
+        "required" : [ "backgroundColor", "categories", "corner", "maxRows", "teamColors", "textColor", "ttlSeconds" ]
+      },
+      "UpdateMatchRequest" : {
+        "type" : "object",
+        "properties" : {
+          "teamIds" : {
+            "type" : [ "array", "null" ],
+            "items" : {
+              "type" : "string",
+              "format" : "uuid"
+            }
+          },
+          "playersPerTeam" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32"
+          },
+          "plannedStartTimestamp" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          }
+        }
+      },
+      "UndoEventRequest" : {
+        "type" : "object",
+        "properties" : {
+          "commandId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "expectedLastEventId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "expectedLogRevision" : {
+            "type" : "integer",
+            "format" : "int64",
+            "minimum" : 0
+          }
+        },
+        "required" : [ "commandId", "expectedLastEventId", "expectedLogRevision" ]
+      },
+      "UndoCommandRejection" : {
+        "type" : "object",
+        "properties" : {
+          "code" : {
+            "type" : "string",
+            "enum" : [ "INVALID_REQUEST", "RESOURCE_NOT_FOUND", "MATCH_NOT_IN_PROGRESS", "MATCH_ALREADY_STARTED", "MATCH_NOT_STARTED", "MATCH_ALREADY_FINISHED", "MATCH_UPDATE_LOCKED", "START_AFTER_FIRST_EVENT", "END_BEFORE_START", "END_BEFORE_LAST_EVENT", "EVENT_BEFORE_START", "EVENT_OUT_OF_ORDER", "EVENT_IDEMPOTENCY_CONFLICT", "EVENT_SEQUENCE_VIOLATION", "EVENT_LOG_STALE", "EVENT_BATCH_CONFLICT", "UNDO_COMMAND_CONFLICT", "UNDO_LOG_EMPTY", "MATCH_NOT_AT_POINT_END" ]
+          },
+          "detail" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "code", "detail" ]
+      },
+      "UndoCommandResponse" : {
+        "type" : "object",
+        "description" : "Immutable historical command result. This is NOT the current canonical log. GET v2 events separately before resuming input.",
+        "properties" : {
+          "matchId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "commandId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "expectedLastEventId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "expectedLogRevision" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "outcome" : {
+            "type" : "string",
+            "enum" : [ "APPLIED", "REJECTED" ]
+          },
+          "resultLogRevision" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "Committed revision for APPLIED; observed revision for REJECTED. Never refreshed on replay."
+          },
+          "removedEventId" : {
+            "type" : [ "string", "null" ],
+            "format" : "uuid"
+          },
+          "removedSequenceNumber" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32"
+          },
+          "rejection" : {
+            "anyOf" : [ {
+              "$ref" : "#/components/schemas/UndoCommandRejection"
+            }, {
+              "type" : "null"
+            } ],
+            "description" : "Null for APPLIED; immutable code and detail for REJECTED."
+          }
+        },
+        "required" : [ "commandId", "expectedLastEventId", "expectedLogRevision", "matchId", "outcome", "rejection", "removedEventId", "removedSequenceNumber", "resultLogRevision" ]
+      },
+      "UndoCommandProblem" : {
+        "type" : "object",
+        "description" : "Undo conflict. commandResult is present only for a durable terminal rejection; absent for changed-payload identity conflict.",
+        "properties" : {
+          "type" : {
+            "type" : "string",
+            "format" : "uri"
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "detail" : {
+            "type" : "string"
+          },
+          "instance" : {
+            "type" : "string",
+            "format" : "uri-reference",
+            "description" : "URI reference identifying this occurrence, usually the relative request path."
+          },
+          "properties" : {
+            "type" : "object",
+            "additionalProperties" : { }
+          },
+          "code" : {
+            "type" : "string"
+          },
+          "commandResult" : {
+            "$ref" : "#/components/schemas/UndoCommandResponse"
+          }
+        },
+        "required" : [ "code" ]
+      },
+      "CreateEventBatchRequest" : {
+        "type" : "object",
+        "description" : "Atomic ordered append. Every event requires a stable client eventId. Bases come from GET v2 events.",
+        "properties" : {
+          "expectedLastSequenceNumber" : {
+            "type" : "integer",
+            "format" : "int32",
+            "minimum" : 0
+          },
+          "expectedLogRevision" : {
+            "type" : "integer",
+            "format" : "int64",
+            "minimum" : 0
+          },
+          "events" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/BatchEventRequest"
+            },
+            "maxItems" : 100,
+            "minItems" : 1
+          }
+        },
+        "required" : [ "events", "expectedLastSequenceNumber", "expectedLogRevision" ]
+      },
+      "CreateEventRequest" : {
+        "type" : "object",
+        "discriminator" : {
+          "propertyName" : "type",
+          "mapping" : {
+            "INCOMPLETE_PASS" : "#/components/schemas/OnePlayerEventRequest",
+            "PULL" : "#/components/schemas/OnePlayerEventRequest",
+            "BRICK" : "#/components/schemas/OnePlayerEventRequest",
+            "PICKUP" : "#/components/schemas/OnePlayerEventRequest",
+            "PASS" : "#/components/schemas/TwoPlayerEventRequest",
+            "GOAL" : "#/components/schemas/TwoPlayerEventRequest",
+            "BLOCK" : "#/components/schemas/TwoPlayerEventRequest",
+            "BLOCK_MARKER" : "#/components/schemas/TwoPlayerEventRequest",
+            "BLOCK_FIELD" : "#/components/schemas/TwoPlayerEventRequest",
+            "INTERCEPTION" : "#/components/schemas/TwoPlayerEventRequest",
+            "CALLAHAN" : "#/components/schemas/TwoPlayerEventRequest",
+            "TIMEOUT_START" : "#/components/schemas/TeamEventRequest",
+            "TIMEOUT_END" : "#/components/schemas/TeamEventRequest",
+            "HALFTIME_START" : "#/components/schemas/SystemEventRequest",
+            "HALFTIME_END" : "#/components/schemas/SystemEventRequest"
+          }
+        },
+        "oneOf" : [ {
+          "$ref" : "#/components/schemas/OnePlayerEventRequest"
+        }, {
+          "$ref" : "#/components/schemas/TwoPlayerEventRequest"
+        }, {
+          "$ref" : "#/components/schemas/TeamEventRequest"
+        }, {
+          "$ref" : "#/components/schemas/SystemEventRequest"
+        } ],
+        "properties" : {
+          "type" : {
+            "type" : "string",
+            "description" : "Обязательный тип события. Определяет схему и роли участников; выберите соответствующий пример POST.",
+            "enum" : [ "PASS", "GOAL", "INCOMPLETE_PASS", "PULL", "BRICK", "PICKUP", "BLOCK", "BLOCK_MARKER", "BLOCK_FIELD", "INTERCEPTION", "CALLAHAN", "TIMEOUT_START", "TIMEOUT_END", "HALFTIME_START", "HALFTIME_END" ],
+            "example" : "PASS"
+          },
+          "occurredAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Фактическое время события в ISO-8601 UTC. Не раньше начала матча и последнего активного события; одинаковое время допустимо. После создания не изменяется.",
+            "example" : "2026-07-28T12:30:00Z"
+          },
+          "eventId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Необязательный UUID события, заранее сгенерированный клиентом. Повтор POST с тем же eventId и тем же payload возвращает исходное активное неизменённое событие без дубликата; другой payload, а также повтор после PATCH или DELETE возвращает 409. Если поле не передано, UUID генерирует сервер.",
+            "example" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+          }
+        },
+        "required" : [ "occurredAt", "type" ]
+      },
+      "OnePlayerEventRequest" : {
+        "type" : "object",
+        "description" : "Событие с одним участником матча: INCOMPLETE_PASS, PULL, BRICK или PICKUP.",
+        "properties" : {
+          "type" : {
+            "type" : "object",
+            "description" : "Обязательный тип события. Определяет схему и роли участников; выберите соответствующий пример POST.",
+            "enum" : [ "INCOMPLETE_PASS", "PULL", "BRICK", "PICKUP" ],
+            "example" : "PASS"
+          },
+          "occurredAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Фактическое время события в ISO-8601 UTC. Не раньше начала матча и последнего активного события; одинаковое время допустимо. После создания не изменяется.",
+            "example" : "2026-07-28T12:30:00Z"
+          },
+          "eventId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Необязательный UUID события, заранее сгенерированный клиентом. Повтор POST с тем же eventId и тем же payload возвращает исходное активное неизменённое событие без дубликата; другой payload, а также повтор после PATCH или DELETE возвращает 409. Если поле не передано, UUID генерирует сервер.",
+            "example" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+          },
+          "participantId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "UUID участника из состава этого матча (participantId, включая UNKNOWN). INCOMPLETE_PASS — бросающий, чей пас не завершён; PULL — выполнивший пулл; BRICK — выполнивший предшествующий пулл, а не объявивший брик; PICKUP — подобравший диск.",
+            "example" : "11111111-1111-1111-1111-111111111111"
+          }
+        },
+        "required" : [ "occurredAt", "participantId", "type" ]
+      },
+      "SystemEventRequest" : {
+        "type" : "object",
+        "description" : "Системное событие: HALFTIME_START — начало перерыва после завершённого розыгрыша; HALFTIME_END — окончание перерыва, после которого ожидается PULL. Требуются только type и occurredAt; участники и команда не передаются.",
+        "properties" : {
+          "type" : {
+            "type" : "object",
+            "description" : "Обязательный тип события. Определяет схему и роли участников; выберите соответствующий пример POST.",
+            "enum" : [ "HALFTIME_START", "HALFTIME_END" ],
+            "example" : "PASS"
+          },
+          "occurredAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Фактическое время события в ISO-8601 UTC. Не раньше начала матча и последнего активного события; одинаковое время допустимо. После создания не изменяется.",
+            "example" : "2026-07-28T12:30:00Z"
+          },
+          "eventId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Необязательный UUID события, заранее сгенерированный клиентом. Повтор POST с тем же eventId и тем же payload возвращает исходное активное неизменённое событие без дубликата; другой payload, а также повтор после PATCH или DELETE возвращает 409. Если поле не передано, UUID генерирует сервер.",
+            "example" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+          }
+        },
+        "required" : [ "occurredAt", "type" ]
+      },
+      "TeamEventRequest" : {
+        "type" : "object",
+        "description" : "Командное событие: TIMEOUT_START или TIMEOUT_END.",
+        "properties" : {
+          "type" : {
+            "type" : "object",
+            "description" : "Обязательный тип события. Определяет схему и роли участников; выберите соответствующий пример POST.",
+            "enum" : [ "TIMEOUT_START", "TIMEOUT_END" ],
+            "example" : "PASS"
+          },
+          "occurredAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Фактическое время события в ISO-8601 UTC. Не раньше начала матча и последнего активного события; одинаковое время допустимо. После создания не изменяется.",
+            "example" : "2026-07-28T12:30:00Z"
+          },
+          "eventId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Необязательный UUID события, заранее сгенерированный клиентом. Повтор POST с тем же eventId и тем же payload возвращает исходное активное неизменённое событие без дубликата; другой payload, а также повтор после PATCH или DELETE возвращает 409. Если поле не передано, UUID генерирует сервер.",
+            "example" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+          },
+          "teamId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "UUID команды-участницы этого матча, чей таймаут начинается (TIMEOUT_START) или заканчивается (TIMEOUT_END). Это teamId, а не participantId.",
+            "example" : "33333333-3333-3333-3333-333333333333"
+          }
+        },
+        "required" : [ "occurredAt", "teamId", "type" ]
+      },
+      "TwoPlayerEventRequest" : {
+        "type" : "object",
+        "description" : "Событие с двумя участниками матча: PASS, GOAL, BLOCK, BLOCK_MARKER, BLOCK_FIELD, INTERCEPTION или CALLAHAN.",
+        "properties" : {
+          "type" : {
+            "type" : "object",
+            "description" : "Обязательный тип события. Определяет схему и роли участников; выберите соответствующий пример POST.",
+            "enum" : [ "PASS", "GOAL", "BLOCK", "BLOCK_MARKER", "BLOCK_FIELD", "INTERCEPTION", "CALLAHAN" ],
+            "example" : "PASS"
+          },
+          "occurredAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Фактическое время события в ISO-8601 UTC. Не раньше начала матча и последнего активного события; одинаковое время допустимо. После создания не изменяется.",
+            "example" : "2026-07-28T12:30:00Z"
+          },
+          "eventId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Необязательный UUID события, заранее сгенерированный клиентом. Повтор POST с тем же eventId и тем же payload возвращает исходное активное неизменённое событие без дубликата; другой payload, а также повтор после PATCH или DELETE возвращает 409. Если поле не передано, UUID генерирует сервер.",
+            "example" : "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+          },
+          "fromParticipantId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "UUID бросающего участника из состава матча (participantId, включая UNKNOWN). Для PASS/GOAL — автор паса/ассиста; для BLOCK, BLOCK_MARKER, BLOCK_FIELD, INTERCEPTION, CALLAHAN — бросающий соперник защитника. Должен отличаться от toParticipantId.",
+            "example" : "11111111-1111-1111-1111-111111111111"
+          },
+          "toParticipantId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "UUID второго участника из состава матча (participantId, включая UNKNOWN). Для PASS/GOAL — принимающий/автор гола из той же команды; для BLOCK, BLOCK_MARKER, BLOCK_FIELD — блокирующий защитник; для INTERCEPTION/CALLAHAN — перехвативший защитник. Защитник должен быть из противоположной команды.",
+            "example" : "22222222-2222-2222-2222-222222222222"
+          }
+        },
+        "required" : [ "fromParticipantId", "occurredAt", "toParticipantId", "type" ]
+      },
+      "EventLogResponse" : {
+        "type" : "object",
+        "description" : "Consistent canonical log snapshot, or confirmed batch events with the current log position.",
+        "properties" : {
+          "events" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/EventResponse"
+            }
+          },
+          "lastSequenceNumber" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Highest ever allocated sequence number, including deleted events; zero for an empty history."
+          },
+          "logRevision" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "Monotonic revision; increases once per append command, PATCH or DELETE. Retry does not increase it."
+          }
+        },
+        "required" : [ "events", "lastSequenceNumber", "logRevision" ]
+      },
+      "EventResponse" : {
+        "type" : "object",
+        "discriminator" : {
+          "propertyName" : "type",
+          "mapping" : {
+            "INCOMPLETE_PASS" : "#/components/schemas/OnePlayerEventResponse",
+            "PULL" : "#/components/schemas/OnePlayerEventResponse",
+            "BRICK" : "#/components/schemas/OnePlayerEventResponse",
+            "PICKUP" : "#/components/schemas/OnePlayerEventResponse",
+            "PASS" : "#/components/schemas/TwoPlayerEventResponse",
+            "GOAL" : "#/components/schemas/TwoPlayerEventResponse",
+            "BLOCK" : "#/components/schemas/TwoPlayerEventResponse",
+            "BLOCK_MARKER" : "#/components/schemas/TwoPlayerEventResponse",
+            "BLOCK_FIELD" : "#/components/schemas/TwoPlayerEventResponse",
+            "INTERCEPTION" : "#/components/schemas/TwoPlayerEventResponse",
+            "CALLAHAN" : "#/components/schemas/TwoPlayerEventResponse",
+            "TIMEOUT_START" : "#/components/schemas/TeamEventResponse",
+            "TIMEOUT_END" : "#/components/schemas/TeamEventResponse",
+            "HALFTIME_START" : "#/components/schemas/SystemEventResponse",
+            "HALFTIME_END" : "#/components/schemas/SystemEventResponse"
+          }
+        },
+        "oneOf" : [ {
+          "$ref" : "#/components/schemas/OnePlayerEventResponse"
+        }, {
+          "$ref" : "#/components/schemas/TwoPlayerEventResponse"
+        }, {
+          "$ref" : "#/components/schemas/TeamEventResponse"
+        }, {
+          "$ref" : "#/components/schemas/SystemEventResponse"
+        } ],
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "type" : {
+            "type" : "string",
+            "enum" : [ "PASS", "GOAL", "INCOMPLETE_PASS", "PULL", "BRICK", "PICKUP", "BLOCK", "BLOCK_MARKER", "BLOCK_FIELD", "INTERCEPTION", "CALLAHAN", "TIMEOUT_START", "TIMEOUT_END", "HALFTIME_START", "HALFTIME_END" ]
+          },
+          "occurredAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "sequenceNumber" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        },
+        "required" : [ "id", "occurredAt", "sequenceNumber", "type" ]
+      },
+      "OnePlayerEventResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "type" : {
+            "type" : "object",
+            "enum" : [ "INCOMPLETE_PASS", "PULL", "BRICK", "PICKUP" ]
+          },
+          "occurredAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "sequenceNumber" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "participantId" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        },
+        "required" : [ "id", "occurredAt", "participantId", "sequenceNumber", "type" ]
+      },
+      "SystemEventResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "type" : {
+            "type" : "object",
+            "enum" : [ "HALFTIME_START", "HALFTIME_END" ]
+          },
+          "occurredAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "sequenceNumber" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        },
+        "required" : [ "id", "occurredAt", "sequenceNumber", "type" ]
+      },
+      "TeamEventResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "type" : {
+            "type" : "object",
+            "enum" : [ "TIMEOUT_START", "TIMEOUT_END" ]
+          },
+          "occurredAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "sequenceNumber" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "teamId" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        },
+        "required" : [ "id", "occurredAt", "sequenceNumber", "teamId", "type" ]
+      },
+      "TwoPlayerEventResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "type" : {
+            "type" : "object",
+            "enum" : [ "PASS", "GOAL", "BLOCK", "BLOCK_MARKER", "BLOCK_FIELD", "INTERCEPTION", "CALLAHAN" ]
+          },
+          "occurredAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "sequenceNumber" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "fromParticipantId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "toParticipantId" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        },
+        "required" : [ "fromParticipantId", "id", "occurredAt", "sequenceNumber", "toParticipantId", "type" ]
+      },
+      "EventBatchProblem" : {
+        "type" : "object",
+        "description" : "ProblemDetail extensions for reconciliation. Malformed JSON may return the common INVALID_REQUEST ProblemDetail without position fields.",
+        "properties" : {
+          "type" : {
+            "type" : "string",
+            "format" : "uri"
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "detail" : {
+            "type" : "string"
+          },
+          "instance" : {
+            "type" : "string",
+            "format" : "uri-reference",
+            "description" : "URI reference identifying this occurrence, usually the relative request path."
+          },
+          "properties" : {
+            "type" : "object",
+            "additionalProperties" : { }
+          },
+          "code" : {
+            "type" : "string",
+            "description" : "Stable machine-readable conflict or validation code"
+          },
+          "lastSequenceNumber" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "logRevision" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "eventId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "eventIndex" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Zero-based offending event index"
+          }
+        }
+      },
+      "CreateTeamRequest" : {
+        "type" : "object",
+        "properties" : {
+          "name" : {
+            "type" : "string"
+          },
+          "city" : {
+            "type" : [ "string", "null" ]
+          }
+        },
+        "required" : [ "name" ]
+      },
+      "CreatePlayerRequest" : {
+        "type" : "object",
+        "properties" : {
+          "firstName" : {
+            "type" : "string"
+          },
+          "lastName" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "firstName", "lastName" ]
+      },
+      "CreateMatchRequest" : {
+        "type" : "object",
+        "properties" : {
+          "teamIds" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "format" : "uuid"
+            }
+          },
+          "playersPerTeam" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "plannedStartTimestamp" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "playersPerTeam", "teamIds" ]
+      },
+      "MatchTimestampRequest" : {
+        "type" : "object",
+        "properties" : {
+          "timestamp" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "timestamp" ]
+      },
+      "MatchTransferPackage" : {
+        "type" : "object",
+        "description" : "Portable selected-match package. Version 1 creates independent copies; no photos, current memberships, deleted events or request fingerprints.",
+        "properties" : {
+          "formatVersion" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Required format version. Only integer 1 is supported.",
+            "enum" : [ "1" ]
+          },
+          "matches" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/PortableMatch"
+            }
+          },
+          "teams" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/PortableTeam"
+            }
+          },
+          "players" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/PortablePlayer"
+            }
+          }
+        },
+        "required" : [ "formatVersion", "matches", "players", "teams" ]
+      },
+      "PortableEvent" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "sequenceNumber" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "type" : {
+            "type" : "string",
+            "enum" : [ "PASS", "GOAL", "INCOMPLETE_PASS", "PULL", "BRICK", "PICKUP", "BLOCK", "BLOCK_MARKER", "BLOCK_FIELD", "INTERCEPTION", "CALLAHAN", "TIMEOUT_START", "TIMEOUT_END", "HALFTIME_START", "HALFTIME_END" ]
+          },
+          "occurredAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "fromParticipantId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "ONE_PLAYER: acting participant. TWO_PLAYER: throwing participant. Absent for TEAM/SYSTEM."
+          },
+          "toParticipantId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "TWO_PLAYER: receiver or defender; absent for other categories."
+          },
+          "teamId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Only TEAM events use teamId, belonging to this match."
+          }
+        },
+        "required" : [ "id", "occurredAt", "sequenceNumber", "type" ]
+      },
+      "PortableMatch" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "playersPerTeam" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "plannedStartTimestamp" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "startedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "endedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "teams" : {
+            "type" : "array",
+            "description" : "Exactly two teams in persisted match order, with historical names and participants.",
+            "items" : {
+              "$ref" : "#/components/schemas/PortableMatchTeam"
+            }
+          },
+          "events" : {
+            "type" : "array",
+            "description" : "Active event log in strictly increasing sequenceNumber order; gaps are allowed.",
+            "items" : {
+              "$ref" : "#/components/schemas/PortableEvent"
+            }
+          }
+        },
+        "required" : [ "events", "id", "playersPerTeam", "teams" ]
+      },
+      "PortableMatchTeam" : {
+        "type" : "object",
+        "properties" : {
+          "teamId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "teamName" : {
+            "type" : "string"
+          },
+          "participants" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/PortableParticipant"
+            }
+          }
+        },
+        "required" : [ "participants", "teamId", "teamName" ]
+      },
+      "PortableParticipant" : {
+        "type" : "object",
+        "properties" : {
+          "participantId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "PLAYER: source player ID. UNKNOWN: match-scoped identity, unrelated to catalog players."
+          },
+          "kind" : {
+            "type" : "string",
+            "enum" : [ "PLAYER", "UNKNOWN" ]
+          },
+          "unknownSlot" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "firstName" : {
+            "type" : "string"
+          },
+          "lastName" : {
+            "type" : "string"
+          },
+          "number" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        },
+        "required" : [ "kind", "participantId" ]
+      },
+      "PortablePlayer" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "firstName" : {
+            "type" : "string"
+          },
+          "lastName" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "firstName", "id", "lastName" ]
+      },
+      "PortableTeam" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "city" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "id", "name" ]
+      },
+      "MatchTransferResult" : {
+        "type" : "object",
+        "properties" : {
+          "matchIds" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "string",
+              "format" : "uuid"
+            }
+          },
+          "teamIds" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "string",
+              "format" : "uuid"
+            }
+          },
+          "playerIds" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "string",
+              "format" : "uuid"
+            }
+          },
+          "eventIds" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "string",
+              "format" : "uuid"
+            }
+          },
+          "participantIds" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "object",
+              "additionalProperties" : {
+                "type" : "string",
+                "format" : "uuid"
+              }
+            },
+            "description" : "Source match ID -> source participant ID -> new participant ID, including UNKNOWN."
+          }
+        },
+        "required" : [ "eventIds", "matchIds", "participantIds", "playerIds", "teamIds" ]
+      },
+      "MatchExportRequest" : {
+        "type" : "object",
+        "properties" : {
+          "matchIds" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "format" : "uuid"
+            }
+          }
+        },
+        "required" : [ "matchIds" ]
+      },
+      "PatchTeamRequest" : {
+        "type" : "object",
+        "description" : "Пропущенные поля не изменяются. Явный null очищает город, но недопустим для названия.",
+        "example" : {
+          "city" : null
+        },
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "description" : "Новое название. Поле можно пропустить; null недопустим.",
+            "example" : "Соколы"
+          },
+          "city" : {
+            "type" : [ "string", "null" ],
+            "description" : "Новый город. Поле можно пропустить; null очищает город.",
+            "example" : "Новосибирск"
+          }
+        }
+      },
+      "PatchPlayerRequest" : {
+        "type" : "object",
+        "description" : "Пропущенные поля не изменяются. Явный null для имени или фамилии недопустим.",
+        "example" : {
+          "firstName" : "Иван"
+        },
+        "properties" : {
+          "firstName" : {
+            "type" : "string",
+            "description" : "Новое имя. Поле можно пропустить; null недопустим.",
+            "example" : "Иван"
+          },
+          "lastName" : {
+            "type" : "string",
+            "description" : "Новая фамилия. Поле можно пропустить; null недопустим.",
+            "example" : "Петров"
+          }
+        }
+      },
+      "OnePlayerEventPatchRequest" : {
+        "type" : "object",
+        "description" : "Замена единственного участника INCOMPLETE_PASS, PULL, BRICK или PICKUP. Обязательны type и participantId.",
+        "properties" : {
+          "type" : {
+            "type" : "object",
+            "description" : "Обязательный тип события. Должен совпадать с сохранённым; смена разрешена только между BLOCK, BLOCK_MARKER и BLOCK_FIELD в любом направлении. Остальные смены возвращают 400.",
+            "enum" : [ "INCOMPLETE_PASS", "PULL", "BRICK", "PICKUP" ],
+            "example" : "BLOCK_MARKER"
+          },
+          "participantId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Обязательный UUID нового участника из состава матча, включая UNKNOWN. Роли как в POST: INCOMPLETE_PASS — бросающий; PULL/BRICK — выполнивший пулл; PICKUP — подобравший диск.",
+            "example" : "11111111-1111-1111-1111-111111111111"
+          }
+        },
+        "required" : [ "participantId", "type" ]
+      },
+      "TeamEventPatchRequest" : {
+        "type" : "object",
+        "description" : "Замена команды события TIMEOUT_START или TIMEOUT_END. Обязательны type и teamId; тип начала/окончания таймаута менять нельзя.",
+        "properties" : {
+          "type" : {
+            "type" : "object",
+            "description" : "Обязательный тип события. Должен совпадать с сохранённым; смена разрешена только между BLOCK, BLOCK_MARKER и BLOCK_FIELD в любом направлении. Остальные смены возвращают 400.",
+            "enum" : [ "TIMEOUT_START", "TIMEOUT_END" ],
+            "example" : "BLOCK_MARKER"
+          },
+          "teamId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Обязательный UUID новой команды-участницы матча, которой принадлежит таймаут. Это teamId, а не participantId.",
+            "example" : "33333333-3333-3333-3333-333333333333"
+          }
+        },
+        "required" : [ "teamId", "type" ]
+      },
+      "TwoPlayerEventPatchRequest" : {
+        "type" : "object",
+        "description" : "Частичное исправление двух участников или уточнение типа блока. Обязателен type; отсутствующий или null идентификатор сохраняет прежнего участника. Можно передать только type для изменения разновидности блока.",
+        "properties" : {
+          "type" : {
+            "type" : "object",
+            "description" : "Обязательный тип события. Должен совпадать с сохранённым; смена разрешена только между BLOCK, BLOCK_MARKER и BLOCK_FIELD в любом направлении. Остальные смены возвращают 400.",
+            "enum" : [ "PASS", "GOAL", "BLOCK", "BLOCK_MARKER", "BLOCK_FIELD", "INTERCEPTION", "CALLAHAN" ],
+            "example" : "BLOCK_MARKER"
+          },
+          "fromParticipantId" : {
+            "type" : [ "string", "null" ],
+            "format" : "uuid",
+            "description" : "Новый UUID бросающего участника матча, включая UNKNOWN. Для PASS/GOAL — автор паса/ассиста, для блоков и перехватов — бросающий соперник. Отсутствие или null сохраняет прежнее значение. Итоговые участники должны различаться.",
+            "example" : "11111111-1111-1111-1111-111111111111"
+          },
+          "toParticipantId" : {
+            "type" : [ "string", "null" ],
+            "format" : "uuid",
+            "description" : "Новый UUID принимающего участника для PASS/GOAL (та же команда) либо защитника для BLOCK/BLOCK_MARKER/BLOCK_FIELD/INTERCEPTION/CALLAHAN (противоположная команда). Допустим UNKNOWN из состава матча. Отсутствие или null сохраняет прежнее значение.",
+            "example" : "22222222-2222-2222-2222-222222222222"
+          }
+        },
+        "required" : [ "type" ]
+      },
+      "UpdateEventRequest" : {
+        "type" : "object",
+        "description" : "Исправление участников или команды существующего события. occurredAt неизменяем и не входит в PATCH. Редактирование HALFTIME_START/HALFTIME_END не поддерживается (405).",
+        "discriminator" : {
+          "propertyName" : "type",
+          "mapping" : {
+            "INCOMPLETE_PASS" : "#/components/schemas/OnePlayerEventPatchRequest",
+            "PULL" : "#/components/schemas/OnePlayerEventPatchRequest",
+            "BRICK" : "#/components/schemas/OnePlayerEventPatchRequest",
+            "PICKUP" : "#/components/schemas/OnePlayerEventPatchRequest",
+            "PASS" : "#/components/schemas/TwoPlayerEventPatchRequest",
+            "GOAL" : "#/components/schemas/TwoPlayerEventPatchRequest",
+            "BLOCK" : "#/components/schemas/TwoPlayerEventPatchRequest",
+            "BLOCK_MARKER" : "#/components/schemas/TwoPlayerEventPatchRequest",
+            "BLOCK_FIELD" : "#/components/schemas/TwoPlayerEventPatchRequest",
+            "INTERCEPTION" : "#/components/schemas/TwoPlayerEventPatchRequest",
+            "CALLAHAN" : "#/components/schemas/TwoPlayerEventPatchRequest",
+            "TIMEOUT_START" : "#/components/schemas/TeamEventPatchRequest",
+            "TIMEOUT_END" : "#/components/schemas/TeamEventPatchRequest"
+          }
+        },
+        "oneOf" : [ {
+          "$ref" : "#/components/schemas/OnePlayerEventPatchRequest"
+        }, {
+          "$ref" : "#/components/schemas/TwoPlayerEventPatchRequest"
+        }, {
+          "$ref" : "#/components/schemas/TeamEventPatchRequest"
+        } ],
+        "properties" : {
+          "type" : {
+            "type" : "string",
+            "description" : "Обязательный тип события. Должен совпадать с сохранённым; смена разрешена только между BLOCK, BLOCK_MARKER и BLOCK_FIELD в любом направлении. Остальные смены возвращают 400.",
+            "enum" : [ "PASS", "GOAL", "INCOMPLETE_PASS", "PULL", "BRICK", "PICKUP", "BLOCK", "BLOCK_MARKER", "BLOCK_FIELD", "INTERCEPTION", "CALLAHAN", "TIMEOUT_START", "TIMEOUT_END", "HALFTIME_START", "HALFTIME_END" ],
+            "example" : "BLOCK_MARKER"
+          }
+        },
+        "required" : [ "type" ]
+      },
+      "PatchMatchRequest" : {
+        "type" : "object",
+        "description" : "Пропущенные поля не изменяются. Явный null очищает плановое время, но недопустим для команд и числа игроков.",
+        "example" : {
+          "playersPerTeam" : 7,
+          "plannedStartTimestamp" : null
+        },
+        "properties" : {
+          "teamIds" : {
+            "type" : "array",
+            "description" : "Ровно два UUID разных активных команд. Поле можно пропустить; null недопустим.",
+            "example" : [ "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222" ],
+            "items" : {
+              "type" : "string",
+              "format" : "uuid"
+            }
+          },
+          "playersPerTeam" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Число игроков от каждой команды. Минимум 2; null недопустим.",
+            "example" : 7
+          },
+          "plannedStartTimestamp" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time",
+            "description" : "Новое плановое время. Поле можно пропустить; null очищает плановое время.",
+            "example" : "2026-08-14T10:00:00Z"
+          }
+        }
+      },
+      "PageResponseTeamListItemResponse" : {
+        "type" : "object",
+        "properties" : {
+          "content" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/TeamListItemResponse"
+            }
+          },
+          "totalElements" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "totalPages" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "currentPage" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "size" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        },
+        "required" : [ "content", "currentPage", "size", "totalElements", "totalPages" ]
+      },
+      "TeamListItemResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "city" : {
+            "type" : "string"
+          },
+          "photoUrl" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "id", "name" ]
+      },
+      "TeamPlayerResponse" : {
+        "type" : "object",
+        "properties" : {
+          "teamId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "playerId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "number" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        },
+        "required" : [ "playerId", "teamId" ]
+      },
+      "PhotoUrlResponse" : {
+        "type" : "object",
+        "properties" : {
+          "url" : {
+            "type" : "string"
+          }
+        }
+      },
+      "PageResponsePlayerListItemResponse" : {
+        "type" : "object",
+        "properties" : {
+          "content" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/PlayerListItemResponse"
+            }
+          },
+          "totalElements" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "totalPages" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "currentPage" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "size" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        },
+        "required" : [ "content", "currentPage", "size", "totalElements", "totalPages" ]
+      },
+      "PlayerListItemResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "firstName" : {
+            "type" : "string"
+          },
+          "lastName" : {
+            "type" : "string"
+          },
+          "photoUrl" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "firstName", "id", "lastName" ]
+      },
+      "SseEmitter" : {
+        "type" : "object",
+        "properties" : {
+          "timeout" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }
+      },
+      "MatchListItemResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "teams" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/MatchListTeamResponse"
+            }
+          },
+          "playersPerTeam" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "plannedStartTimestamp" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "startedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "endedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "status" : {
+            "type" : "string",
+            "enum" : [ "PLANNED", "IN_PROGRESS", "FINISHED" ]
+          }
+        },
+        "required" : [ "id", "playersPerTeam", "status", "teams" ]
+      },
+      "MatchListTeamResponse" : {
+        "type" : "object",
+        "properties" : {
+          "teamId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "teamName" : {
+            "type" : "string"
+          },
+          "teamScore" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "city" : {
+            "type" : "string"
+          },
+          "photoUrl" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "teamId", "teamName", "teamScore" ]
+      },
+      "PageResponseMatchListItemResponse" : {
+        "type" : "object",
+        "properties" : {
+          "content" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/MatchListItemResponse"
+            }
+          },
+          "totalElements" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "totalPages" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "currentPage" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "size" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        },
+        "required" : [ "content", "currentPage", "size", "totalElements", "totalPages" ]
+      },
+      "DefenseStatisticsResponse" : {
+        "type" : "object",
+        "properties" : {
+          "blocks" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "blocksAsMarker" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "blocksAsFieldPlayer" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "interceptions" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "callahans" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        },
+        "required" : [ "blocks", "blocksAsFieldPlayer", "blocksAsMarker", "callahans", "interceptions" ]
+      },
+      "MatchStatisticsResponse" : {
+        "type" : "object",
+        "properties" : {
+          "matchId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "teams" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/TeamStatisticsResponse"
+            }
+          },
+          "time" : {
+            "$ref" : "#/components/schemas/MatchTimeStatisticsResponse"
+          }
+        },
+        "required" : [ "matchId", "teams", "time" ]
+      },
+      "MatchTimeStatisticsResponse" : {
+        "type" : "object",
+        "properties" : {
+          "totalTimeMs" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "betweenPointsTimeMs" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "timeoutTimeMs" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "halftimeTimeMs" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "pureGameTimeMs" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        },
+        "required" : [ "betweenPointsTimeMs", "halftimeTimeMs", "pureGameTimeMs", "timeoutTimeMs", "totalTimeMs" ]
+      },
+      "ParticipantStatisticsResponse" : {
+        "type" : "object",
+        "properties" : {
+          "participantId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "kind" : {
+            "type" : "string",
+            "enum" : [ "PLAYER", "UNKNOWN" ]
+          },
+          "unknownSlot" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32"
+          },
+          "firstName" : {
+            "type" : [ "string", "null" ]
+          },
+          "lastName" : {
+            "type" : [ "string", "null" ]
+          },
+          "displayName" : {
+            "type" : "string"
+          },
+          "number" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32"
+          },
+          "attack" : {
+            "$ref" : "#/components/schemas/PlayerAttackStatisticsResponse"
+          },
+          "defense" : {
+            "$ref" : "#/components/schemas/DefenseStatisticsResponse"
+          },
+          "time" : {
+            "$ref" : "#/components/schemas/PlayerTimeStatisticsResponse"
+          }
+        },
+        "required" : [ "attack", "defense", "displayName", "firstName", "kind", "lastName", "number", "participantId", "time", "unknownSlot" ]
+      },
+      "PlayerAttackStatisticsResponse" : {
+        "type" : "object",
+        "properties" : {
+          "passes" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "catches" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "assists" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "goals" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "dropsOnMarker" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "dropsOnField" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "incompletePasses" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "callahanDrops" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "discPossessions" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "pulls" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "bricks" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        },
+        "required" : [ "assists", "bricks", "callahanDrops", "catches", "discPossessions", "dropsOnField", "dropsOnMarker", "goals", "incompletePasses", "passes", "pulls" ]
+      },
+      "PlayerTimeStatisticsResponse" : {
+        "type" : "object",
+        "properties" : {
+          "possessionTimeMs" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "averagePossessionTimeMs" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "Mean active duration of completed player holds in milliseconds. Excludes timeouts and unfinished holds. Zero is a legacy placeholder when averagePossessionTimeAvailable is false."
+          },
+          "averagePossessionTimeAvailable" : {
+            "type" : "boolean",
+            "description" : "True when at least one completed hold exists, including a measured zero-duration hold. Consumers must check this before displaying the average."
+          }
+        },
+        "required" : [ "averagePossessionTimeAvailable", "averagePossessionTimeMs", "possessionTimeMs" ]
+      },
+      "TeamAttackStatisticsResponse" : {
+        "type" : "object",
+        "properties" : {
+          "score" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "completePasses" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "allPasses" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "pulls" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "bricks" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "possessions" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "breaks" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Goals scored by the team that pulled in the same point, including CALLAHAN",
+            "example" : 1,
+            "minimum" : 0
+          }
+        },
+        "required" : [ "allPasses", "breaks", "bricks", "completePasses", "possessions", "pulls", "score" ]
+      },
+      "TeamStatisticsResponse" : {
+        "type" : "object",
+        "properties" : {
+          "teamId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "teamName" : {
+            "type" : "string"
+          },
+          "attack" : {
+            "$ref" : "#/components/schemas/TeamAttackStatisticsResponse"
+          },
+          "defense" : {
+            "$ref" : "#/components/schemas/DefenseStatisticsResponse"
+          },
+          "time" : {
+            "$ref" : "#/components/schemas/TeamTimeStatisticsResponse"
+          },
+          "participants" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ParticipantStatisticsResponse"
+            }
+          }
+        },
+        "required" : [ "attack", "defense", "participants", "teamId", "teamName", "time" ]
+      },
+      "TeamTimeStatisticsResponse" : {
+        "type" : "object",
+        "properties" : {
+          "possessionTimeMs" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "betweenPointsTimeMs" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "timeoutTimeMs" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        },
+        "required" : [ "betweenPointsTimeMs", "possessionTimeMs", "timeoutTimeMs" ]
+      },
+      "MatchParticipantResponse" : {
+        "type" : "object",
+        "properties" : {
+          "participantId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "kind" : {
+            "type" : "string",
+            "enum" : [ "PLAYER", "UNKNOWN" ]
+          },
+          "unknownSlot" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32"
+          },
+          "firstName" : {
+            "type" : [ "string", "null" ]
+          },
+          "lastName" : {
+            "type" : [ "string", "null" ]
+          },
+          "displayName" : {
+            "type" : "string"
+          },
+          "number" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32"
+          },
+          "photoUrl" : {
+            "type" : [ "string", "null" ],
+            "description" : "URL фотографии игрока; null для неизвестного участника или игрока без фотографии"
+          }
+        },
+        "required" : [ "displayName", "firstName", "kind", "lastName", "number", "participantId", "photoUrl", "unknownSlot" ]
+      },
+      "MatchResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "teams" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/MatchTeamResponse"
+            }
+          },
+          "eventCount" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "playersPerTeam" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "plannedStartTimestamp" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "startedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "endedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "status" : {
+            "type" : "string",
+            "enum" : [ "PLANNED", "IN_PROGRESS", "FINISHED" ]
+          }
+        },
+        "required" : [ "eventCount", "id", "playersPerTeam", "status", "teams" ]
+      },
+      "MatchTeamResponse" : {
+        "type" : "object",
+        "properties" : {
+          "teamId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "teamName" : {
+            "type" : "string"
+          },
+          "teamScore" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "participants" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/MatchParticipantResponse"
+            }
+          },
+          "city" : {
+            "type" : "string"
+          },
+          "photoUrl" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "participants", "teamId", "teamName", "teamScore" ]
+      },
+      "BatchEventRequest" : {
+        "allOf" : [ {
+          "$ref" : "#/components/schemas/CreateEventRequest"
+        } ],
+        "description" : "Same event payloads as v1, with a mandatory stable client eventId.",
+        "required" : [ "eventId" ]
+      }
+    }
+  }
+}

@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.service
 
+import com.github.mihanizzm.ultistats.dto.request.UndoEventRequest
+import com.github.mihanizzm.ultistats.dto.response.UndoCommandResponse
+import com.github.mihanizzm.ultistats.service.result.UndoCommandResult
 import com.github.mihanizzm.ultistats.dto.request.CreateEventBatchRequest
 import com.github.mihanizzm.ultistats.dto.response.EventLogResponse
 import com.github.mihanizzm.ultistats.service.result.EventBatchResult
@@ -9,6 +12,9 @@ import com.github.mihanizzm.ultistats.service.result.EventCommandResult
 import java.util.UUID
 
 interface EventService {
+    fun undo(matchId: UUID, request: UndoEventRequest): UndoCommandResult
+    fun undoOutcome(matchId: UUID, commandId: UUID): UndoCommandResponse?
+
     fun appendBatch(matchId: UUID, request: CreateEventBatchRequest): EventBatchResult
     fun snapshot(matchId: UUID): EventLogResponse?
 

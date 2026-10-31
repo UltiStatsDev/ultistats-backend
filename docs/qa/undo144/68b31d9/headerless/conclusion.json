@@ -1,0 +1,37 @@
+{
+  "mode": "headerless",
+  "browser": "156.0.8078.79",
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+  "nativeFetchInvocations": 1,
+  "incomingPosts": 2,
+  "warmedClientPort": 48312,
+  "postClientPorts": [
+    48312,
+    48324
+  ],
+  "browserResult": "HTTP 200\n{\n  \"matchId\" : \"93a9187e-8665-42d6-9fd1-545bf35a0068\",\n  \"commandId\" : \"441a1bc5-726f-4ea5-93d9-c708ff4d2187\",\n  \"expectedLastEventId\" : \"410a34d1-f2cb-4f44-acb6-72caa69ade5e\",\n  \"expectedLogRevision\" : 1,\n  \"outcome\" : \"APPLIED\",\n  \"resultLogRevision\" : 2,\n  \"removedEventId\" : \"410a34d1-f2cb-4f44-acb6-72caa69ade5e\",\n  \"removedSequenceNumber\" : 3,\n  \"rejection\" : null\n}",
+  "beforeIds": [
+    "97f1e04b-6169-4278-896f-44e10271480e",
+    "0413f979-42b3-4512-847a-79467dd0b331",
+    "410a34d1-f2cb-4f44-acb6-72caa69ade5e"
+  ],
+  "afterIds": [
+    "97f1e04b-6169-4278-896f-44e10271480e",
+    "0413f979-42b3-4512-847a-79467dd0b331"
+  ],
+  "beforeRevision": 1,
+  "afterRevision": 2,
+  "outcome": {
+    "matchId": "93a9187e-8665-42d6-9fd1-545bf35a0068",
+    "commandId": "441a1bc5-726f-4ea5-93d9-c708ff4d2187",
+    "expectedLastEventId": "410a34d1-f2cb-4f44-acb6-72caa69ade5e",
+    "expectedLogRevision": 1,
+    "outcome": "APPLIED",
+    "resultLogRevision": 2,
+    "removedEventId": "410a34d1-f2cb-4f44-acb6-72caa69ade5e",
+    "removedSequenceNumber": 3,
+    "rejection": null
+  },
+  "committedOutcomeSha256": "28f785a96dc4e656d435e7f05a0b0e8c17b1dc26c4f3bb54708b36d610c5ab92",
+  "eventLogChangedCount": 1
+}
