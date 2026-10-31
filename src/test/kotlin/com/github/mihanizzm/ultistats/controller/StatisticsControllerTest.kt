@@ -101,11 +101,56 @@ class StatisticsControllerTest {
             .andExpect(jsonPath("$.teams[0].participants[0].lastName").value("Один"))
             .andExpect(jsonPath("$.teams[0].participants[0].displayName").value("Игрок Один"))
             .andExpect(jsonPath("$.teams[0].attack.allPasses").value(1))
+            .andExpect(jsonPath("$.teams[0].attack.breaks").value(0))
+            .andExpect(jsonPath("$.teams[1].attack.breaks").value(0))
             .andExpect(jsonPath("$.time.totalTimeMs").isNumber)
             .andExpect(jsonPath("$.teams[0].time.possessionTimeMs").isNumber)
             .andExpect(jsonPath("$.teams[0].participants[0].time.possessionTimeMs").isNumber)
             .andExpect(jsonPath("$.playerStatistics").doesNotExist())
             .andExpect(jsonPath("$.teamStatistics").doesNotExist())
+    }
+
+    @Test
+    fun `UNKNOWN break is rebuilt after undo and deleted canonical goals`() {
+        val unknowns = matchService.getOrThrow(match.id).participantsByTeam.getValue(team1.id)
+            .filter { it.kind == MatchParticipantKind.UNKNOWN }
+        eventService.create(OnePlayerEvent(unknowns[0].participantId, MATCH_STARTED_AT.plusSeconds(1), EventType.PULL), match.id)
+        eventService.create(OnePlayerEvent(unknowns[0].participantId, MATCH_STARTED_AT.plusSeconds(2), EventType.PICKUP), match.id)
+        val goal = TwoPlayerEvent(unknowns[0].participantId, unknowns[1].participantId, MATCH_STARTED_AT.plusSeconds(3), EventType.GOAL)
+        eventService.create(goal, match.id)
+
+        fun assertBreaks(expected: Int) {
+            mockMvc.perform(get("/api/v1/matches/${match.id}/statistics"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.teams[0].attack.breaks").value(expected))
+                .andExpect(jsonPath("$.teams[0].attack.score").value(expected))
+                .andExpect(jsonPath("$.teams[1].attack.breaks").value(0))
+        }
+        assertBreaks(1)
+        eventService.undoLast(match.id)
+        assertBreaks(0)
+        eventService.create(goal, match.id)
+        assertBreaks(1)
+        eventService.remove(eventService.getAllEventsOfMatch(match.id).last().id, match.id)
+        assertBreaks(0)
+    }
+
+    @Test
+    fun `UNKNOWN defender Callahan counts a single break and keeps defense and time`() {
+        val unknown = matchService.getOrThrow(match.id).participantsByTeam.getValue(team1.id)
+            .first { it.kind == MatchParticipantKind.UNKNOWN }
+        eventService.create(OnePlayerEvent(players1[0].id, MATCH_STARTED_AT.plusSeconds(1), EventType.PULL), match.id)
+        eventService.create(OnePlayerEvent(players2[0].id, MATCH_STARTED_AT.plusSeconds(2), EventType.PICKUP), match.id)
+        eventService.create(TwoPlayerEvent(players2[0].id, unknown.participantId, MATCH_STARTED_AT.plusSeconds(5), EventType.CALLAHAN), match.id)
+        mockMvc.perform(get("/api/v1/matches/${match.id}/statistics"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.teams[0].attack.breaks").value(1))
+            .andExpect(jsonPath("$.teams[0].attack.score").value(1))
+            .andExpect(jsonPath("$.teams[0].defense.callahans").value(1))
+            .andExpect(jsonPath("$.teams[1].attack.breaks").value(0))
+            .andExpect(jsonPath("$.teams[1].attack.score").value(0))
+            .andExpect(jsonPath("$.teams[1].time.possessionTimeMs").value(3000))
+            .andExpect(jsonPath("$.time.totalTimeMs").value(4000))
     }
 
     @Test
@@ -115,10 +160,10 @@ class StatisticsControllerTest {
             .andReturn()
 
         val statistics = objectMapper.readTree(response.response.contentAsString)
+        assertThat(statistics["teams"].map { it["attack"]["breaks"].intValue() }).containsExactly(0, 0)
         val removedFields = listOf(
             "saves",
             "saveGoals",
-            "breaks",
             "possessionTime",
             "percentOfPossession",
             "timeSpentOnViolationDiscussions",
@@ -283,6 +328,15 @@ class StatisticsControllerTest {
                 jsonPath("$.paths['/api/v1/matches/{matchId}/statistics/export'].get.responses['404'].content['application/problem+json'].schema['\$ref']")
                     .value("#/components/schemas/ProblemDetail"),
             )
+    }
+
+    @Test
+    fun `OpenAPI documents nonnegative integer team breaks and example`() {
+        mockMvc.perform(get("/v3/api-docs"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.components.schemas.TeamAttackStatisticsResponse.properties.breaks.type").value("integer"))
+            .andExpect(jsonPath("$.components.schemas.TeamAttackStatisticsResponse.properties.breaks.minimum").value(0))
+            .andExpect(jsonPath("$.paths['/api/v1/matches/{matchId}/statistics'].get.responses['200'].content['application/json'].example.teams[0].attack.breaks").value(1))
     }
 
     private fun createTestTeam(name: String): Pair<Team, List<Player>> {
