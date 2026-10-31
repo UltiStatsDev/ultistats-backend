@@ -67,11 +67,13 @@ data class OnePlayerEventPatchRequest(
 data class TwoPlayerEventPatchRequest(
     override val type: EventType,
     @field:Schema(
+        types = ["string", "null"],
         description = "Новый UUID бросающего участника матча, включая UNKNOWN. Для PASS/GOAL — автор паса/ассиста, для блоков и перехватов — бросающий соперник. Отсутствие или null сохраняет прежнее значение. Итоговые участники должны различаться.",
         example = "11111111-1111-1111-1111-111111111111",
     )
     val fromParticipantId: UUID? = null,
     @field:Schema(
+        types = ["string", "null"],
         description = "Новый UUID принимающего участника для PASS/GOAL (та же команда) либо защитника для BLOCK/BLOCK_MARKER/BLOCK_FIELD/INTERCEPTION/CALLAHAN (противоположная команда). Допустим UNKNOWN из состава матча. Отсутствие или null сохраняет прежнее значение.",
         example = "22222222-2222-2222-2222-222222222222",
     )
