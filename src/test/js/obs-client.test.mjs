@@ -92,3 +92,16 @@ test('source opened for an already finished match keeps history quiet and termin
  assert.equal(s.source.closed,true);assert.equal(s.feed.rows().length,0);assert.equal(s.reads,1);
  t.mock.timers.tick(120000);await settle();assert.equal(s.reads,1);
 });
+test('urgent invalidation during an in-flight failure survives until retry while default invalidation retains backoff',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ for(const urgent of [true,false]) {
+  let rejectFirst,calls=0;const values=[];
+  const sync=new Reconciler(()=>{calls++;return calls===1?new Promise((_resolve,reject)=>rejectFirst=reject):Promise.resolve(calls);},v=>values.push(v),()=>{},1000);
+  try {
+   const running=sync.request();sync.request(urgent);rejectFirst(Error('bounded timeout'));await settle();
+   if(urgent)assert.deepEqual(values,[2],'fresh invalidation must skip obsolete failure backoff');
+   else {assert.deepEqual(values,[]);t.mock.timers.tick(999);await settle();assert.equal(calls,1);
+    t.mock.timers.tick(1);await running;assert.deepEqual(values,[2]);}
+  } finally {sync.close();}
+ }
+});

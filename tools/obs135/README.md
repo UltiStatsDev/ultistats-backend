@@ -13,7 +13,7 @@ PATH=/tmp/ultistats-backend-jdk21/bin:/usr/bin:/bin \
 flock /tmp/ultistats-backend-gradle.lock ./gradlew build --no-daemon --max-workers=2
 ```
 
-Run the real Node test runner outside a sandbox that suppresses child test execution. A result reporting only test filenames is insufficient; baseline26, candidate34 named tests are expected.
+Run the real Node test runner outside a sandbox that suppresses child test execution. A result reporting only test filenames is insufficient; baseline26, candidate36 named tests are expected.
 
 ```bash
 node --test src/test/js/*.test.mjs
@@ -63,6 +63,8 @@ flock -s /tmp/ultistats-browser-network.lock node tools/obs135/integration.mjs
 `integration.mjs`: actual uploaded160×48 logo/contain, long Cyrillic, initials, auto/manual colors and contrast, six scoreboards(4same+2other)+EventLog+admin+two previews, exactly one worker and one OBS SSE, REST capacity and cleanup, PLANNED→live actual start, >60min including timeout/halftime events, accepted goal/update/undo/batch, unsent local object isolation, reload, offline keep/advance, finish during outage, reconnect≤2s, late final score correction with unchanged63:12, initial invalid/missing/unavailable transparency/admin reason, proportional500×80 screenshots. Worker state inspection uses Chromium CDP; it is instrumentation evidence, not native OBS evidence.
 
 The scripts leave `result.json` and screenshots in OBS135_OUTPUT. SLA values are milliseconds measured after successful HTTP acceptance; all healthy event updates and network recovery must be ≤2000ms. Real network loss is induced only in the browser context, so the dedicated API can accept a finish while sources are offline.
+
+`hung-invalidation.cjs` is a bounded fault-injection regression: after a valid live snapshot, one GET hangs until the normal1500ms abort while SSE stays online and a legitimate goal commits. The fresh canonical score must appear within2000ms of acceptance, without an obsolete retry delay. Run with the same PLAYWRIGHT_MODULE and bounded shared browser lock as the other suites. It creates a new synthetic match and does not mutate handoff fixtures.
 
 ## Native OBS QA fixtures
 
