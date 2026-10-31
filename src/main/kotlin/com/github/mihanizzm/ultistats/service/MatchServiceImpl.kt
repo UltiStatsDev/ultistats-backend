@@ -115,6 +115,7 @@ class MatchServiceImpl(
         )
         matchRepository.save(updatedMatch)
         if (updatedTeamIds != match.teamIds) replaceParticipants(matchId, updatedTeamIds)
+        realtimePublisher.matchChanged(matchId)
         return MatchCommandResult.Success(readHydratedForUpdate(matchId))
     }
 
@@ -180,6 +181,7 @@ class MatchServiceImpl(
         lifecyclePolicy.validateStart(match, timestamp).toCommandRejection()?.let { return it }
 
         matchRepository.save(match.copy(startedAt = timestamp))
+        realtimePublisher.matchChanged(matchId)
         return MatchCommandResult.Success(readHydratedForUpdate(matchId))
     }
 
