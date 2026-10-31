@@ -707,9 +707,9 @@ class EventControllerTest {
                 .andReturn().response.contentAsString,
         )
         val schemas = document["components"]["schemas"]
-        val onePlayerProperties = schemas["OnePlayerEventRequest"]["allOf"][1]["properties"]
-        val twoPlayerProperties = schemas["TwoPlayerEventRequest"]["allOf"][1]["properties"]
-        val teamProperties = schemas["TeamEventRequest"]["allOf"][1]["properties"]
+        val onePlayerProperties = schemas["OnePlayerEventRequest"]["properties"]
+        val twoPlayerProperties = schemas["TwoPlayerEventRequest"]["properties"]
+        val teamProperties = schemas["TeamEventRequest"]["properties"]
 
         assertTrue(onePlayerProperties["participantId"]["description"].asText().isNotBlank())
         assertTrue(twoPlayerProperties["fromParticipantId"]["description"].asText().contains("бросающ"))
