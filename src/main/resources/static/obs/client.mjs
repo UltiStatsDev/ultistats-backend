@@ -10,11 +10,12 @@ export async function readJson(url) {
 export class Reconciler {
     constructor(fetchSnapshot,onSnapshot,onStatus=()=>{},retryMs=1000) {
         Object.assign(this,{fetchSnapshot,onSnapshot,onStatus,retryMs});
-        this.pending=false; this.closed=false; this.loop=null; this.timer=null; this.wake=null;
+        this.pending=false; this.urgent=false; this.closed=false; this.loop=null; this.timer=null; this.wake=null;
     }
-    request() {
+    request(wakeRetry=false) {
         if(this.closed) return Promise.resolve();
         this.pending=true;
+        if(wakeRetry){this.urgent=true;clearTimeout(this.timer);this.wake?.();}
         if(!this.loop) this.loop=this.run().finally(()=>{this.loop=null;});
         return this.loop;
     }
@@ -22,7 +23,7 @@ export class Reconciler {
     async run() {
         let failures=0;
         while(this.pending&&!this.closed) {
-            this.pending=false;
+            this.pending=false; this.urgent=false;
             try {
                 const snapshot=await this.fetchSnapshot();
                 if(this.closed) return;
@@ -30,6 +31,8 @@ export class Reconciler {
             } catch(error) {
                 if(this.closed) return;
                 this.onStatus(`Нет связи: ${error.message}. Повтор…`); this.pending=true;
+                // A fresh invalidation received during the failed read outranks its old backoff.
+                if(this.urgent)continue;
                 await new Promise(resolve=>{
                     this.wake=resolve; this.timer=setTimeout(resolve,Math.min(this.retryMs*2**failures++,15000));
                 });

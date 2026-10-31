@@ -13,6 +13,10 @@ class MatchRealtimePublisher(
         delegate.publishEvent(EventLogChangedSignal(matchId, operation, eventId))
     }
 
+    fun matchChanged(matchId: UUID) {
+        delegate.publishEvent(MatchChangedSignal(matchId))
+    }
+
     fun matchFinished(matchId: UUID) {
         delegate.publishEvent(MatchFinishedSignal(matchId))
     }

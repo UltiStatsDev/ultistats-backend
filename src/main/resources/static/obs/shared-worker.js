@@ -11,12 +11,12 @@ function remove(port) {clients.delete(port);port.close();stopUnused();}
 function startSource() {
  if(source)return;
  source=new EventSource('/api/v1/obs/stream');
- for(const name of ['connected','config-changed','event-log-changed','match-finished']) {
+ for(const name of ['connected','config-changed','event-log-changed','match-finished','match-changed','scoreboard-profile-changed']) {
   source.addEventListener(name,event=>{
    let data;try{data=JSON.parse(event.data);}catch{return;}
    for(const [port,client] of clients) {
     if(!client.subscribed)continue;
-    if((name==='event-log-changed'||name==='match-finished')&&client.matchId!==data.matchId)continue;
+    if(['event-log-changed','match-finished','match-changed','scoreboard-profile-changed'].includes(name)&&client.matchId!==data.matchId)continue;
     send(port,{type:'event',name,data});
    }
   });

@@ -1,3 +1,4 @@
+import {mountScoreboardAdmin} from './scoreboard-admin.mjs';
 import {readJson,watchConfig} from './client.mjs';
 import {teamAccent,imageAccent} from './colors.mjs';
 const $=id=>document.getElementById(id),uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
@@ -46,14 +47,16 @@ async function loadMatches() {
   $('page').textContent=String(page+1);$('previous').disabled=page===0;$('next').disabled=page+1>=data.totalPages;
  }catch(error){$('status').textContent=`Список матчей: ${error.message}`;}
 }
+let openGeneration=0;
 async function openMatch() {
- const id=$('match-id').value.trim();if(!uuid.test(id)){$('status').textContent='Введите UUID матча';return;}
+ const selected=++openGeneration;
+ const id=$('match-id').value.trim().toLowerCase();mountScoreboardAdmin(id);if(!uuid.test(id)){$('status').textContent='Введите UUID матча';return;}
  try {
-  const match=await readJson(`/api/v1/matches/${id}`);teams=match.teams;
+  const match=await readJson(`/api/v1/matches/${id}`);if(selected!==openGeneration)return;teams=match.teams;
   $('obs-url').value=new URL(`/obs-battle-log.html?matchId=${id}`,location.origin).href;
   $('preview').src=`/obs-battle-log.html?matchId=${id}&preview=1`;$('status').textContent='Подключение…';
   renderTeams();for(const team of teams)void imageAccent(team.photoUrl).then(color=>{auto[team.teamId]=color;renderTeams();});
- }catch(error){$('status').textContent=`Матч: ${error.message}`;}
+ }catch(error){if(selected===openGeneration)$('status').textContent=`Матч: ${error.message}`;}
 }
 $('matches').onchange=()=>{if($('matches').value){$('match-id').value=$('matches').value;void openMatch();}};
 $('open-match').onclick=()=>void openMatch();

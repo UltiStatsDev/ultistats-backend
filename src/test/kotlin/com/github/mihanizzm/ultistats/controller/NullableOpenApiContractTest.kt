@@ -34,6 +34,7 @@ class NullableOpenApiContractTest {
     @Autowired lateinit var teams: TeamService
     @Autowired lateinit var players: PlayerService
     @Autowired lateinit var roster: TeamPlayerService
+    @Autowired lateinit var jdbc: org.springframework.jdbc.core.JdbcTemplate
     private lateinit var document: JsonNode
     private lateinit var team: Team
     private lateinit var other: Team
@@ -123,6 +124,31 @@ class NullableOpenApiContractTest {
             assertThat(schema(name).path("required").map { it.asText() }).contains(field)
             assertThat(errors(name, mapper.readTree("""{"$field":null}"""))).isNotEmpty()
         }
+    }
+
+    @Test
+    fun `scoreboard lifecycle timestamps are required nullable in raw schema for every status`() {
+        val path = "/api/v1/obs/scoreboard/${match.id}"
+        val planned = request(get(path), 200)
+        matches.startMatch(match.id, Instant.parse("2026-01-01T00:00:00Z"))
+        val live = request(get(path), 200)
+        jdbc.update("UPDATE matches SET ended_at = ? WHERE id = ?",
+            java.sql.Timestamp.from(Instant.parse("2026-01-01T01:03:12Z")), match.id)
+        val finished = request(get(path), 200)
+        assertThat(planned.path("status").asText()).isEqualTo("PLANNED")
+        assertThat(live.path("status").asText()).isEqualTo("IN_PROGRESS")
+        assertThat(finished.path("status").asText()).isEqualTo("FINISHED")
+        listOf(planned, live, finished).forEach { body ->
+            assertValid("ObsScoreboardSnapshot", body)
+            listOf("startedAt", "endedAt").forEach { field ->
+                assertThat(body.has(field)).isTrue()
+                assertThat(schema("ObsScoreboardSnapshot").path("required").map { it.asText() }).contains(field)
+                val omitted = body.deepCopy<ObjectNode>().also { it.remove(field) }
+                assertThat(errors("ObsScoreboardSnapshot", omitted)).isNotEmpty()
+            }
+        }
+        assertThat(planned.path("startedAt").isNull).isTrue()
+        assertThat(live.path("endedAt").isNull).isTrue()
     }
 
     private fun paired(schema: String, builder: MockHttpServletRequestBuilder, json: String, status: Int = 200) {
