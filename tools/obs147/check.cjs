@@ -33,9 +33,11 @@ async function workerSession(browser){const root=await browser.newBrowserCDPSess
   await fault({mode:'healthy'});
   try{await until(()=>proxy.state.active,n=>n===1,10000);}catch(error){fs.writeFileSync(output+(initial?'/initial-red.json':'/connected-red.json'),JSON.stringify({closed,trace:proxy.state,errors},null,2));throw error;}
   assert.equal(await evaluate('source.readyState'),1,'verified live SSE, not scoreboard polling');
-  const m=matches[0],a=m.teams[0].participants,b=m.teams[1].participants;
-  for(const [n,type,fields]of [[0,'PULL',{participantId:a[0].participantId}],[1,'PICKUP',{participantId:b[0].participantId}],[2,'GOAL',{fromParticipantId:b[0].participantId,toParticipantId:b[1].participantId}]])await req(`/api/v1/matches/${m.id}/events`,'POST',{type,occurredAt:new Date(Date.now()+n).toISOString(),...fields});
+  await evaluate(`globalThis.__obs147Frames=[];source.addEventListener('event-log-changed',event=>{__obs147Frames.push(JSON.parse(event.data));});true`);
+  const m=matches[0],a=m.teams[0].participants,b=m.teams[1].participants;let acceptedGoal;
+  for(const [n,type,fields]of [[0,'PULL',{participantId:a[0].participantId}],[1,'PICKUP',{participantId:b[0].participantId}],[2,'GOAL',{fromParticipantId:b[0].participantId,toParticipantId:b[1].participantId}]]){const saved=await req(`/api/v1/matches/${m.id}/events`,'POST',{type,occurredAt:new Date(Date.now()+n).toISOString(),...fields});if(type==='GOAL')acceptedGoal=saved;}
   const eventMs=await until(()=>log.locator('.feed-row:not(.leaving)').count(),n=>n>=1,2000);
+  const recoveredGoalId=acceptedGoal.id;await until(()=>evaluate('__obs147Frames'),frames=>frames.some(f=>f.matchId===m.id&&f.eventId===recoveredGoalId&&f.operation==='CREATED'),2000);
   const snapshot=await req(`/api/v1/obs/scoreboard/${m.id}`);await until(()=>pages[0].locator('.scoreboard-score').textContent(),s=>s===`${snapshot.teams[0].score} : ${snapshot.teams[1].score}`,2000);
   const beforeOther=await pages[1].locator('.scoreboard-name').first().textContent();
   await req(`/api/v1/obs/scoreboard/${m.id}/profile`,'PUT',{shortNames:{[teams[0].id]:'RECOVERED'},teamColors:{},swapped:false});await until(()=>pages[0].locator('.scoreboard-name').first().textContent(),s=>s==='RECOVERED',2000);assert.equal(await pages[1].locator('.scoreboard-name').first().textContent(),beforeOther);
@@ -45,14 +47,16 @@ async function workerSession(browser){const root=await browser.newBrowserCDPSess
   await pages[0].route(`**/api/v1/obs/scoreboard/${m.id}`,route=>{if(!marked){marked=true;return route.continue({headers:{...route.request().headers(),'x-obs147-hang':'once'}});}return route.continue();});
   await until(()=>proxy.state.hungReads,n=>n===hungBefore+1,4000);
   assert.equal(proxy.state.active,1);assert.equal(await evaluate('source.readyState'),1);
-  for(const [n,type,fields]of [[0,'PULL',{participantId:a[0].participantId}],[1,'PICKUP',{participantId:b[0].participantId}],[2,'GOAL',{fromParticipantId:b[0].participantId,toParticipantId:b[1].participantId}]])await req(`/api/v1/matches/${m.id}/events`,'POST',{type,occurredAt:new Date(Date.now()+n).toISOString(),...fields});
+  for(const [n,type,fields]of [[0,'PULL',{participantId:a[0].participantId}],[1,'PICKUP',{participantId:b[0].participantId}],[2,'GOAL',{fromParticipantId:b[0].participantId,toParticipantId:b[1].participantId}]]){const saved=await req(`/api/v1/matches/${m.id}/events`,'POST',{type,occurredAt:new Date(Date.now()+n).toISOString(),...fields});if(type==='GOAL')acceptedGoal=saved;}
   const urgentMs=await until(()=>pages[0].locator('.scoreboard-score').textContent(),s=>s===`${snapshot.teams[0].score} : ${snapshot.teams[1].score+1}`,2000);
   await until(()=>log.locator('.feed-row:not(.leaving)').count(),n=>n>=2,2000);
   assert.equal(await evaluate('source.readyState'),1);assert.equal(proxy.state.active,1);
+  const urgentGoalId=acceptedGoal.id;await until(()=>evaluate('__obs147Frames'),frames=>frames.some(f=>f.matchId===m.id&&f.eventId===urgentGoalId&&f.operation==='CREATED'),2000);
+  const matchingFrames=(await evaluate('__obs147Frames')).filter(f=>f.eventId===recoveredGoalId||f.eventId===urgentGoalId);
   await log.screenshot({path:output+(initial?'/initial-eventlog.png':'/connected-eventlog.png'),omitBackground:true});
   const liveSSE=await evaluate('source.readyState');await fault({mode:'503',drop:true});await until(()=>proxy.state.attempts.at(-1)?.status,n=>n===503);await context.close();
   await until(()=>proxy.state.active,n=>n===0);const attempts=proxy.state.attempts.length;await pause(2500);assert.equal(proxy.state.attempts.length,attempts,'last subscriber cancels retry');
-  assert.deepEqual(errors,[]);return {initial,closedBeforeRestore:closed,liveSSE,eventMs,urgentMs,attempts:proxy.state.attempts.slice(offset),peak:proxy.state.peak,cleanup:true};
+  assert.deepEqual(errors,[]);return {initial,closedBeforeRestore:closed,liveSSE,eventMs,urgentMs,recoveredGoalId,urgentGoalId,matchingFrames,attempts:proxy.state.attempts.slice(offset),peak:proxy.state.peak,cleanup:true};
  };
  const scenarios=process.env.OBS147_SCENARIO==='initial'?{initial:await scenario(true)}:{connected:await scenario(false),initial:await scenario(true)};assert.equal(proxy.state.peak,1);assert.deepEqual(await req('/api/v1/obs/config'),initialConfig);const result={api,proxy:base,matches:matches.map(m=>m.id),teams:teams.map(t=>t.id),forwardedAssetSha:createHash('sha256').update(forwardedAsset).digest('hex'),globalConfigUnchanged:true,...scenarios};fs.writeFileSync(output+'/result.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result,null,2));
  }finally{try{if(initialConfig&&JSON.stringify(await req('/api/v1/obs/config'))!==JSON.stringify(initialConfig))await req('/api/v1/obs/config','PUT',initialConfig);}finally{await browser.close();await proxy.close();}}
