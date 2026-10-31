@@ -39,6 +39,7 @@ class EventSchemaGenerationTest {
                 val types = union["discriminator"]["mapping"].properties()
                     .filter { it.value.asText().endsWith("/$name") }.map { it.key }.toSet()
 
+                assertEquals("string", leaf["properties"]["type"].path("type").asText(), "$name discriminator must be a string")
                 assertEquals(types, leaf["properties"]["type"]["enum"].map { it.asText() }.toSet(), name)
                 types.forEach { eventType ->
                     val payload = objectMapper.createObjectNode()
