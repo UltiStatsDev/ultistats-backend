@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS obs_scoreboard_profiles;
 DROP TABLE IF EXISTS event_batch_receipts;
 DROP TABLE IF EXISTS events;
 DROP TABLE IF EXISTS match_participants;
@@ -121,3 +122,8 @@ CREATE TABLE IF NOT EXISTS obs_config (
     payload TEXT NOT NULL
 );
 INSERT INTO obs_config (id, payload) SELECT 1, '{}' WHERE NOT EXISTS (SELECT 1 FROM obs_config WHERE id = 1);
+
+CREATE TABLE IF NOT EXISTS obs_scoreboard_profiles (
+    match_id UUID PRIMARY KEY REFERENCES matches(id),
+    payload TEXT NOT NULL
+);

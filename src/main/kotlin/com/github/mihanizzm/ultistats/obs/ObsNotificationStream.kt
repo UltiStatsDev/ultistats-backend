@@ -3,6 +3,7 @@ package com.github.mihanizzm.ultistats.obs
 import com.github.mihanizzm.ultistats.dto.response.realtime.EventLogChangedRealtimeResponse
 import com.github.mihanizzm.ultistats.dto.response.realtime.MatchFinishedRealtimeResponse
 import com.github.mihanizzm.ultistats.realtime.EventLogChangedSignal
+import com.github.mihanizzm.ultistats.realtime.MatchChangedSignal
 import com.github.mihanizzm.ultistats.realtime.MatchFinishedSignal
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
@@ -46,6 +47,12 @@ class ObsNotificationStream {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     fun matchFinished(signal: MatchFinishedSignal) = broadcast("match-finished", MatchFinishedRealtimeResponse(signal.matchId))
 
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    fun matchChanged(signal: MatchChangedSignal) = broadcast("match-changed", mapOf("matchId" to signal.matchId))
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    fun profileChanged(signal: ScoreboardProfileChanged) = broadcast("scoreboard-profile-changed", mapOf("matchId" to signal.matchId))
+
     @Scheduled(fixedDelay = 15000)
     fun heartbeat() { clients.forEach { deliver(it, SseEmitter.event().comment("heartbeat")) } }
 
@@ -66,7 +73,7 @@ class ObsNotificationStream {
 @RestController
 class ObsNotificationController(private val stream: ObsNotificationStream) {
     @GetMapping("/api/v1/obs/stream", produces = [MediaType.TEXT_EVENT_STREAM_VALUE])
-    @Operation(summary = "Общий поток уведомлений OBS для SharedWorker", description = "Один поток на browser context: connected/config-changed/event-log-changed/match-finished. Только AFTER_COMMIT invalidations; canonical данные читаются через REST. Match-события содержат matchId для фильтрации. После match-finished поток остаётся открыт для общей конфигурации и других матчей. Process-local без durable replay; connected требует повторной сверки всех подписок. Доверенная сеть без авторизации.")
+    @Operation(summary = "Общий поток уведомлений OBS для SharedWorker", description = "Один поток на browser context: connected/config-changed/event-log-changed/match-finished/match-changed/scoreboard-profile-changed. Только AFTER_COMMIT invalidations; canonical данные читаются через REST. Match-события содержат matchId для фильтрации. После match-finished поток остаётся открыт для общей конфигурации и других матчей. Process-local без durable replay; connected требует повторной сверки всех подписок. Доверенная сеть без авторизации.")
     @ApiResponse(responseCode = "200", description = "OBS notification SSE", content = [Content(
         mediaType = MediaType.TEXT_EVENT_STREAM_VALUE, schema = Schema(type = "string"),
     )])

@@ -50,3 +50,12 @@ test('unregister, silent port expiry and reconnect do not grow listeners or keep
  assert.deepEqual(events(reopened),['connected']);
  reopened.send({type:'unsubscribe'});assert.equal(w.sources[1].closed,true);assert.equal(w.timers.size,0);
 });
+test('scoreboard profile and lifecycle invalidations are routed to matching match only through existing single stream',()=>{
+ const w=worker(),one=w.connect('one'),two=w.connect('two'),eventLog=w.connect('one'),admin=w.connect();
+ const source=w.sources[0];source.emit('connected');
+ source.emit('match-changed',{matchId:'one'});source.emit('scoreboard-profile-changed',{matchId:'two'});
+ assert.deepEqual(events(one),['connected','match-changed']);
+ assert.deepEqual(events(eventLog),['connected','match-changed']);
+ assert.deepEqual(events(two),['connected','scoreboard-profile-changed']);
+ assert.deepEqual(events(admin),['connected']);assert.equal(w.sources.length,1);
+});
