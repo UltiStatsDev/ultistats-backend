@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {Reconciler} from '../../main/resources/static/obs/client.mjs';
+import {Reconciler,watchMatch} from '../../main/resources/static/obs/client.mjs';
 
 test('serializes invalidations and final reconciliation; retries failed final read',async()=>{
  let running=0,peak=0,calls=0,fail=false,release;
@@ -15,4 +15,72 @@ test('requests arriving during failed fetch are retained and close cancels retri
  let calls=0; const values=[];
  const sync=new Reconciler(async()=>{calls++;if(calls===1)throw Error('offline');return calls;},v=>values.push(v),()=>{},5);
  await sync.request(); assert.deepEqual(values,[2]);sync.close();await sync.request();assert.equal(calls,2);
+});
+
+import {Feed,defaults} from '../../main/resources/static/obs/feed.mjs';
+const goal={id:'goal',type:'GOAL',sequenceNumber:1,fromParticipantId:'a',toParticipantId:'b'};
+const settle=()=>new Promise(setImmediate);
+function watcher(t,hasVisibleRows) {
+ t.mock.timers.enable({apis:['Date','setTimeout','setInterval'],now:0});
+ const oldSource=globalThis.EventSource,oldFetch=globalThis.fetch;
+ const state={snapshot:{events:[],logRevision:0},reads:0,fail:false};
+ class Source {
+  constructor(){this.closed=false;this.handlers=new Map();state.source=this;}
+  addEventListener(name,handler){this.handlers.set(name,handler);}
+  emit(name){if(!this.closed)this.handlers.get(name)?.();}
+  close(){this.closed=true;}
+ }
+ globalThis.EventSource=Source;
+ globalThis.fetch=async()=>{
+  state.reads++;if(state.fail)throw Error('offline');
+  return {ok:true,json:async()=>state.snapshot};
+ };
+ state.feed=new Feed(defaults,()=>Date.now());
+ state.stop=watchMatch('match',value=>state.feed.reconcile(value),()=>{},hasVisibleRows??(()=>state.feed.rows().length>0));
+ t.after(()=>{state.stop();globalThis.EventSource=oldSource;globalThis.fetch=oldFetch;});
+ return state;
+}
+test('terminal window updates and deletes visible rows without replay or extending TTL',async t=>{
+ const s=watcher(t);s.source.emit('connected');await settle();
+ s.snapshot={events:[goal],logRevision:1};s.source.emit('event-log-changed');await settle();
+ assert.equal(s.feed.rows().length,1);
+ const shownAt=s.feed.rows()[0].shownAt;
+ s.source.emit('match-finished');await settle();assert.equal(s.source.closed,true);
+ s.snapshot={events:[{...goal,toParticipantId:'corrected'}],logRevision:2};
+ t.mock.timers.tick(1000);await settle();
+ assert.equal(s.feed.rows()[0].event.toParticipantId,'corrected');
+ assert.equal(s.feed.rows()[0].shownAt,shownAt);
+ s.snapshot={events:[],logRevision:3};t.mock.timers.tick(1000);await settle();
+ assert.equal(s.feed.rows().length,0);
+ t.mock.timers.tick(1000);await settle();const reads=s.reads;
+ s.snapshot={events:[goal],logRevision:4};t.mock.timers.tick(10000);await settle();
+ assert.equal(s.reads,reads);assert.equal(s.feed.rows().length,0);
+});
+test('empty feed still retries final goal read then stops polling when its TTL expires',async t=>{
+ const s=watcher(t);s.source.emit('connected');await settle();
+ s.fail=true;s.source.emit('match-finished');await settle();
+ assert.equal(s.feed.rows().length,0);
+ s.snapshot={events:[goal],logRevision:1};s.fail=false;
+ t.mock.timers.tick(1000);await settle();assert.equal(s.feed.rows().length,1);
+ t.mock.timers.tick(1000);await settle();assert.equal(s.reads,4,'final goal opens correction polling');
+ t.mock.timers.tick(7000);await settle();assert.equal(s.feed.rows().length,0);
+ const reads=s.reads;t.mock.timers.tick(10000);await settle();assert.equal(s.reads,reads);
+});
+test('terminal polling and failed retries are bounded to sixty seconds and disposed on page close',async t=>{
+ const s=watcher(t,()=>true);s.source.emit('connected');await settle();
+ s.source.emit('match-finished');await settle();
+ s.fail=true;t.mock.timers.tick(1000);await settle();assert.equal(s.reads,3,'terminal polling must have started');
+ t.mock.timers.tick(59000);await settle();const reads=s.reads;
+ t.mock.timers.tick(120000);await settle();assert.equal(s.reads,reads);
+ s.stop();t.mock.timers.tick(120000);await settle();assert.equal(s.reads,reads);
+});
+test('disposing during final read failure cancels retries without starting a terminal timer',async t=>{
+ const s=watcher(t,()=>true);s.source.emit('connected');await settle();
+ s.fail=true;s.source.emit('match-finished');await settle();s.stop();await settle();
+ const reads=s.reads;t.mock.timers.tick(120000);await settle();assert.equal(s.reads,reads);
+});
+test('successful empty final snapshot starts no polling window',async t=>{
+ const s=watcher(t);s.source.emit('connected');await settle();
+ s.source.emit('match-finished');await settle();assert.equal(s.reads,2);
+ t.mock.timers.tick(120000);await settle();assert.equal(s.reads,2);
 });

@@ -20,7 +20,7 @@ const details=new Reconciler(()=>{
  return readJson(`/api/v1/matches/${encodeURIComponent(matchId)}`);
 },value=>{
  match=value;
- if(!started){started=true;stopMatch=watchMatch(matchId,snapshot=>{feed.reconcile(snapshot);render();},status);}
+ if(!started){started=true;stopMatch=watchMatch(matchId,snapshot=>{feed.reconcile(snapshot);render();},status,()=>feed.rows().length>0);}
  for(const team of match.teams) void imageAccent(team.photoUrl).then(color=>{autoColors[team.teamId]=color;render();});
  render();
 },status);

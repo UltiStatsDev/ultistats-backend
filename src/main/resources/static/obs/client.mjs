@@ -47,12 +47,28 @@ export function watchConfig(onConfig,onStatus=()=>{}) {
     return ()=>{source.close();reader.close();};
 }
 
-export function watchMatch(matchId,onSnapshot,onStatus=()=>{}) {
+export function watchMatch(matchId,onSnapshot,onStatus=()=>{},hasVisibleRows=()=>false) {
     const reader=new Reconciler(()=>readJson(`/api/v2/matches/${encodeURIComponent(matchId)}/events`),onSnapshot,onStatus);
     const source=new EventSource(`/api/v1/matches/${encodeURIComponent(matchId)}/events/stream`);
+    let terminalTimer=null,disposed=false;
+    const stopTerminal=()=>{clearInterval(terminalTimer);terminalTimer=null;reader.close();};
     source.addEventListener('connected',()=>void reader.request());
     source.addEventListener('event-log-changed',()=>void reader.request());
-    source.addEventListener('match-finished',()=>{source.close();void reader.finish().then(()=>onStatus('Матч завершён'));});
+    source.addEventListener('match-finished',()=>{
+        source.close();
+        // First obtain the final committed snapshot even if the feed is empty or
+        // REST temporarily fails. Only then start the bounded correction window.
+        void reader.finish().then(()=>{
+            if(disposed)return;
+            onStatus('Матч завершён');
+            if(!hasVisibleRows()){stopTerminal();return;}
+            const deadline=Date.now()+60000; // maximum configurable row TTL
+            terminalTimer=setInterval(()=>{
+                if(Date.now()>=deadline||!hasVisibleRows()){stopTerminal();return;}
+                void reader.request();
+            },1000);
+        });
+    });
     source.onerror=()=>onStatus('Матч: переподключение…');
-    return ()=>{source.close();reader.close();};
+    return ()=>{disposed=true;source.close();stopTerminal();};
 }
