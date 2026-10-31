@@ -4,10 +4,8 @@ import {execFileSync} from 'node:child_process';
 import openapiTS, {astToString} from 'openapi-typescript';
 import Ajv from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
-const api = JSON.parse(fs.readFileSync(process.argv[2]));
-// Generate directly from the complete raw document, without schema normalization.
-fs.writeFileSync('generated.ts', astToString(await openapiTS(api)));
-execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', '--ignoreConfig', '--noEmit', '--strict', 'generated.ts'], {stdio:'inherit'});
+const raw = fs.readFileSync(process.argv[2], 'utf8');
+const api = JSON.parse(raw);
 const ajv = new Ajv({strict:false, allErrors:true});
 addFormats(ajv);
 ajv.addSchema(api, 'api');
@@ -24,7 +22,7 @@ function check(name, value, expected) {
   assert.equal(validate(value), expected, name+' '+JSON.stringify(value)+' '+JSON.stringify(validate.errors));
   checks++;
 }
-const runtimeFixtures = JSON.parse(fs.readFileSync(new URL('runtime-fixtures.json', 'file://'+fs.realpathSync(process.argv[2]))));
+const runtimeFixtures = JSON.parse(fs.readFileSync(process.argv[3] ?? new URL('runtime-fixtures.json', 'file://'+fs.realpathSync(process.argv[2]))));
 for (const fixture of runtimeFixtures) check(fixture.schema, fixture.payload, true);
 for (const [types, fields] of groups) for (const type of types) {
   const create = {type, occurredAt:'2026-07-28T12:30:00Z', ...fields};
@@ -39,6 +37,7 @@ for (const [types, fields] of groups) for (const type of types) {
     for (const field of Object.keys(fields)) {const bad={...valid};delete bad[field];check(name,bad,false);}
   }
   check('BatchEventRequest',create,false);
+  check('BatchEventRequest',{...create,eventId:null},false);
   const read = {...create,id:uuid,sequenceNumber:1};
   check('EventResponse',read,true);
   check('EventResponse',{...read,type:'INVALID'},false);
@@ -57,4 +56,46 @@ for (const [types, fields] of groups) for (const type of types) {
 check('CreateEventBatchRequest',{expectedLastSequenceNumber:0,expectedLogRevision:0,events:[{type:'HALFTIME_START',occurredAt:'2026-07-28T12:30:00Z',eventId:uuid}]},true);
 for (const events of [[], Array(101).fill({type:'HALFTIME_START',occurredAt:'2026-07-28T12:30:00Z',eventId:uuid})])
   check('CreateEventBatchRequest',{expectedLastSequenceNumber:0,expectedLogRevision:0,events},false);
+// The generator mutates discriminator schemas. Give it a fresh parse only
+// after validating untouched raw JSON; its repairs must never reach AJV.
+fs.writeFileSync('generated.ts', astToString(await openapiTS(JSON.parse(raw))));
+const semantic = ['import type {components} from "./generated";'];
+for (const [i, fixture] of runtimeFixtures.entries()) {
+  const mapping = api.components.schemas[fixture.schema].discriminator?.mapping;
+  const leaf = mapping?.[fixture.payload.type]?.split('/').at(-1);
+  for (const name of new Set([fixture.schema, leaf].filter(Boolean))) {
+    semantic.push(`const fixture${i}${name} = ${JSON.stringify(fixture.payload)} satisfies components["schemas"]["${name}"];`);
+  }
+}
+for (const [types, fields] of groups) for (const type of types) {
+  const batch = {type, occurredAt:'2026-07-28T12:30:00Z', eventId:uuid, ...fields};
+  semantic.push(`const batch${semantic.length} = ${JSON.stringify(batch)} satisfies components["schemas"]["BatchEventRequest"];`);
+  const noId = {...batch}; delete noId.eventId;
+  semantic.push('// @ts-expect-error v2 batch requires eventId');
+  semantic.push(`const noEventId${semantic.length} = ${JSON.stringify(noId)} satisfies components["schemas"]["BatchEventRequest"];`);
+}
+for (const base of ['CreateEventRequest','UpdateEventRequest','EventResponse']) {
+  for (const ref of api.components.schemas[base].oneOf) {
+    const name = ref.$ref.split('/').at(-1);
+    const schema = api.components.schemas[name];
+    assert.equal(schema.properties.type.type, 'string', name);
+    if (schema.properties.type.example !== undefined)
+      assert.ok(schema.properties.type.enum.includes(schema.properties.type.example), name+' example outside enum');
+    for (const invalid of [{}, 'INVALID', 1, null]) {
+      semantic.push('// @ts-expect-error discriminator rejects invalid values');
+      semantic.push(`const invalid${semantic.length} = ${JSON.stringify(invalid)} satisfies components["schemas"]["${name}"]["type"];`);
+    }
+    const valid = runtimeFixtures.find(f => f.schema === base && mappingLeaf(base, f.payload.type) === name).payload;
+    for (const field of schema.required) {
+      const bad = {...valid}; delete bad[field];
+      semantic.push('// @ts-expect-error required field cannot be omitted');
+      semantic.push(`const missing${semantic.length} = ${JSON.stringify(bad)} satisfies components["schemas"]["${name}"];`);
+    }
+  }
+}
+function mappingLeaf(base, type) {
+  return api.components.schemas[base].discriminator.mapping[type].split('/').at(-1);
+}
+fs.writeFileSync('semantic.ts', semantic.join('\n'));
+execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', '--ignoreConfig', '--noEmit', '--strict', 'generated.ts', 'semantic.ts'], {stdio:'inherit'});
 console.log('PASS: raw generation, strict TypeScript, '+checks+' fixture validations');
