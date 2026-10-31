@@ -1,0 +1,76 @@
+[
+  {
+    "mode": "headerless",
+    "receiptEqual": true,
+    "sameEnvelopeReplayEqual": true,
+    "canonicalUnchanged": true,
+    "outcome": {
+      "matchId": "ba8da12e-07b2-4a40-8ad3-7d79b5e9e4c2",
+      "commandId": "4b754805-fcfb-4cbf-8fc2-1e846d4b8835",
+      "expectedLastEventId": "8be45b84-bf06-4652-81d3-a9e7ea424732",
+      "expectedLogRevision": 1,
+      "outcome": "APPLIED",
+      "resultLogRevision": 2,
+      "removedEventId": "8be45b84-bf06-4652-81d3-a9e7ea424732",
+      "removedSequenceNumber": 3,
+      "rejection": null
+    },
+    "canonical": {
+      "events": [
+        {
+          "id": "013125d3-bf83-45e6-a063-da6460424250",
+          "sequenceNumber": 1,
+          "type": "PULL",
+          "occurredAt": "2026-10-24T10:00:00Z",
+          "participantId": "6d19f4a1-8aeb-446e-837d-bdcae44267ac"
+        },
+        {
+          "id": "92a6936c-4f3e-446c-86a6-716abac9733f",
+          "sequenceNumber": 2,
+          "type": "PICKUP",
+          "occurredAt": "2026-10-24T10:00:00Z",
+          "participantId": "234a0224-3467-49fc-a6af-42f45731a638"
+        }
+      ],
+      "lastSequenceNumber": 3,
+      "logRevision": 2
+    }
+  },
+  {
+    "mode": "partial",
+    "receiptEqual": true,
+    "sameEnvelopeReplayEqual": true,
+    "canonicalUnchanged": true,
+    "outcome": {
+      "matchId": "2c1f4498-0cbc-45f4-a0d0-ecb53e3e88fc",
+      "commandId": "b982b4cb-6408-487b-aeb9-bdc7dbd64397",
+      "expectedLastEventId": "680e0767-d096-42c5-be7c-91c3b92eb4fd",
+      "expectedLogRevision": 1,
+      "outcome": "APPLIED",
+      "resultLogRevision": 2,
+      "removedEventId": "680e0767-d096-42c5-be7c-91c3b92eb4fd",
+      "removedSequenceNumber": 3,
+      "rejection": null
+    },
+    "canonical": {
+      "events": [
+        {
+          "id": "24ade4d4-b3d1-4ccb-b0ec-b825de69b378",
+          "sequenceNumber": 1,
+          "type": "PULL",
+          "occurredAt": "2026-10-24T10:00:00Z",
+          "participantId": "9e5b38db-5bcb-4d01-b338-92f4816e0eaa"
+        },
+        {
+          "id": "13dc94f6-5a87-4510-aefd-9799516e7996",
+          "sequenceNumber": 2,
+          "type": "PICKUP",
+          "occurredAt": "2026-10-24T10:00:00Z",
+          "participantId": "444ea1fb-6695-4a76-953e-77996c8adabc"
+        }
+      ],
+      "lastSequenceNumber": 3,
+      "logRevision": 2
+    }
+  }
+]

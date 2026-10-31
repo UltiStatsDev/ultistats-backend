@@ -33,8 +33,10 @@ for (const field of ['commandId','expectedLastEventId','expectedLogRevision']) {
   assert.equal(validators.UndoEventRequest(missing),false);
   assert.equal(validators.UndoEventRequest({...envelope,[field]:null}),false);
 }
-assert.equal(validators.UndoEventRequest({...envelope,expectedLogRevision:-1}),false);
-fs.writeFileSync(path.join(dir,'generated.ts'),astToString(await openapiTS(api)));
+for (const invalidRevision of [-1,1.5,'1',true]) assert.equal(validators.UndoEventRequest({...envelope,expectedLogRevision:invalidRevision}),false);
+const untouchedRaw = JSON.stringify(api);
+fs.writeFileSync(path.join(dir,'generated.ts'),astToString(await openapiTS(structuredClone(api))));
+assert.equal(JSON.stringify(api),untouchedRaw,'generator must not mutate the raw AJV document');
 const consumer = `import type {components} from './generated';
 type S = components['schemas'];
 type Equal<A,B> = (<T>()=>T extends A?1:2) extends (<T>()=>T extends B?1:2)?true:false;

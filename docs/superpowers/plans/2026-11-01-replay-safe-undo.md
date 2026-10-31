@@ -65,3 +65,7 @@
 - Execution: native worker implementation, then existing permanent reviewer, as explicitly authorized; no new human design/plan gate.
 
 - Task1/2 implementation: 8 route regression tests RED→GREEN; nullable rejection schema RED→GREEN; 43 focused tests passed real PostgreSQL/Flyway (V8 pending independent PR143). Full build PASS; raw schema AJV and generated TypeScript strict compile PASS on11 actual HTTP fixtures. Logs /tmp/undo144-{red,green2,schema-red,pg1,full1,contract1}.log.
+
+- Ruling: reject fractional/string/boolean revision coercion only on UndoEventRequest — the observed integer position must match documented JSON types — clients sending a string revision must send an integer instead; frozen append is unchanged. Regression demonstrated fractional1.5 applied as1 (RED); scoped deserializer added.
+
+- Task2 proof: strict revision regression RED→GREEN; fullbuild459 PASS, fresh own PostgreSQL focused45 PASS, rawAJV/TS11fixtures PASS before generator + deepclone/immutability. ActualChromium headerless1nativefetch/2POST→1deletion/revision/SSE and afterheaders1POST controls PASS atc961181; processrestart2receipt equality+exactretry canonicalunchanged PASS. Final orderedV8→V9 and permanentreview remain gated on actualmaster.

@@ -81,6 +81,18 @@ class ReplaySafeUndoControllerTest : MatchAbstractTest() {
         assertEquals("UNDO_COMMAND_CONFLICT", send(envelope(eventService.getAllEventsOfMatch(match.id).last()) + ("commandId" to request["commandId"]),409)["code"].asText())
     }
 
+    @Test fun `noninteger or coerced revision cannot mutate or reserve identity`() {
+        val pull = record(OnePlayerEvent(PLAYERS_2[0].id, at, EventType.PULL))
+        val command = envelope(pull)
+        for (invalidRevision in listOf(1.5, "1", true)) {
+            assertEquals("INVALID_REQUEST", send(command + ("expectedLogRevision" to invalidRevision), 400)["code"].asText())
+            lookup(command["commandId"], 404)
+            assertEquals(listOf(pull), eventService.getAllEventsOfMatch(match.id))
+            assertEquals(1, eventService.snapshot(match.id)!!.logRevision)
+        }
+        assertEquals("APPLIED", send(command, 200)["outcome"].asText())
+    }
+
     @Test fun `revision stale with matching tail also rejects`() {
         val pull = record(OnePlayerEvent(PLAYERS_2[0].id, at, EventType.PULL))
         val request = envelope(pull) + ("expectedLogRevision" to 0)

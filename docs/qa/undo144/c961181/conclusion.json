@@ -1,0 +1,75 @@
+[
+  {
+    "mode": "headerless",
+    "browser": "156.0.8078.79",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+    "nativeFetchInvocations": 1,
+    "incomingPosts": 2,
+    "warmedClientPort": 54044,
+    "postClientPorts": [
+      54044,
+      54046
+    ],
+    "browserResult": "HTTP 200\n{\n  \"matchId\" : \"ba8da12e-07b2-4a40-8ad3-7d79b5e9e4c2\",\n  \"commandId\" : \"4b754805-fcfb-4cbf-8fc2-1e846d4b8835\",\n  \"expectedLastEventId\" : \"8be45b84-bf06-4652-81d3-a9e7ea424732\",\n  \"expectedLogRevision\" : 1,\n  \"outcome\" : \"APPLIED\",\n  \"resultLogRevision\" : 2,\n  \"removedEventId\" : \"8be45b84-bf06-4652-81d3-a9e7ea424732\",\n  \"removedSequenceNumber\" : 3,\n  \"rejection\" : null\n}",
+    "beforeIds": [
+      "013125d3-bf83-45e6-a063-da6460424250",
+      "92a6936c-4f3e-446c-86a6-716abac9733f",
+      "8be45b84-bf06-4652-81d3-a9e7ea424732"
+    ],
+    "afterIds": [
+      "013125d3-bf83-45e6-a063-da6460424250",
+      "92a6936c-4f3e-446c-86a6-716abac9733f"
+    ],
+    "beforeRevision": 1,
+    "afterRevision": 2,
+    "outcome": {
+      "matchId": "ba8da12e-07b2-4a40-8ad3-7d79b5e9e4c2",
+      "commandId": "4b754805-fcfb-4cbf-8fc2-1e846d4b8835",
+      "expectedLastEventId": "8be45b84-bf06-4652-81d3-a9e7ea424732",
+      "expectedLogRevision": 1,
+      "outcome": "APPLIED",
+      "resultLogRevision": 2,
+      "removedEventId": "8be45b84-bf06-4652-81d3-a9e7ea424732",
+      "removedSequenceNumber": 3,
+      "rejection": null
+    },
+    "committedOutcomeSha256": "358a874cffa4ff5652b81c18612a2fb7be9993f4b88757eb7e36ff2b51251112",
+    "eventLogChangedCount": 1
+  },
+  {
+    "mode": "partial",
+    "browser": "156.0.8078.79",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+    "nativeFetchInvocations": 1,
+    "incomingPosts": 1,
+    "warmedClientPort": 54058,
+    "postClientPorts": [
+      54058
+    ],
+    "browserResult": "TypeError: Failed to fetch",
+    "beforeIds": [
+      "24ade4d4-b3d1-4ccb-b0ec-b825de69b378",
+      "13dc94f6-5a87-4510-aefd-9799516e7996",
+      "680e0767-d096-42c5-be7c-91c3b92eb4fd"
+    ],
+    "afterIds": [
+      "24ade4d4-b3d1-4ccb-b0ec-b825de69b378",
+      "13dc94f6-5a87-4510-aefd-9799516e7996"
+    ],
+    "beforeRevision": 1,
+    "afterRevision": 2,
+    "outcome": {
+      "matchId": "2c1f4498-0cbc-45f4-a0d0-ecb53e3e88fc",
+      "commandId": "b982b4cb-6408-487b-aeb9-bdc7dbd64397",
+      "expectedLastEventId": "680e0767-d096-42c5-be7c-91c3b92eb4fd",
+      "expectedLogRevision": 1,
+      "outcome": "APPLIED",
+      "resultLogRevision": 2,
+      "removedEventId": "680e0767-d096-42c5-be7c-91c3b92eb4fd",
+      "removedSequenceNumber": 3,
+      "rejection": null
+    },
+    "committedOutcomeSha256": "749cedc8ca85a69e84377680dd5cb4f9986cc6278d708d0a1b6e586eb918b85a",
+    "eventLogChangedCount": 1
+  }
+]
