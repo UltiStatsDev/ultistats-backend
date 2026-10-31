@@ -55,7 +55,7 @@ class StatisticsZipExporter {
     }
 
     private fun participantsCsv(statistics: MatchStatisticsResponse): String = buildString {
-        append("match_id,team_id,team_name,participant_id,kind,unknown_slot,first_name,last_name,display_name,number,passes,catches,assists,goals,drops_on_marker,drops_on_field,incomplete_passes,callahan_drops,disc_possessions,pulls,bricks,blocks,blocks_as_marker,blocks_as_field_player,interceptions,callahans,possession_time_ms,average_possession_time_ms\r\n")
+        append("match_id,team_id,team_name,participant_id,kind,unknown_slot,first_name,last_name,display_name,number,passes,catches,assists,goals,drops_on_marker,drops_on_field,incomplete_passes,callahan_drops,disc_possessions,pulls,bricks,blocks,blocks_as_marker,blocks_as_field_player,interceptions,callahans,possession_time_ms,average_possession_time_ms,average_possession_time_available\r\n")
         statistics.teams.forEach { team ->
             team.participants.forEach { participant ->
                 appendCsvRow(
@@ -87,6 +87,7 @@ class StatisticsZipExporter {
                     participant.defense.callahans,
                     participant.time.possessionTimeMs,
                     participant.time.averagePossessionTimeMs,
+                    participant.time.averagePossessionTimeAvailable,
                 )
             }
         }

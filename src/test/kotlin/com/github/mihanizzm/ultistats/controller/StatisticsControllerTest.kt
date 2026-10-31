@@ -255,7 +255,8 @@ class StatisticsControllerTest {
             .andExpect(jsonPath("$.teams[1].time.betweenPointsTimeMs").isNumber)
             .andExpect(jsonPath("$.teams[1].time.timeoutTimeMs").isNumber)
             .andExpect(jsonPath("$.teams[1].participants[0].time.possessionTimeMs").isNumber)
-            .andExpect(jsonPath("$.teams[1].participants[0].time.averagePossessionTimeMs").isNumber)
+            .andExpect(jsonPath("$.teams[1].participants[0].time.averagePossessionTimeMs").value(20_000))
+            .andExpect(jsonPath("$.teams[1].participants[0].time.averagePossessionTimeAvailable").value(true))
     }
 
     @Test
@@ -304,6 +305,8 @@ class StatisticsControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.paths['/api/v1/matches/{matchId}/statistics'].get.responses['200'].content['application/json'].schema['\$ref']")
                 .value("#/components/schemas/MatchStatisticsResponse"))
+            .andExpect(jsonPath("$.components.schemas.PlayerTimeStatisticsResponse.properties.averagePossessionTimeAvailable.type").value("boolean"))
+            .andExpect(jsonPath("$.paths['/api/v1/matches/{matchId}/statistics'].get.responses['200'].content['application/json'].example.teams[0].participants[0].time.averagePossessionTimeAvailable").value(true))
             .andExpect(jsonPath("$.paths['/api/v1/matches/{matchId}/statistics'].get.responses['200'].content['application/json'].example.time.totalTimeMs").isNumber)
             .andExpect(jsonPath("$.paths['/api/v1/matches/{matchId}/statistics'].get.responses['200'].content['application/json'].example.teams[0].participants[0].displayName").value("Ivan Ivanov"))
             .andExpect(jsonPath("$.paths['/api/v1/matches/{matchId}/statistics'].get.responses['200'].content['application/json'].example.teams[0].participants[0].attack.passes").isNumber)
@@ -337,6 +340,27 @@ class StatisticsControllerTest {
             .andExpect(jsonPath("$.components.schemas.TeamAttackStatisticsResponse.properties.breaks.type").value("integer"))
             .andExpect(jsonPath("$.components.schemas.TeamAttackStatisticsResponse.properties.breaks.minimum").value(0))
             .andExpect(jsonPath("$.paths['/api/v1/matches/{matchId}/statistics'].get.responses['200'].content['application/json'].example.teams[0].attack.breaks").value(1))
+    }
+
+    @Test
+    fun `Average availability distinguishes unknown participant zero hold from missing and open holds`() {
+        val unknown = matchService.getOrThrow(match.id).participantsByTeam.getValue(team2.id)
+            .first { it.kind == MatchParticipantKind.UNKNOWN }.participantId
+        fun participantTime(id: UUID) = objectMapper.readTree(mockMvc.perform(
+            get("/api/v1/matches/${match.id}/statistics"))
+            .andExpect(status().isOk).andReturn().response.contentAsString)
+            .get("teams").flatMap { it.get("participants").toList() }
+            .first { it.get("participantId").asText() == id.toString() }.get("time")
+        assertThat(participantTime(unknown).path("averagePossessionTimeAvailable").asBoolean(true)).isFalse()
+        eventService.create(OnePlayerEvent(players1[0].id, MATCH_STARTED_AT, EventType.PULL), match.id)
+        eventService.create(OnePlayerEvent(unknown, MATCH_STARTED_AT.plusSeconds(1), EventType.PICKUP), match.id)
+        assertThat(participantTime(unknown).path("averagePossessionTimeAvailable").asBoolean(true)).isFalse()
+        eventService.create(TwoPlayerEvent(unknown, players2[0].id, MATCH_STARTED_AT.plusSeconds(1), EventType.GOAL), match.id)
+        assertThat(participantTime(unknown).get("averagePossessionTimeMs").asLong()).isZero()
+        assertThat(participantTime(unknown).path("averagePossessionTimeAvailable").asBoolean()).isTrue()
+        assertThat(participantTime(players2[0].id).path("averagePossessionTimeAvailable").asBoolean(true)).isFalse()
+        eventService.undoLast(match.id)
+        assertThat(participantTime(unknown).path("averagePossessionTimeAvailable").asBoolean(true)).isFalse()
     }
 
     private fun createTestTeam(name: String): Pair<Team, List<Player>> {

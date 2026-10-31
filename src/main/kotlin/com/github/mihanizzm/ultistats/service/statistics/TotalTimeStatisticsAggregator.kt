@@ -31,6 +31,11 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
         val teamTimeBetweenPoints = mutableMapOf<UUID, Duration>().withDefault { Duration.ZERO }
         val participantPossessionTime = mutableMapOf<UUID, Duration>().withDefault { Duration.ZERO }
         val timeSpentOnTimeouts = mutableMapOf<UUID, Duration>().withDefault { Duration.ZERO }
+        // Accumulate a hold separately: an unfinished suffix remains in total possession
+        // time, but must never enter the completed-hold average.
+        var holdingDuration = Duration.ZERO
+        val completedHoldingDuration = mutableMapOf<UUID, Duration>()
+        val completedHoldCount = mutableMapOf<UUID, Long>()
         var totalMatchTime = Duration.ZERO
         var timeSpentOnHalftime = Duration.ZERO
 
@@ -45,10 +50,25 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
                 }
                 if (currentParticipantPossessing != null && !isStopped) {
                     participantPossessionTime.merge(currentParticipantPossessing, duration, Duration::plus)
+                    holdingDuration = holdingDuration.plus(duration)
                 }
             }
 
             lastEventTime = event.occurredAt
+
+            when (event.type) {
+                EventType.PASS, EventType.GOAL, EventType.PICKUP,
+                EventType.BLOCK, EventType.BLOCK_MARKER, EventType.BLOCK_FIELD,
+                EventType.INCOMPLETE_PASS, EventType.INTERCEPTION, EventType.CALLAHAN,
+                EventType.HALFTIME_START -> {
+                    currentParticipantPossessing?.let { participant ->
+                        completedHoldingDuration.merge(participant, holdingDuration, Duration::plus)
+                        completedHoldCount.merge(participant, 1L, Long::plus)
+                    }
+                    holdingDuration = Duration.ZERO
+                }
+                else -> Unit // Timeout pauses the current hold without completing it.
+            }
 
             when (event.type) {
                 EventType.PASS -> {
@@ -139,7 +159,14 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
 
         val newPlayerStats = previousStatisticsState.playerStatistics.map { stats ->
             val possession = participantPossessionTime.getOrDefault(stats.participantId, Duration.ZERO)
-            stats.copy(time = stats.time.copy(totalPossessionTime = possession))
+            val completed = completedHoldCount.getOrDefault(stats.participantId, 0L)
+            stats.copy(time = stats.time.copy(
+                totalPossessionTime = possession,
+                averagePossessionTime = if (completed > 0) {
+                    completedHoldingDuration.getValue(stats.participantId).dividedBy(completed)
+                } else Duration.ZERO,
+                averagePossessionTimeAvailable = completed > 0,
+            ))
         }.toMutableList()
 
         val newTeamStats = previousStatisticsState.teamStatistics.map { stats ->
