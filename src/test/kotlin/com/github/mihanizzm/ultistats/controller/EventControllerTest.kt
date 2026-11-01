@@ -55,6 +55,8 @@ import kotlin.test.assertTrue
 @AutoConfigureMockMvc
 @Import(LegacyDomainHttpSecurity::class, EventControllerTestConfiguration::class)
 class EventControllerTest {
+    @Autowired
+    private lateinit var authOrigins: com.github.mihanizzm.ultistats.auth.ingress.AuthOriginConfiguration
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var objectMapper: ObjectMapper
     @Autowired lateinit var matchService: MatchService
@@ -761,14 +763,15 @@ class EventControllerTest {
     }
 
     @Test
-    fun `frontend origin is allowed by CORS`() {
+    fun `configured frontend origin is allowed by CORS`() {
+        val origin = authOrigins.secureOrigin()
         mockMvc.perform(
             options("/api/v1/matches")
-                .header("Origin", "http://localhost:3000")
+                .header("Origin", origin)
                 .header("Access-Control-Request-Method", "GET"),
         )
             .andExpect(status().isOk)
-            .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:3000"))
+            .andExpect(header().string("Access-Control-Allow-Origin", origin))
     }
 
     @Test
