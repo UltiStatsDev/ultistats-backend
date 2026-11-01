@@ -13,7 +13,7 @@ class AuthCredentialStorageTest {
         val password="😀".repeat(1023)+"a"
         val first=encoder.encode(password)
         val second=encoder.encode(password)
-        assertNotEquals(first,second)
+        assertTrue(first!=second, "Password hashes must use fresh salts")
         assertTrue(first.startsWith("\$argon2id\$v=19\$m=19456,t=2,p=1\$"))
         assertEquals(16,Base64.getDecoder().decode(first.split('$')[4]).size)
         assertEquals(32,Base64.getDecoder().decode(first.split('$')[5]).size)
