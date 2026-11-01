@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
+import { isIP } from "node:net";
 import {
   BASELINE,
   check,
@@ -150,6 +151,17 @@ export function parseCount(value) {
     "DATABASE_UNREADY",
   );
   return Number(value);
+}
+export function unknownClientFilter(databaseUser, addresses) {
+  check(
+    /^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/.test(databaseUser) &&
+      Array.isArray(addresses) &&
+      addresses.every((address) => isIP(address) > 0),
+    "NETWORK_NOT_ISOLATED",
+  );
+  return addresses.length
+    ? `AND NOT COALESCE(usename='${databaseUser}' AND host(client_addr) IN (${addresses.map((address) => `host('${address}'::inet)`).join(",")}),false)`
+    : "";
 }
 export function verifySourceIdentity(m, { run = command } = {}) {
   const b = m.backend,
@@ -509,17 +521,17 @@ export async function observeInstallation(
   );
   const allowedIPs =
     phase !== "quiet"
-      ? writers.map(
-          (c) => c.NetworkSettings.Networks[h.databaseNetwork].IPAddress,
-        )
+      ? writers.flatMap((c) => {
+          const network = c.NetworkSettings.Networks[h.databaseNetwork];
+          const addresses = [
+            network.IPAddress,
+            network.GlobalIPv6Address,
+          ].filter(Boolean);
+          check(addresses.length > 0, "NETWORK_NOT_ISOLATED");
+          return addresses;
+        })
       : [];
-  check(
-    allowedIPs.every((ip) => /^[0-9a-f:.]+$/.test(ip)),
-    "NETWORK_NOT_ISOLATED",
-  );
-  const allowed = allowedIPs.length
-    ? `AND NOT (usename='${h.databaseUser}' AND host(client_addr) IN (${allowedIPs.map((ip) => `'${ip}'`).join(",")}))`
-    : "";
+  const allowed = unknownClientFilter(h.databaseUser, allowedIPs);
   o.otherClients = parseCount(
     sql(
       m,

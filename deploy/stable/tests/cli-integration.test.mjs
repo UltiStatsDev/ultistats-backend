@@ -177,3 +177,30 @@ test("actual PostgreSQL inet /32 representation recognizes owned API pool and st
   });
   assert.equal(f.state.dumpCount, 0);
 });
+test("NULL Unix client address is unknown rather than escaping SQL NOT through three-valued logic", async (t) => {
+  const f = fixture(t);
+  f.state.open = true;
+  f.state.postgresClients = [{ user: "ultistats", text: null, host: null }];
+  await assert.rejects(() => f.call("inspect"), {
+    message: "RUNTIME_UNPROVEN",
+  });
+  assert.equal(f.state.dumpCount, 0);
+});
+test("owned IPv6 host normalizes /128 and expanded address without allowing foreign IPv6 host", async (t) => {
+  const f = fixture(t);
+  f.state.open = true;
+  f.api.NetworkSettings.Networks[f.network].GlobalIPv6Address =
+    "fd00:0:0:0:0:0:0:3";
+  f.state.postgresClients = [
+    { user: "ultistats", text: "fd00::3/128", host: "fd00::3" },
+  ];
+  assert.equal((await f.call("inspect")).evidence.ready, true);
+  f.state.postgresClients.push({
+    user: "ultistats",
+    text: "fd00::9/128",
+    host: "fd00::9",
+  });
+  await assert.rejects(() => f.call("inspect"), {
+    message: "RUNTIME_UNPROVEN",
+  });
+});

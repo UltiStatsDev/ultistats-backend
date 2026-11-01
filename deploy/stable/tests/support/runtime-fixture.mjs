@@ -301,6 +301,33 @@ export function fixture(t, options = {}) {
       return JSON.stringify(rows);
     if (options.input?.includes("FROM public.matches WHERE"))
       return String(state.activeMatches);
+    if (
+      options.input?.includes("FROM pg_stat_activity") &&
+      state.postgresClients
+    ) {
+      const query = options.input,
+        hostProjection = query.includes("host(client_addr)"),
+        nullSafe = query.toLowerCase().includes("coalesce("),
+        canonicalExpected = query.includes("host('");
+      const addresses = [
+        api.NetworkSettings.Networks[network].IPAddress,
+        api.NetworkSettings.Networks[network].GlobalIPv6Address,
+      ].filter(Boolean);
+      const canonical = (ip) =>
+        ip.includes(":")
+          ? new URL(`http://[${ip}]/`).hostname.slice(1, -1)
+          : ip;
+      const expected = canonicalExpected ? addresses.map(canonical) : addresses;
+      return String(
+        state.otherClients +
+          state.postgresClients.filter((client) => {
+            const address = hostProjection ? client.host : client.text;
+            if (client.user === "ultistats" && address === null)
+              return nullSafe;
+            return !(client.user === "ultistats" && expected.includes(address));
+          }).length,
+      );
+    }
     if (options.input?.includes("FROM pg_stat_activity"))
       return String(
         state.otherClients +
