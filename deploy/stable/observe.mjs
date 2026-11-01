@@ -147,7 +147,13 @@ export function parseCount(value) {
 export function verifySourceIdentity(m, { run = command } = {}) {
   const b = m.backend,
     h = b.helper;
-  const git = (...args) => run("git", ["-C", h.sourceCheckout, ...args]).trim();
+  const git = (...args) =>
+    run("git", [
+      "--no-replace-objects",
+      "-C",
+      h.sourceCheckout,
+      ...args,
+    ]).trim();
   check(
     git("rev-parse", "HEAD") === b.revision &&
       git("status", "--porcelain=v1", "--untracked-files=all") === "",
