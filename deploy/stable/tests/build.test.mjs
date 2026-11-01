@@ -177,3 +177,34 @@ test('CLI malformed private request yields sanitized private blocked result', as
   assert.equal(failure.stderr, 'BUILD_FAILED\n');
   assert.deepEqual(JSON.parse(readFileSync(output)), { schemaVersion: 1, status: 'blocked', reason: 'BUILD_FAILED' });
 });
+
+test('local Git replacement cannot redefine the fixed baseline to accept V10', async t => {
+  const f = await fixture(t);
+  writeFileSync(join(f.source, 'src/main/resources/db/migration/V10__unapproved.sql'), 'SELECT 1;');
+  git(f.source, 'add', '.');
+  git(f.source, 'commit', '--quiet', '-m', 'fixture unapproved product delta');
+  const sha = git(f.source, 'rev-parse', 'HEAD');
+  await assert.rejects(() => f.inspectSource(f.source, sha), /BASELINE_PARITY_MISMATCH/);
+  const replacement = git(f.source, 'commit-tree', 'HEAD^{tree}', '-m', 'fixture replacement');
+  git(f.source, 'replace', '24704e11143a0bf919559a41324603f936ae03cf', replacement);
+  await assert.rejects(() => f.inspectSource(f.source, sha), /BASELINE_PARITY_MISMATCH/);
+});
+
+test('snapshot ignores local smudge filters and contains exact committed product bytes', async t => {
+  const f = await fixture(t);
+  const target = 'src/main/resources/static/obs/obs.css';
+  const attr = join(f.source, '.gitattributes');
+  writeFileSync(attr, readFileSync(attr, 'utf8') + `\n${target} filter=syntheticcanary\n`);
+  git(f.source, 'config', 'filter.syntheticcanary.clean', 'cat');
+  git(f.source, 'config', 'filter.syntheticcanary.smudge', "cat; printf '\\nSYNTHETIC_PRIVATE_CANARY\\n'");
+  git(f.source, 'add', '.gitattributes');
+  git(f.source, 'commit', '--quiet', '-m', 'fixture checkout transformation');
+  f.sha = git(f.source, 'rev-parse', 'HEAD');
+  const committed = execFileSync('git', ['show', `${f.sha}:${target}`], { cwd: f.source });
+  const { buildSource } = await import('../build.mjs');
+  const docker = dockerFixture(f);
+  await buildSource(request(f), { docker: args => {
+    if (args[0] === 'build') assert.deepEqual(readFileSync(join(args.at(-1), target)), committed);
+    return docker(args);
+  } });
+});

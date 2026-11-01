@@ -1,12 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { realpathSync, mkdirSync, readFileSync, writeFileSync, rmSync, lstatSync } from 'node:fs';
+import { realpathSync, mkdirSync, readFileSync, writeFileSync, lstatSync } from 'node:fs';
 import { isAbsolute, resolve, dirname, join, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 
 const BASELINE = '24704e11143a0bf919559a41324603f936ae03cf';
 const PARITY_PATHS = ['src/main', 'src/test', 'build.gradle.kts', 'settings.gradle.kts', 'gradle', 'gradlew', 'Dockerfile'];
-const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000 }).trim();
+const gitArgs = args => ['--no-replace-objects', '-c', 'core.fsmonitor=false', ...args];
+const git = (cwd, ...args) => execFileSync('git', gitArgs(args), { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000 }).trim();
 
 export async function inspectSource(sourceDir, expectedSha) {
   if (!/^[a-f0-9]{40}$/.test(expectedSha ?? '')) throw new Error('INVALID_SOURCE_SHA');
@@ -43,12 +44,30 @@ export async function buildSource(request, { docker = dockerCommand } = {}) {
   mkdirSync(stage, { mode: 0o700 });
   const snapshot = join(stage, 'source');
   mkdirSync(snapshot, { mode: 0o700 });
-  const index = join(stage, 'snapshot-index');
-  const gitOptions = { cwd: source, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000,
-    env: { ...process.env, GIT_INDEX_FILE: index } };
-  execFileSync('git', ['read-tree', identity.sourceSha], gitOptions);
-  execFileSync('git', ['checkout-index', '--all', `--prefix=${snapshot}${sep}`], gitOptions);
-  rmSync(index);
+  // Raw object reads never run checkout/smudge/export transformations. In particular,
+  // local replace refs cannot redefine the accepted baseline or the build context.
+  const entries = git(source, 'ls-tree', '-rz', '--full-tree', identity.sourceSha).split('\0').filter(Boolean).map(entry => {
+    const match = /^(100644|100755) blob ([a-f0-9]{40})\t(.+)$/s.exec(entry);
+    if (!match || !inside(resolve(snapshot, match[3]), snapshot) || match[3].split('/').some(p => ['.', '..', '.git'].includes(p))) throw new Error('UNSUPPORTED_SOURCE_ENTRY');
+    return { mode: match[1], oid: match[2], path: match[3] };
+  });
+  const objects = execFileSync('git', gitArgs(['cat-file', '--batch']), { cwd: source,
+    input: entries.map(e => e.oid + '\n').join(''), timeout: 30000, maxBuffer: 256 * 1024 * 1024 });
+  let offset = 0;
+  for (const entry of entries) {
+    const end = objects.indexOf(10, offset);
+    const header = objects.subarray(offset, end).toString('ascii').split(' ');
+    const size = Number(header[2]);
+    if (end < offset || header[0] !== entry.oid || header[1] !== 'blob' || !Number.isSafeInteger(size) || size < 0 || end + size + 1 >= objects.length) throw new Error('SOURCE_OBJECT_INVALID');
+    const bytes = objects.subarray(end + 1, end + 1 + size);
+    const digest = createHash('sha1').update(`blob ${size}\0`).update(bytes).digest('hex');
+    if (digest !== entry.oid || objects[end + 1 + size] !== 10) throw new Error('SOURCE_OBJECT_INVALID');
+    const destination = resolve(snapshot, entry.path);
+    mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
+    writeFileSync(destination, bytes, { mode: entry.mode === '100755' ? 0o700 : 0o600, flag: 'wx' });
+    offset = end + size + 2;
+  }
+  if (offset !== objects.length) throw new Error('SOURCE_OBJECT_INVALID');
   const dockerfile = readFileSync(join(snapshot, 'Dockerfile'), 'utf8');
   const toolchain = {};
   let generated = dockerfile;
