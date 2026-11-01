@@ -1,0 +1,34 @@
+# Backend162 baseline bootstrap code plan
+
+Baseline: `24704e11143a0bf919559a41324603f936ae03cf`. Refs #162, parent #159. Approved frozen Web requirements: `a23e7144bac89731996f5eb1a2ae2309bb28beca`. This is an application candidate, never published stable. No merge/rebase from master.
+
+## Files and interfaces
+
+- `deploy/stable/build.mjs`: Node built-ins only. Planned exports `inspectSource(sourceDir, expectedSha)`, `prepareBuild(request)` and `buildSource(request)`; CLI `node deploy/stable/build.mjs --request <private-json> --result <private-json>`. Exact public request/result freeze with Web114 before implementation. Source validation uses exact full Git commit, clean managed tree and baseline product-tree parity. Build stages an immutable source snapshot and invokes Docker local build; no host Java, Python, jq or psql. Output records actual application SHA, product trees, Dockerfile hash, Docker image ID, extracted JAR hash and toolchain evidence. Never stop/start/migrate installed resources.
+- `deploy/stable/tests/build.test.mjs`: temporary Git repositories and process-boundary fixtures. RED: wrong SHA, dirty source, baseline product delta, failed download/build, missing image/JAR evidence; installed sentinel unchanged. GREEN: exact clean snapshot build identity and prepared reuse.
+- `deploy/stable/tests/bootstrap-boundaries.test.mjs`: consume Web114 manifest/lifecycle and Backend161 CLI only after field-level freeze. RED: unrecognized old layout, shared project/volume, occupied port, source/build failure preserves installed fixture; no empty DB substitution. Real startup orchestration remains Web-owned.
+- `deploy/stable/fixtures/`: synthetic fixture/rehearsal launcher only after coordinated resource manifest. No real data or committed secrets.
+- `docs/releases/bootstrap247.md`: acquisition/build interface, exact parity evidence and justified tooling delta, source/image/JAR distinctions, actual run evidence, adoption constraints, restore/rollback limitations, retained resources and cleanup receipt.
+- Existing `Dockerfile` only if necessary reviewed build wiring; leave `src/main`, migrations, static assets, Kotlin dependencies and Gradle wrapper unchanged. No CI/promotion or maintenance-helper implementation edits (160/161 owned).
+
+## Sequence and verification
+
+1. Commit this concrete plan before production code; send plan/branch/base and proposed interfaces to lead, Web114 and Backend161. Freeze exact schema/helper/runtime dependency before consuming it. Independently inspect parity and write boundary RED tests meanwhile.
+2. RED source/build boundary tests using a deliberately absent build entry point, then implement minimal validated source snapshot/build after handshake; run Node tests to GREEN. Assert a build failure cannot mutate installed sentinel, source checkout or volumes.
+3. Readonly parity: compare Git trees for all `src/main`, `src/test`, `build.gradle.kts`, `settings.gradle.kts`, `gradle`, `gradlew`, `Dockerfile` against247; explicitly list any wiring delta. Reuse accepted247 sporting evidence only with exact provenance; do not fabricate an inherited PASS.
+4. Run actual Docker source build only after own resource manifest/free-port approval; capture source/image/JAR/toolchain. Existing baseline Dockerfile uses gradle:8.14-jdk21 and eclipse-temurin:21-jre-alpine; actual resolved image IDs differ from symbolic tags. No mandatory dual published images.
+5. Integrate exact available Web114/161 helpers: synthetic fresh + old-layout adoption, nonempty sports/photo/settings/receipts backup/restore, unsupported rollback refusal, stable/dev isolation and prepared offline normal startup. Fault injection runs before any installed switch. Shared QA remains separate and NOT_RUN until engineering-ready pair.
+6. Meaningful Node tests, deployment safety tests, exact-source build/CI as coordinated with160, independent permanent reviewer. Commit/push PR with Refs #162, never Closes. No self-merge/stable publication/human rollout.
+
+## Runtime resource ownership proposal (not reserved)
+
+Owner162 only, project `ultistats-stable162-rehearsal`, named synthetic volumes `ultistats-stable162-pg` and `ultistats-stable162-uploads`, own containers/network with matching project labels; optional loopback API21462/PG22462 are proposals only. Before Docker: freeze manifest with Web114/161 and lead, readonly free-port check immediately before bind, verify names absent/owned, no use of old auth/review/runtime fixtures. Dev comparison needs a distinct agreed project/volumes/ports. Never infer ownership from a path alone.
+
+Acquire heavy exclusive `/tmp/ultistats-web-heavy-check.lock` then network exclusive `/tmp/ultistats-browser-network.lock` for Docker. JVM only under `/tmp/ultistats-backend-gradle.lock`, JDK21 `/tmp/ultistats-backend-jdk21`, --no-daemon --max-workers=2. Bounded lock waits and durable private evidence. No Docker operations until manifest agreement; tests initially process/file-only.
+
+After consumers END, remove exact owned unneeded containers/network; preserve volumes, immutable source/artifacts/private backups and receipt. No prune, down -v, foreign process kills or human origin/data changes. Linux actual execution only unless Mac is available; shell compatibility is not Mac runtime proof.
+
+## Execution ledger
+
+- Startup: assigned branch clean at exact247; existing Dockerfile is a local source build, no host JDK requirement. Baseline schema ends V9, no auth installation/readiness endpoint. Shared interfaces pending owner freeze; independent source inspection/test work proceeds.
+- Ruling: approved worker/reviewer flow and existing worktree take precedence over generic skill workspace/reviewer dispatch defaults; no new worker or native worktree is created.
