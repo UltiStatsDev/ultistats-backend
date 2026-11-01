@@ -162,3 +162,66 @@ test("readonly source verification cannot execute configured clean filter or fsm
   });
   assert.equal(existsSync(marker), false);
 });
+test("source observation neither refreshes index nor runs post-index-change hook", async (t) => {
+  const {
+    mkdtempSync,
+    rmSync,
+    writeFileSync,
+    existsSync,
+    readFileSync,
+    utimesSync,
+  } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join, resolve } = await import("node:path");
+  const { execFileSync } = await import("node:child_process");
+  const { createHash } = await import("node:crypto");
+  const root = mkdtempSync(join(tmpdir(), "backend161-hook-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const repo = join(root, "repo"),
+    marker = join(root, "HOOK_RAN");
+  const git = (...args) =>
+    execFileSync("git", args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  const baseline = "24704e11143a0bf919559a41324603f936ae03cf";
+  git("clone", "--shared", "--no-checkout", resolve("."), repo);
+  git("-C", repo, "checkout", "--detach", baseline);
+  writeFileSync(
+    join(repo, ".git/hooks/post-index-change"),
+    `#!/bin/sh\ntouch '${marker}'\n`,
+    { mode: 0o700 },
+  );
+  const future = new Date(Date.now() + 10000);
+  utimesSync(join(repo, "src/main/resources/application.yaml"), future, future);
+  const digest = () =>
+    createHash("sha256")
+      .update(readFileSync(join(repo, ".git/index")))
+      .digest("hex");
+  const before = digest();
+  const manifest = {
+    instanceId: "abc123456789",
+    backend: {
+      revision: baseline,
+      imageId: `sha256:${"1".repeat(64)}`,
+      helper: { sourceCheckout: repo },
+    },
+  };
+  const run = (program, args) =>
+    program === "git"
+      ? git(...args)
+      : JSON.stringify([
+          {
+            Id: manifest.backend.imageId,
+            Config: {
+              Labels: {
+                "org.opencontainers.image.revision": baseline,
+                "io.ultistats.instance": manifest.instanceId,
+              },
+            },
+          },
+        ]);
+  api.verifySourceIdentity(manifest, { run });
+  assert.equal(existsSync(marker), false);
+  assert.equal(digest(), before);
+});

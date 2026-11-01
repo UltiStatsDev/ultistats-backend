@@ -150,8 +150,11 @@ export function verifySourceIdentity(m, { run = command } = {}) {
   const git = (...args) =>
     run("git", [
       "--no-replace-objects",
+      "--no-optional-locks",
       "-c",
       "core.fsmonitor=false",
+      "-c",
+      "core.hooksPath=/dev/null",
       "-C",
       h.sourceCheckout,
       ...args,

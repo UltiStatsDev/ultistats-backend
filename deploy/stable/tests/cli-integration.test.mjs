@@ -409,3 +409,25 @@ test("readonly runtime identity observer supports isolated dev without granting 
     message: "UNSUPPORTED_INSTALLATION",
   });
 });
+test("forged compatible rollback receipt cannot substitute an unlisted previous pair", async (t) => {
+  const f = fixture(t);
+  f.api.State.Running = false;
+  await f.call("fence-acquire");
+  await f.call("backup");
+  const previousManifestPath = join(f.root, "previous.json");
+  f.write(previousManifestPath, f.m);
+  const result = await f.call("rollback-plan", { previousManifestPath });
+  const planner = readPrivateJson(result.evidence.rollbackPlanPath);
+  planner.previous.web = "b".repeat(40);
+  f.write(result.evidence.rollbackPlanPath, planner);
+  f.m.release.webSource = planner.previous.web;
+  f.write(f.manifestPath, f.m);
+  f.api.State.Running = true;
+  await assert.rejects(
+    () =>
+      f.call("postflight", {
+        rollbackPlanPath: result.evidence.rollbackPlanPath,
+      }),
+    { message: "ROLLBACK_UNPROVEN" },
+  );
+});

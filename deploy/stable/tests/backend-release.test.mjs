@@ -103,3 +103,28 @@ test("malformed CLI request cannot produce an invalid or secret-bearing result e
   assert.equal(status, 64);
   assert.equal((await import("node:fs")).existsSync(result), false);
 });
+test("CLI path collision is usage error and never creates a fence artifact", async (t) => {
+  const cli = await import("../backend-release.mjs");
+  const p = temp(t),
+    request = join(p, "request.json"),
+    fence = join(p, "fence.json");
+  writeFileSync(
+    request,
+    JSON.stringify({
+      protocolVersion: 1,
+      operation: "fence-acquire",
+      transactionId: "transaction-001",
+      installationManifestPath: join(p, "manifest"),
+      targetRecordPath: join(p, "record"),
+      targetRecordSha256: "a".repeat(64),
+      evidenceDirectory: p,
+      fencePath: fence,
+    }),
+    { mode: 0o600 },
+  );
+  assert.equal(
+    await cli.main(["fence-acquire", "--request", request, "--result", fence]),
+    64,
+  );
+  assert.equal((await import("node:fs")).existsSync(fence), false);
+});

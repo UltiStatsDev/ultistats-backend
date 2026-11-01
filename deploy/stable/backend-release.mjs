@@ -314,8 +314,15 @@ export async function executeRequest(
     });
   }
   const planner = boundRollback(r, manifestHash, fixedIdentity(m), backupHash);
+  if (planner)
+    check(
+      same(planner.previous, fence.current) &&
+        rollbackCompatible(planner.previous, record.compatibility, true),
+      "ROLLBACK_UNPROVEN",
+    );
   check(same(pair(m), desiredPair(record, planner)), "TARGET_PAIR_MISMATCH");
   const o = await observe("target");
+  if (planner) check(same(runtime(m, o), fence.runtime), "ROLLBACK_UNPROVEN");
   assertData(m, backup, { run });
   // Internal sporting HTTP proof goes only to the owned API; public ingress stays503.
   const body = run(
@@ -393,7 +400,6 @@ export async function main(argv = process.argv.slice(2)) {
     request = readPrivateJson(argv[2]);
     validateRequest(request);
     check(request.operation === argv[0], "INVALID_REQUEST");
-    validated = true;
     const paths = [
       argv[2],
       request.installationManifestPath,
@@ -403,6 +409,7 @@ export async function main(argv = process.argv.slice(2)) {
       request.rollbackPlanPath,
     ].filter(Boolean);
     check(!paths.includes(resultPath), "USAGE");
+    validated = true;
     const result = await executeRequest(request);
     writePrivateJson(resultPath, result);
     return 0;
