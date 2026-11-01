@@ -60,3 +60,5 @@ Root's narrow readonly legacy exception applies only exact source247 `gradlew.ba
 Normal startup `observeRuntimeIdentity` verifies known ongoing-match state without blocking it; restarting the installed version is separate from updating. CLI inspect and all update/fence/backup/postflight paths still require zero IN_PROGRESS. The readonly startup observer never authorizes switching or backup.
 
 Canonical version boundary: authoritative record.version is plain SemVer (`0.1.0`); every installed/staged/result current/target/previous pair.version is `v<semver>` (`v0.1.0`) or exact `unpublished` for the actual original39/247 installation. Only record→target conversion adds the prefix. No loose stripping or normalization of unknown version strings; rollback retains the exact previous manifest version.
+
+The separately journalled import-only legacy adoption API is defined in [legacy-adoption-v1.md](legacy-adoption-v1.md). It does not add a regular CLI operation or relax immutable identity/ingress release. Fresh canonical installations and ordinary updates do not depend on that extension.
