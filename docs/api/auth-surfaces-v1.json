@@ -9,7 +9,7 @@
       "policy": "CORE",
       "owner": "core",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AccountController.kt",
-      "line": 13
+      "line": 14
     },
     {
       "method": "POST",
@@ -17,7 +17,7 @@
       "policy": "CORE",
       "owner": "core",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AccountController.kt",
-      "line": 15
+      "line": 16
     },
     {
       "method": "PATCH",
@@ -25,7 +25,7 @@
       "policy": "CORE",
       "owner": "core",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AccountController.kt",
-      "line": 17
+      "line": 18
     },
     {
       "method": "POST",
@@ -33,7 +33,7 @@
       "policy": "CORE",
       "owner": "core",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AccountController.kt",
-      "line": 19
+      "line": 20
     },
     {
       "method": "GET",
@@ -41,7 +41,7 @@
       "policy": "CORE",
       "owner": "core",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AuthController.kt",
-      "line": 28
+      "line": 29
     },
     {
       "method": "GET",
@@ -49,7 +49,7 @@
       "policy": "CORE",
       "owner": "core",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AuthController.kt",
-      "line": 32
+      "line": 33
     },
     {
       "method": "POST",
@@ -57,7 +57,7 @@
       "policy": "CORE",
       "owner": "core",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AuthController.kt",
-      "line": 33
+      "line": 34
     },
     {
       "method": "POST",
@@ -65,7 +65,7 @@
       "policy": "CORE",
       "owner": "core",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AuthController.kt",
-      "line": 44
+      "line": 45
     },
     {
       "method": "POST",
@@ -73,7 +73,7 @@
       "policy": "CORE",
       "owner": "core",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AuthController.kt",
-      "line": 52
+      "line": 53
     },
     {
       "method": "POST",
@@ -81,7 +81,7 @@
       "policy": "CORE",
       "owner": "core",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AuthController.kt",
-      "line": 59
+      "line": 60
     },
     {
       "method": "POST",
@@ -89,7 +89,7 @@
       "policy": "CORE",
       "owner": "core",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AuthController.kt",
-      "line": 65
+      "line": 66
     },
     {
       "method": "GET",
