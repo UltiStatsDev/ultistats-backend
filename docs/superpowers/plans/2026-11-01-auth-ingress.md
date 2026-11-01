@@ -84,7 +84,7 @@ Produces classifier bean implementing the core interface; `GET /api/v1/installat
 
 ## Self-review and current gate
 
-Scope covers backend Task154 and relevant approved joint Task5. Security session/admin behavior belongs152, exhaustive permissions153, browser startup/old-profile checksWeb103. Wire freeze and canonical152 accessor are published; actual core integration remains sequential with152 source availability. No product tests have been executed; prepared QA matrix is NOT_RUN. Current plan is reviewable inventory and ordered test decisions; dependent Task1 code begins only after prerequisites are concrete.
+Scope covers backend Task154 and relevant approved joint Task5. Security session/admin behavior belongs152, exhaustive permissions153, browser startup/old-profile checksWeb103. Wire freeze and canonical152 accessor are published; actual core integration remains sequential with152 source availability. Implementation and scoped runtime checks are recorded in docs/qa/auth154/README.md; the prepared shared QA matrix remains NOT_RUN here. The atomic152 integrator owns final combined full build/CI/review and available target.154 supplies its coherent source/evidence and cleanup receipt; it does not open a competing PR.
 
 ## Coordination acknowledgment
 
@@ -102,3 +102,7 @@ Scope covers backend Task154 and relevant approved joint Task5. Security session
 ### Verified rate-limit source interface
 
 Core152 requests `auth.ingress.AuthClientSource { fun source(request:HttpServletRequest):String }`, committed separately a36c2c3.154 implements `ListenerAuthClientSource(classifier:AuthEntryClassifier)` as a bean. ANONYMOUS/LOOPBACK use raw socket peer, ignore all source headers. SECURE requires actual private connector plus loopback peer and one dedicated `X-UltiStats-Client-IP` numeric IP; missing/malformed/duplicate values fail closed403 AUTH_PERMISSION_DENIED. Caddy always overwrites it from `{remote_host}`, never forwards a client-supplied value/XFF. IP normalization permits numeric IPv4/IPv6 only, no DNS/zone/comma/port. No trusted_proxies are enabled; external reverse proxies need a separately reviewed source trust configuration. This prevents staff clients sharing one localhost rate bucket and prevents forged source bypass.
+
+## Execution closeout
+
+Owned engineering slice, actual247/V9→V10→V11 preserving upgrade, populated-auth backup/restore, no-write old recovery and HTTPS boundary checks are recorded in `docs/qa/auth154/README.md`. All154selftests reached consumerEND, no external154runtimelease existed, exact owned resources cleaned with private receipt. Source/model/schema final alignment and atomicPR remain152 responsibilities; product154/150 remainOPEN pending combinedQA/PO. Later nullableJSON/OpenAPI correction is not covered by the older87ca154checkpoint as full-wire acceptance.
