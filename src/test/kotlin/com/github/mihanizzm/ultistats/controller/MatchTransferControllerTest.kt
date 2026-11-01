@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.controller
 
+import org.springframework.context.annotation.Import
+import com.github.mihanizzm.ultistats.fixture.LegacyDomainHttpSecurity
+
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
@@ -18,7 +21,6 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
-import org.springframework.context.annotation.Import
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
@@ -27,7 +29,7 @@ import java.util.UUID
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import(MatchTransferFixtureHelper::class)
+@Import(LegacyDomainHttpSecurity::class, MatchTransferFixtureHelper::class)
 class MatchTransferControllerTest {
     @Autowired lateinit var fixtures: MatchTransferFixtureHelper
     @Autowired lateinit var mvc: MockMvc

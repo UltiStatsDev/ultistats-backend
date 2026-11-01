@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.controller
 
+import org.springframework.context.annotation.Import
+import com.github.mihanizzm.ultistats.fixture.LegacyDomainHttpSecurity
+
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.github.mihanizzm.ultistats.MatchAbstractTest
@@ -21,6 +24,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.test.*
 
+@Import(LegacyDomainHttpSecurity::class)
 @AutoConfigureMockMvc
 class ReplaySafeUndoControllerTest : MatchAbstractTest() {
     @Autowired lateinit var mvc: MockMvc

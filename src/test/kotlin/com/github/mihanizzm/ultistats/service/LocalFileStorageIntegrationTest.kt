@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.service
 
+import org.springframework.context.annotation.Import
+import com.github.mihanizzm.ultistats.fixture.LegacyDomainHttpSecurity
+
 import com.github.mihanizzm.ultistats.model.Player
 import com.github.mihanizzm.ultistats.model.Team
 import org.assertj.core.api.Assertions.assertThat
@@ -27,6 +30,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 @Suppress("NonAsciiCharacters")
+@Import(LegacyDomainHttpSecurity::class)
 @SpringBootTest
 @AutoConfigureMockMvc
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
