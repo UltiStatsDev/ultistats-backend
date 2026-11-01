@@ -1,6 +1,7 @@
 package com.github.mihanizzm.ultistats.auth.model
 
 import com.fasterxml.jackson.annotation.JsonIgnore
+import com.fasterxml.jackson.annotation.JsonInclude
 import java.time.Instant
 import java.util.UUID
 
@@ -15,6 +16,7 @@ data class AuthPrincipal(val installationId: UUID, val accountId: UUID, val sess
     @get:JsonIgnore val credentialGeneration: UUID? = null)
 data class AccountView(val id: UUID, val login: String, val displayName: String, val role: AuthRole,
     val status: AuthAccountStatus, val mustChangePassword: Boolean, val createdAt: Instant, val updatedAt: Instant)
+@JsonInclude(JsonInclude.Include.ALWAYS)
 data class AuthContext(val installationId: UUID, val serverNow: Instant, val state: AuthState,
     val sessionId: UUID?, val account: AccountView?, val permissions: List<AuthPermission>,
     val lastActivityAt: Instant?, val idleExpiresAt: Instant?, val reauthenticatedUntil: Instant?,
