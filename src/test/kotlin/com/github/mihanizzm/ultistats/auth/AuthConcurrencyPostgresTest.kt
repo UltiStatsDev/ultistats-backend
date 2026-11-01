@@ -101,10 +101,8 @@ class AuthConcurrencyPostgresTest {
         val end=System.nanoTime()+TimeUnit.SECONDS.toNanos(10)
         while(!predicate()) { check(System.nanoTime()<end) { "Timed out waiting for owned PostgreSQL fence" };Thread.sleep(10) }
     }
-    private fun terminateOwnedPausedBackend(waitKey:Int,scenario:String) {
-        val expectedApplication="auth152-test-$schema"
-        val receipt=jdbc.queryForObject("""
-            SELECT a.pid,a.datname,a.application_name,a.backend_start,pg_terminate_backend(a.pid) AS terminated
+    private fun ownedPausedBackendSql(projection:String)="""
+            SELECT $projection
             FROM pg_stat_activity a
             JOIN pg_locks authority ON authority.pid=a.pid
             JOIN pg_locks paused ON paused.pid=a.pid
@@ -113,7 +111,15 @@ class AuthConcurrencyPostgresTest {
               AND authority.objid=152 AND authority.objsubid=2 AND authority.granted AND authority.mode='ShareLock'
               AND paused.database=a.datid AND paused.locktype='advisory' AND paused.classid=1598115923
               AND paused.objid=? AND paused.objsubid=2 AND NOT paused.granted
-        """.trimIndent(), { rows,_ -> mapOf("scenario" to scenario,"pid" to rows.getInt("pid"),
+        """.trimIndent()
+    private fun waitForOwnedPausedBackend(waitKey:Int) = waitFor {
+        jdbc.queryForObject(ownedPausedBackendSql("count(*)"),Int::class.java,"auth152-test-$schema",waitKey)==1
+    }
+    private fun terminateOwnedPausedBackend(waitKey:Int,scenario:String) {
+        val expectedApplication="auth152-test-$schema"
+        val receipt=jdbc.queryForObject(ownedPausedBackendSql(
+            "a.pid,a.datname,a.application_name,a.backend_start,pg_terminate_backend(a.pid) AS terminated"),
+            { rows,_ -> mapOf("scenario" to scenario,"pid" to rows.getInt("pid"),
             "database" to rows.getString("datname"),"applicationName" to rows.getString("application_name"),
             "backendStart" to rows.getTimestamp("backend_start").toInstant().toString(),"terminated" to rows.getBoolean("terminated")) },
             expectedApplication,waitKey)!!
@@ -200,7 +206,7 @@ class AuthConcurrencyPostgresTest {
             Executors.newSingleThreadExecutor().use { executor ->
                 val writer=executor.submit<HttpResponse<String>> { photoRequest(id,newPhoto) }
                 try {
-                    waitFor { jdbc.queryForObject("SELECT count(*) FROM pg_locks WHERE database=(SELECT oid FROM pg_database WHERE datname=current_database()) AND locktype='advisory' AND classid=1598115923 AND objid=155 AND NOT granted",Int::class.java)!!>0 }
+                    waitForOwnedPausedBackend(155)
                     terminateOwnedPausedBackend(155,"photo-before-commit")
                     auth.logout(login.credential,login.context.sessionId!!)
                     holder.rollback()
@@ -332,7 +338,7 @@ class AuthConcurrencyPostgresTest {
                 Executors.newSingleThreadExecutor().use { executor ->
                     val writer=executor.submit<HttpResponse<String>> { post("/api/v1/teams",mapOf("name" to name)) }
                     try {
-                    waitFor { jdbc.queryForObject("SELECT count(*) FROM pg_locks WHERE database=(SELECT oid FROM pg_database WHERE datname=current_database()) AND locktype='advisory' AND classid=1598115923 AND objid=152 AND granted AND mode='ShareLock'",Int::class.java)!!>0 }
+                    waitForOwnedPausedBackend(153)
                     terminateOwnedPausedBackend(153,"sports-before-mutation")
                     auth.logout(login.credential,login.context.sessionId!!)
                     holder.commit()
