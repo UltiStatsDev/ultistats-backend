@@ -1,0 +1,33 @@
+{
+    # Owner provisions trust on staff devices only. Guest HTTP needs no CA.
+    skip_install_trust
+    admin off
+}
+
+http://{$PUBLIC_HOST} {
+    @backend path /api/* /uploads/* /health/* /obs /obs/* /swagger-ui.html /swagger-ui/* /v3/api-docs /v3/api-docs/* /auth/*
+    handle @backend {
+        reverse_proxy 127.0.0.1:8080 {
+            header_up -X-UltiStats-Client-IP
+            header_up -Forwarded
+        }
+    }
+    handle {
+        reverse_proxy web:80
+    }
+}
+
+https://{$STAFF_HOST} {
+    tls internal
+    @backend path /api/* /uploads/* /health/* /obs /obs/* /swagger-ui.html /swagger-ui/* /v3/api-docs /v3/api-docs/* /auth/*
+    handle @backend {
+        reverse_proxy 127.0.0.1:8081 {
+            # Overwrite, never append/trust a client supplied forwarding header.
+            header_up X-UltiStats-Client-IP {remote_host}
+            header_up -Forwarded
+        }
+    }
+    handle {
+        reverse_proxy web:80
+    }
+}
