@@ -88,7 +88,8 @@ No wildcard credentialed CORS: allow configured secure origins only; reject
 unapproved Origin/Referer when present. Native cookie-jar consumers still obtain
 and send the CSRF token; they do not gain an HTTP/public transport exception.
 
-CSRF repository: Spring CookieCsrfTokenRepository; HTTPS cookie
+CSRF repository: Spring CookieCsrfTokenRepository with explicit
+`setHeaderName("X-CSRF-TOKEN")` (do not use its default X-XSRF-TOKEN header); HTTPS cookie
 `__Host-ULTISTATS_CSRF`, loopback cookie `ULTISTATS_LOOPBACK_CSRF`, HttpOnly=true,
 SameSite=Lax, Path=/, no Domain. Use the default XOR request attribute handler;
 GET csrf returns its request-attribute token, and the client sends that exact
@@ -177,7 +178,7 @@ request/response bodies are excluded from logs, analytics, exports and evidence.
 | PATCH `/api/v1/accounts/{id}` | ADMIN+step-up, any of `{login,displayName,role,status}` | 200 AccountView |
 | POST `/api/v1/accounts/{id}/password-reset` | ADMIN+step-up, `{}` | 200 `{account:AccountView,temporaryPassword:string}` once |
 
-Renew is triggered only by observed user interaction or active protected work,
+Renew is triggered only by recent observed user interaction,
 not polling, SSE, timers alone or background retry. Successful login initializes
 activity; ONLY explicit POST renew advances it thereafter. Ordinary sports/admin/
 password/reauth writes do NOT implicitly advance inactivity: they may be delayed
