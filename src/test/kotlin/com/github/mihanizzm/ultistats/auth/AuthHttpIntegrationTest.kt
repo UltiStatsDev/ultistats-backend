@@ -12,7 +12,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Configuration
+import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.mock.web.MockServletContext
 import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity
 import org.springframework.test.web.servlet.MockMvc
@@ -25,11 +25,12 @@ import java.time.Clock
 import kotlin.test.*
 
 class AuthHttpIntegrationTest {
-    @Configuration @EnableWebMvc
+    @TestConfiguration @EnableWebMvc
     class Config {
         @Bean fun fixture()=AuthTestFixture()
         @Bean fun authService(fixture:AuthTestFixture)=fixture.service
         @Bean fun store(fixture:AuthTestFixture)=fixture.store
+        @Bean fun fence(fixture:AuthTestFixture)=com.github.mihanizzm.ultistats.auth.repository.AuthTransactionFence(fixture.jdbc)
         @Bean fun clock(fixture:AuthTestFixture):Clock=fixture.clock
         @Bean fun mapper():ObjectMapper=jacksonObjectMapper().findAndRegisterModules()
         @Bean fun mode()=Mode()

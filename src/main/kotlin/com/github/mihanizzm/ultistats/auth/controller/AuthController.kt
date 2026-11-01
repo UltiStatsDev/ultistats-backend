@@ -21,6 +21,7 @@ class ReauthRequest(val password:String)
 data class ExpectedSessionRequest(val expectedSessionId:UUID)
 
 @RestController
+@org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication(type=org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type.SERVLET)
 @RequestMapping("/api/v1/auth")
 class AuthController(private val service:AuthService,private val access:DefaultAuthRequestAccess,
     private val csrf:AuthCsrfRepository,private val runtime:AuthSecurityRuntime,

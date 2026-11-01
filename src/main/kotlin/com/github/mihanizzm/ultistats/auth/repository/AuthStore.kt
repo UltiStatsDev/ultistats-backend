@@ -31,11 +31,9 @@ class AuthStore(private val jdbc: JdbcTemplate, private val transactions: Transa
 
     /** Management always takes exclusive mode first; callers must never upgrade a shared fence. */
     fun <T : Any> withAuthorityLock(block: () -> T): T = fenced(false, block)
-    fun <T : Any> withDomainAuthorityLock(block: () -> T): T = fenced(true, block)
     private fun <T : Any> fenced(shared: Boolean, block: () -> T): T = transactions.execute {
-        val postgres = jdbc.dataSource!!.connection.use { it.metaData.databaseProductName == "PostgreSQL" }
-        val suffix = if (shared && postgres) "FOR SHARE" else "FOR UPDATE"
-        jdbc.queryForObject("SELECT singleton FROM auth_installation WHERE singleton=1 $suffix", Int::class.java)
+        AuthTransactionFence(jdbc).acquire(true)
+        jdbc.queryForObject("SELECT singleton FROM auth_installation WHERE singleton=1 FOR UPDATE", Int::class.java)
         block()
     }!!
 

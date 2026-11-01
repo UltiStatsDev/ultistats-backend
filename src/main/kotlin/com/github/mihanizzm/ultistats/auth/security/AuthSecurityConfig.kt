@@ -21,6 +21,7 @@ import org.springframework.security.web.csrf.CsrfFilter
 import org.springframework.web.filter.OncePerRequestFilter
 import java.net.URI
 import java.time.Clock
+import com.github.mihanizzm.ultistats.auth.repository.AuthTransactionFence
 
 class AuthSecurityRuntime(val classifier:AuthEntryClassifier,val origins:AuthOriginConfiguration?)
 
@@ -36,6 +37,7 @@ class AuthSecurityConfig {
     @Bean fun authCsrf(runtime:AuthSecurityRuntime)=AuthCsrfRepository(runtime.classifier)
     @Bean fun authLimiter(clock:Clock)=AuthRateLimiter(clock)
     @Bean fun authProblems(mapper:ObjectMapper)=AuthProblemWriter(mapper)
+    @Bean fun authDomainAdvisor(fence:AuthTransactionFence,access:DefaultAuthRequestAccess)=AuthDomainTransactionAdvisor(fence,access)
     // Disables Boot's generated default-user password without an HTTP login provider.
     @Bean fun authenticationManager()=AuthenticationManager { throw BadCredentialsException("Cookie authentication required") }
 

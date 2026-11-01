@@ -9,6 +9,7 @@ import com.github.mihanizzm.ultistats.repository.jpa.SpringDataTeamRepository
 import org.slf4j.LoggerFactory
 import java.time.Instant
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 @Service
@@ -23,14 +24,17 @@ class TeamServiceImpl(
 
     override fun getForUpdate(teamId: UUID): Team? = teamRepository.findByIdForUpdate(teamId)
 
+    @Transactional
     override fun create(team: Team) {
         teamRepository.save(team)
     }
 
+    @Transactional
     override fun update(team: Team) {
         teamRepository.save(team)
     }
 
+    @Transactional
     override fun delete(teamId: UUID) {
         get(teamId)?.let { teamRepository.save(it.copy(deletedAt = Instant.now())) }
     }
