@@ -6,14 +6,17 @@ on:
       - master
       - release
       - candidate/stable-v0.1.0
+      - candidate/private-stand-v1
   push:
     branches:
       - release
       - candidate/stable-v0.1.0
+      - candidate/private-stand-v1
       - hotfix/**
       - agent/hotfix/**
       # Bootstrap exact-head checks before the first candidate-target PR.
       - agent/feature/160-stable-promotion
+      - agent/chore/168-stand-ci
     tags: ['v*']
 
 permissions:
@@ -34,7 +37,7 @@ jobs:
           version='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
           if [[ "$REF_TYPE" == tag && "$BRANCH_NAME" =~ $version ]]; then
             echo "Stable version tag is valid: $BRANCH_NAME"
-          elif [[ "$BRANCH_NAME" == release || "$BRANCH_NAME" == candidate/stable-v0.1.0 || "$BRANCH_NAME" =~ $pattern ]]; then
+          elif [[ "$BRANCH_NAME" == release || "$BRANCH_NAME" == candidate/stable-v0.1.0 || "$BRANCH_NAME" == candidate/private-stand-v1 || "$BRANCH_NAME" =~ $pattern ]]; then
             echo "Branch name is valid: $BRANCH_NAME"
           else
             echo "Invalid branch name: $BRANCH_NAME"
@@ -96,3 +99,97 @@ jobs:
           node-version: '22'
       - name: Test immutable source refs and publication isolation
         run: find deploy/stable -name '*.test.mjs' -type f -print0 | sort -z | xargs -0 node --test
+
+  private-stand-node:
+    name: Private stand Node boundaries
+    if: github.base_ref == 'candidate/private-stand-v1' || github.ref == 'refs/heads/candidate/private-stand-v1' || github.ref == 'refs/heads/agent/chore/168-stand-ci'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test private stand CI contract
+        run: node --test deploy/ci/private-stand.test.mjs
+      - name: Test available private stand source
+        run: |
+          if [[ -d deploy/stand ]]; then
+            test -n "$(find deploy/stand -name '*.test.mjs' -type f -print -quit)"
+            find deploy/stand -name '*.test.mjs' -type f -print0 | sort -z | xargs -0 node --test
+          else
+            echo '::notice::CI bootstrap has no private stand implementation; no SQL proof is claimed.'
+          fi
+
+  private-stand-roles-pg:
+    name: Private stand roles real PostgreSQL
+    if: github.base_ref == 'candidate/private-stand-v1' || github.ref == 'refs/heads/candidate/private-stand-v1' || github.ref == 'refs/heads/agent/chore/168-stand-ci'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require real PostgreSQL runner when role module is present
+        id: roles
+        run: |
+          if [[ -f deploy/stand/sql-roles.mjs ]]; then
+            test -f deploy/stand/tests/run-sql-roles.sh
+            echo 'present=true' >> "$GITHUB_OUTPUT"
+          else
+            echo '::notice::Role module absent in CI bootstrap; PostgreSQL integration is not available.'
+          fi
+      - name: Test SQL role boundaries against real PostgreSQL 16
+        if: steps.roles.outputs.present == 'true'
+        run: |
+          docker info >/dev/null
+          command -v openssl flock
+          flock -w 120 -x /tmp/ultistats-web-heavy-check.lock bash deploy/stand/tests/run-sql-roles.sh
+
+  private-stand-fence-pg:
+    name: Private stand fence real PostgreSQL
+    if: github.base_ref == 'candidate/private-stand-v1' || github.ref == 'refs/heads/candidate/private-stand-v1' || github.ref == 'refs/heads/agent/chore/168-stand-ci'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require PostgreSQL proxy suite when maintenance module is present
+        id: fence
+        run: |
+          if [[ -f deploy/stand/sql-maintenance.mjs ]]; then
+            test -f deploy/stand/tests/sql-proxy.integration.test.mjs
+            test -f deploy/stand/sql-proxy/Dockerfile
+            echo 'present=true' >> "$GITHUB_OUTPUT"
+          else
+            echo '::notice::Maintenance module absent in CI bootstrap; PostgreSQL proxy integration is not available.'
+          fi
+      - name: Build owned test SQL proxy
+        if: steps.fence.outputs.present == 'true'
+        run: |
+          docker info >/dev/null
+          flock -w 120 -x /tmp/ultistats-web-heavy-check.lock \
+            flock -w 120 -x /tmp/ultistats-browser-network.lock \
+            docker build -t ultistats-stand170-proxy:test deploy/stand/sql-proxy
+      - name: Test actual PostgreSQL fencing and recovery
+        if: steps.fence.outputs.present == 'true'
+        env:
+          STAND_SQL_INTEGRATION: '1'
+        run: |
+          flock -w 120 -x /tmp/ultistats-web-heavy-check.lock \
+            flock -w 120 -x /tmp/ultistats-browser-network.lock \
+            node --test deploy/stand/tests/sql-proxy.integration.test.mjs
