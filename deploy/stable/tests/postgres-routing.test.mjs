@@ -59,21 +59,26 @@ function assertLocalConnection(t, args, utility, applicationName) {
     PGSSLMODE: "require",
     PGAPPNAME: "foreign",
   };
-  const actual = JSON.parse(
-    execFileSync("sh", ["-c", shell, ...args.slice(index + 2)], {
-      env: inherited,
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-    }),
-  );
-  assert.deepEqual(actual.pg, {
-    PGPASSWORD: "synthetic-only",
-    PGAPPNAME: applicationName,
-  });
-  assert.equal(actual.argv[actual.argv.indexOf("-h") + 1], "127.0.0.1");
-  assert.equal(actual.argv[actual.argv.indexOf("-p") + 1], "5432");
-  assert.equal(actual.argv[actual.argv.indexOf("-U") + 1], "ultistats");
-  assert.equal(actual.argv[actual.argv.indexOf("-d") + 1], "ultistats");
+  for (const environment of [
+    { PATH: inherited.PATH, POSTGRES_PASSWORD: inherited.POSTGRES_PASSWORD },
+    inherited,
+  ]) {
+    const actual = JSON.parse(
+      execFileSync("sh", ["-c", shell, ...args.slice(index + 2)], {
+        env: environment,
+        encoding: "utf8",
+        stdio: ["pipe", "pipe", "pipe"],
+      }),
+    );
+    assert.deepEqual(actual.pg, {
+      PGPASSWORD: "synthetic-only",
+      PGAPPNAME: applicationName,
+    });
+    assert.equal(actual.argv[actual.argv.indexOf("-h") + 1], "127.0.0.1");
+    assert.equal(actual.argv[actual.argv.indexOf("-p") + 1], "5432");
+    assert.equal(actual.argv[actual.argv.indexOf("-U") + 1], "ultistats");
+    assert.equal(actual.argv[actual.argv.indexOf("-d") + 1], "ultistats");
+  }
 }
 
 test("SQL observations scrub inherited libpq routing and explicitly use the inspected local server", (t) => {
