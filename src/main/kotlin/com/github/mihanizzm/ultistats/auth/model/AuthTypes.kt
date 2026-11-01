@@ -11,7 +11,8 @@ enum class AuthAccountStatus { ACTIVE, BLOCKED }
 enum class AuthState { ANONYMOUS, AUTHENTICATED, PASSWORD_CHANGE_REQUIRED }
 enum class LogoutStatus { REVOKED, ALREADY_INACTIVE }
 data class AuthPrincipal(val installationId: UUID, val accountId: UUID, val sessionId: UUID,
-    val permissions: Set<AuthPermission>, val passwordChangeRequired: Boolean)
+    val permissions: Set<AuthPermission>, val passwordChangeRequired: Boolean,
+    @get:JsonIgnore val credentialGeneration: UUID? = null)
 data class AccountView(val id: UUID, val login: String, val displayName: String, val role: AuthRole,
     val status: AuthAccountStatus, val mustChangePassword: Boolean, val createdAt: Instant, val updatedAt: Instant)
 data class AuthContext(val installationId: UUID, val serverNow: Instant, val state: AuthState,

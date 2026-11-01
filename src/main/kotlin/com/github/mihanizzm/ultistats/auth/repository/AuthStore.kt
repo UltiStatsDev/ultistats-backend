@@ -12,7 +12,8 @@ import java.util.UUID
 
 internal class AccountRecord(val view: AccountView, val passwordHash: String)
 internal class SessionRecord(val id: UUID, val accountId: UUID, val credentialDigest: String,
-    val createdAt: Instant, val lastActivityAt: Instant, val reauthenticatedUntil: Instant?, val revokedAt: Instant?)
+    val createdAt: Instant, val lastActivityAt: Instant, val reauthenticatedUntil: Instant?, val revokedAt: Instant?,
+    val credentialGeneration: UUID = UUID.randomUUID())
 
 @Repository
 class AuthStore(private val jdbc: JdbcTemplate, private val transactions: TransactionTemplate) {
@@ -23,7 +24,7 @@ class AuthStore(private val jdbc: JdbcTemplate, private val transactions: Transa
     }
     private val sessionMapper = RowMapper { rs: ResultSet, _: Int ->
         SessionRecord(rs.uuid("id"), rs.uuid("account_id"), rs.getString("credential_digest"),
-            rs.instant("created_at")!!, rs.instant("last_activity_at")!!, rs.instant("reauthenticated_until"), rs.instant("revoked_at"))
+            rs.instant("created_at")!!, rs.instant("last_activity_at")!!, rs.instant("reauthenticated_until"), rs.instant("revoked_at"),rs.uuid("credential_generation"))
     }
 
     fun installationId(): UUID = jdbc.queryForObject("SELECT installation_id FROM auth_installation WHERE singleton=1", UUID::class.java)!!
@@ -51,10 +52,17 @@ class AuthStore(private val jdbc: JdbcTemplate, private val transactions: Transa
     }
     internal fun sessionByDigest(digest: String): SessionRecord? = jdbc.query("SELECT * FROM auth_sessions WHERE credential_digest=?", sessionMapper,digest).firstOrNull()
     internal fun session(id: UUID): SessionRecord? = jdbc.query("SELECT * FROM auth_sessions WHERE id=?",sessionMapper,id).firstOrNull()
+    internal fun isRetiredCredential(digest:String):Boolean = jdbc.queryForObject(
+        "SELECT count(*) FROM auth_revoked_credentials WHERE credential_digest=?",Long::class.java,digest)!!>0
+    internal fun rotate(session:SessionRecord,digest:String,now:Instant) {
+        jdbc.update("INSERT INTO auth_revoked_credentials(credential_digest,session_id,account_id,revoked_at) VALUES (?,?,?,?)",
+            session.credentialDigest,session.id,session.accountId,Timestamp.from(now))
+        jdbc.update("UPDATE auth_sessions SET credential_digest=?,credential_generation=? WHERE id=?",digest,UUID.randomUUID(),session.id)
+    }
     internal fun insertSession(session: SessionRecord) {
-        jdbc.update("""INSERT INTO auth_sessions(id,account_id,credential_digest,created_at,last_activity_at,reauthenticated_until,revoked_at)
-            VALUES (?,?,?,?,?,?,?)""",session.id,session.accountId,session.credentialDigest,Timestamp.from(session.createdAt),
-            Timestamp.from(session.lastActivityAt),session.reauthenticatedUntil?.let(Timestamp::from),session.revokedAt?.let(Timestamp::from))
+        jdbc.update("""INSERT INTO auth_sessions(id,account_id,credential_digest,created_at,last_activity_at,reauthenticated_until,revoked_at,credential_generation)
+            VALUES (?,?,?,?,?,?,?,?)""",session.id,session.accountId,session.credentialDigest,Timestamp.from(session.createdAt),
+            Timestamp.from(session.lastActivityAt),session.reauthenticatedUntil?.let(Timestamp::from),session.revokedAt?.let(Timestamp::from),session.credentialGeneration)
     }
     internal fun renew(id: UUID, now: Instant) {
         jdbc.update("UPDATE auth_sessions SET last_activity_at=CASE WHEN last_activity_at < ? THEN ? ELSE last_activity_at END WHERE id=?",
