@@ -163,3 +163,17 @@ test('CLI refuses a public result directory without creating a result there', as
   assert.throws(() => execFileSync(process.execPath, [join(repository, 'deploy/stable/build.mjs'), '--request', input, '--result', publicResult], { stdio: 'pipe' }));
   assert.throws(() => readFileSync(publicResult), { code: 'ENOENT' });
 });
+
+test('CLI malformed private request yields sanitized private blocked result', async t => {
+  const f = await fixture(t);
+  const input = join(f.root, 'request.json');
+  const output = join(f.root, 'result.json');
+  writeFileSync(input, '{private malformed token', { mode: 0o600 });
+  let failure;
+  const env = { ...process.env }; delete env.NODE_TEST_CONTEXT;
+  try { execFileSync(process.execPath, [join(repository, 'deploy/stable/build.mjs'), '--request', input, '--result', output], { encoding: 'utf8', stdio: 'pipe', env }); }
+  catch (error) { failure = error; }
+  assert.equal(failure.status, 1);
+  assert.equal(failure.stderr, 'BUILD_FAILED\n');
+  assert.deepEqual(JSON.parse(readFileSync(output)), { schemaVersion: 1, status: 'blocked', reason: 'BUILD_FAILED' });
+});
