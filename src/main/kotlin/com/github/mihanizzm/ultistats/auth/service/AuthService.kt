@@ -19,15 +19,16 @@ class AuthService(private val store: AuthStore, private val encoder: PasswordEnc
 
     fun context(credential: String?): AuthContext {
         if (credential == null) return AuthContext(installationId(),clock.instant(),AuthState.ANONYMOUS,null,null,emptyList(),null,null,null)
-        val session = store.sessionByDigest(digest(credential)) ?: fail(401,"AUTH_SESSION_INVALID")
+        val session = credentialSession(credential)
         return context(active(session))
     }
 
     /** Never trusts cached request roles; used again inside the mutation authority fence. */
     fun principal(credential: String): AuthPrincipal {
-        val context = context(credential)
+        val session=credentialSession(credential)
+        val context = context(active(session))
         return AuthPrincipal(context.installationId,context.account!!.id,context.sessionId!!,context.permissions.toSet(),
-            context.state==AuthState.PASSWORD_CHANGE_REQUIRED)
+            context.state==AuthState.PASSWORD_CHANGE_REQUIRED,session.credentialGeneration)
     }
 
     fun login(login: String, password: String, previousCredential: String?): AuthLoginResult = audited(null,null,"LOGIN") {
@@ -53,13 +54,13 @@ class AuthService(private val store: AuthStore, private val encoder: PasswordEnc
     }
 
     fun renew(principal: AuthPrincipal): AuthContext = store.withAuthorityLock {
-        val (session,_) = current(principal,allowTemporary=true)
+        val (session,_) = current(principal)
         store.renew(session.id,clock.instant())
         context(active(store.session(session.id)!!))
     }
 
     fun logout(credential: String, expectedSessionId: UUID): LogoutResult = store.withAuthorityLock {
-        val session = store.sessionByDigest(digest(credential)) ?: fail(401,"AUTH_SESSION_INVALID")
+        val session = credentialSession(credential)
         if (session.id != expectedSessionId) fail(403,"AUTH_IDENTITY_MISMATCH")
         val inactive = session.revokedAt != null || !clock.instant().isBefore(session.lastActivityAt.plus(idle))
         store.revoke(session.id,clock.instant())
@@ -69,11 +70,11 @@ class AuthService(private val store: AuthStore, private val encoder: PasswordEnc
 
     /** Identity proof for logout tombstones; does not grant protected permissions. */
     fun logoutPrincipal(credential: String): AuthPrincipal {
-        val session = store.sessionByDigest(digest(credential)) ?: fail(401,"AUTH_SESSION_INVALID")
-        return AuthPrincipal(installationId(),session.accountId,session.id,emptySet(),false)
+        val session = credentialSession(credential)
+        return AuthPrincipal(installationId(),session.accountId,session.id,emptySet(),false,session.credentialGeneration)
     }
 
-    fun changePassword(principal: AuthPrincipal,currentPassword: String,newPassword: String): AuthContext =
+    fun changePassword(principal: AuthPrincipal,currentPassword: String,newPassword: String): AuthLoginResult =
         audited(principal.accountId,principal.accountId,"PASSWORD") {
             AuthValidation.password(currentPassword); AuthValidation.password(newPassword)
             val candidate = current(principal,true).second
@@ -86,7 +87,9 @@ class AuthService(private val store: AuthStore, private val encoder: PasswordEnc
                 store.saveAccount(account.view.copy(mustChangePassword=false,updatedAt=now),hash)
                 store.revokeAccount(account.view.id,now,session.id)
                 store.reauth(session.id,now.plusSeconds(300))
-                context(active(store.session(session.id)!!))
+                val credential=AuthValidation.secret()
+                store.rotate(session,digest(credential),now)
+                AuthLoginResult(context(active(store.session(session.id)!!)),credential)
             }
         }
 
@@ -188,6 +191,7 @@ class AuthService(private val store: AuthStore, private val encoder: PasswordEnc
     private fun current(principal: AuthPrincipal,allowTemporary: Boolean=false): Pair<SessionRecord,AccountRecord> {
         if(principal.installationId!=installationId()) fail(403,"AUTH_IDENTITY_MISMATCH")
         val session=store.session(principal.sessionId) ?: fail(401,"AUTH_SESSION_INVALID")
+        if(principal.credentialGeneration!=null && principal.credentialGeneration!=session.credentialGeneration) fail(401,"AUTH_SESSION_REVOKED")
         if(session.accountId!=principal.accountId) fail(403,"AUTH_IDENTITY_MISMATCH")
         val pair=active(session)
         if(!allowTemporary && pair.second.view.mustChangePassword) fail(403,"AUTH_PASSWORD_CHANGE_REQUIRED")
@@ -225,5 +229,9 @@ class AuthService(private val store: AuthStore, private val encoder: PasswordEnc
         }
     }
     private fun digest(value: String): String = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+    private fun credentialSession(credential:String):SessionRecord {
+        val digest=digest(credential)
+        return store.sessionByDigest(digest) ?: if(store.isRetiredCredential(digest)) fail(401,"AUTH_SESSION_REVOKED") else fail(401,"AUTH_SESSION_INVALID")
+    }
     private fun fail(status: Int,code: String): Nothing = throw AuthProblem(status,code)
 }

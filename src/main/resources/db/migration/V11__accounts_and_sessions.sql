@@ -21,6 +21,7 @@ CREATE TABLE auth_sessions (
     id UUID PRIMARY KEY,
     account_id UUID NOT NULL REFERENCES auth_accounts(id),
     credential_digest VARCHAR(64) NOT NULL UNIQUE,
+    credential_generation UUID NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
     last_activity_at TIMESTAMP WITH TIME ZONE NOT NULL,
     reauthenticated_until TIMESTAMP WITH TIME ZONE,
@@ -28,6 +29,14 @@ CREATE TABLE auth_sessions (
 );
 CREATE INDEX auth_sessions_account_idx ON auth_sessions(account_id);
 CREATE INDEX auth_sessions_activity_idx ON auth_sessions(last_activity_at);
+
+-- A retired bearer generation never authorizes its still-live logical session.
+CREATE TABLE auth_revoked_credentials (
+    credential_digest VARCHAR(64) PRIMARY KEY,
+    session_id UUID NOT NULL REFERENCES auth_sessions(id),
+    account_id UUID NOT NULL REFERENCES auth_accounts(id),
+    revoked_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
 
 CREATE TABLE auth_audit (
     id UUID PRIMARY KEY,
