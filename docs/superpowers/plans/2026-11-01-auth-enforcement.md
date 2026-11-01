@@ -8,12 +8,12 @@
 
 **Tech Stack:** Kotlin1.9.25, Java21, Spring Boot3.5.7/Spring MVC/Security, PostgreSQL, existing Node tests.
 
-**Spec:** Web merge50bd486f3a2001b50b3e3f63d2ae4bbcf6f4c3a8, docs/superpowers/specs/2026-11-01-users-auth-design.md. Wire FROZEN c48eef30bff9e5e89e34da545b0aaad643e3c993 docs/api/auth-contract.md (auth-150-contract checkout), awaiting mutually frozen revision.
+**Spec:** Web merge50bd486f3a2001b50b3e3f63d2ae4bbcf6f4c3a8, docs/superpowers/specs/2026-11-01-users-auth-design.md. Wire FROZEN c48eef30bff9e5e89e34da545b0aaad643e3c993 docs/api/auth-contract.md (auth-150-contract checkout), SHA256 d9f83750f91758d95803ee8b06c85072c936eaa95bd4fe5867799e9ce873d5bf; mutual freeze confirmed.
 
 ## Global constraints
 
 - Inventory baseline5c9781f2895141ca7a430588873c764d8c1e2dd6; assigned branch agent/feature/153-auth-enforcement only.
-- No product edits until lead publishes frozen wire and152 exact internal interfaces. Inventory/plan can commit now. Import approved prerequisite commits only when lead identifies them; no guessed wire.
+- Wire and shared SPI gate passed:152 f8f548c and154926b3eb imported. Import only published prerequisite commits; core transaction fence remains an integration proof gate.
 - ORGANIZER has SPORTS_WRITE, STATISTICS_READ_ALL, TRANSFER, OBS_ADMIN, API_DOCS; ADMIN additionally ACCOUNT_ADMIN. Temporary password has no protected permissions.
 - Guest statistics/CSV ZIP FINISHED only; sports/reference/photo/events/live/OBS sources all statuses public. Receipts private SPORTS_WRITE. Transfer POST export remains a guarded mutation.
 - Every protected mutation validates three captured UUIDs and CSRF before execution. Auth401/403 never becomes domain409 or modifies receipts; unknown prior outcome stays unknown.
@@ -35,38 +35,50 @@
 
 ## Published inventory and file ownership
 
-- Created docs/api/auth-surfaces-v1.json and .md:57 application mappings,19 static files, generated/framework routes, method/transport/permission policy and verification matrix.
+- Created docs/api/auth-surfaces-v1.json and .md: original57/19, current71 application mappings/24static after core/ingress/staff-tool integration; every row labels core, ingress or enforcement ownership.
 - Created tools/auth153/inventory.py: source snapshot/drift validation; runtime mapping assertions are still required.
 - Planned create auth/security/AuthSurfacePolicy.kt: exact method/path rule classification, default deny, FINISHED statistics and preview classification. Class/package names are proposed153-owned names, not new core interfaces.
-- Planned create auth/security/AuthSurfaceAuthorization.kt: adapter to152 permission/expected-identity and denial writer, invoked in the security chain before controller binding. Hook and ordering await152 publication; do not create a competing SecurityFilterChain or authentication filter.
+- Core152 owns auth/security/AuthSecurityConfig.kt, DefaultAuthRequestAccess.kt, denial writer and transaction advisors.153 supplies AuthSurfacePolicyImpl only; no competing security chain/filter or duplicated authority type.
 - Planned modify config/WebConfig.kt only with152/154 coordination: remove wildcard credentialed risk in favor of published configured origin policy.
 - Planned create static/auth/staff-session.mjs: in-memory context/CSRF, captured-owner checks and headers. Modify static/obs/admin.mjs, scoreboard-admin.mjs, obs-admin.html and generated Swagger initialization via a153-owned config resource/controller as agreed with152.
 - Planned create AuthSurfaceMatrixTest.kt, AuthExpectedIdentityTest.kt and JS staff-session tests; add owned HTTP harness tools/auth153/check.mjs and sanitized receipts. Existing controller/service bodies remain unchanged unless a demonstrated enforcement integration requires a boundary edit.
 
-## Core dependency gate and interface binding
+## Published core binding
 
-The backend lead candidate proposes AuthEntryMode, AuthPermission, AuthPrincipal,
-AuthRequestAccess.requirePermission(request, permission), validateExpectedIdentity(request, principal),
-and AuthEntryClassifier.classify(request). These are **candidate references**, not a license
-to define or assume them. Before product edits bind this plan to152's committed
-exact packages, signatures, denial writer and chain hook. Required ordering:
-connector transport policy → authentication resolution → CSRF/expected identity/
-permission enforcement → MVC argument binding/domain. Anonymous transport must be
-able to classify protected paths without resolving credentials. Statistics public
-read may consult match status without granting private session access.152 owns all
-auth/account routes;153 must not intercept them with competing sports defaults.
+Core152 owns auth.model AuthEntryMode/AuthPermission/AuthPrincipal and auth.security
+AuthRequestAccess, AuthEntryClassifier, AuthRequirement, AuthSurfacePolicy and
+AuthProblem. Exact imported type sourcef8f548c; HTTP source062718e (domain advisor
+checkpoint pending).154 owns AuthOriginConfiguration (926b3eb), classifier0d237a0,
+AuthClientSource a36c2c3 and verified-source implementationb5902f7.153 consumes them.
 
-- [x] Verify clean assigned base and read actual controllers, static clients, SSE, ZIP and transfer bodies.
-- [x] Write versioned inventory and plan; self-review against approved scope.
-- [x] Commit inventory/plan and publish interface needs to lead (270e709, pushed assigned branch).
-- [x] Receive frozen contract c48eef30 (SHA256 d9f83750f91758d95803ee8b06c85072c936eaa95bd4fe5867799e9ce873d5bf) and152 plan93d5fa9; shared SPI source commit pending.
+```kotlin
+// auth.security, core-owned
+sealed interface AuthRequirement {
+    data object PublicRead : AuthRequirement
+    data object Core : AuthRequirement
+    data object Deny : AuthRequirement
+    data class Permission(val permission: AuthPermission) : AuthRequirement
+}
+interface AuthSurfacePolicy { fun requirement(request: HttpServletRequest): AuthRequirement }
+```
+
+AuthSurfacePolicyImpl.requirement(HttpServletRequest) is153's implementation.
+Core handles auth/accounts/installation/health before dispatching to this SPI.
+A single requirement is stored in request attribute AuthRequirement::class.java.name.
+Actual connector transport and supplied expected IDs reject before CSRF/cookie
+materialization/body; public reads skip cookie parsing. Core152 owns mutation
+advisors at existing domain transaction boundaries, described below.
+
+- [x] Verify clean assigned base and read controllers/static/SSE/ZIP/transfer.
+- [x] Commit inventory/plan270e709 and matrixc6c3fe7; publish interface needs.
+- [x] Receive mutual frozen wirec48eef30 and exact152/154 source interfaces.
 
 ### Task 1: complete policy and method coverage
 
-**Files:** auth/security/AuthSurfacePolicy.kt; auth/security/AuthSurfaceAuthorization.kt; src/test/kotlin/com/github/mihanizzm/ultistats/auth/AuthSurfaceMatrixTest.kt; docs/api/auth-surfaces-v1.*.
+**Files:** auth/security/AuthSurfacePolicy.kt; core152 chain integration (consumed); src/test/kotlin/com/github/mihanizzm/ultistats/auth/AuthSurfaceMatrixTest.kt; docs/api/auth-surfaces-v1.*.
 
 **Consumes:** published152 AuthRequestAccess/AuthEntryClassifier/core denial writer and chain hook; existing MatchService.get(UUID):Match? and MatchStatus.FINISHED.
-**Produces:** proposed `AuthSurfacePolicy.classify(method:String, path:String, previewValues:List<String>):SurfaceRule`, where SurfaceRule explicitly distinguishes PUBLIC, FINISHED_STATISTICS(matchId), permission-required and DENY. Final adapter signature bound only after152 publication.
+**Produces:** `AuthSurfacePolicyImpl.requirement(request:HttpServletRequest):AuthRequirement`; explicit PUBLIC/permission/DENY classification, with FINISHED-only statistics lookup and protected preview query.
 
 - [ ] RED: parameterize every inventory row over guest/organizer/admin/temp and anonymous/private transport; runtime RequestMappingHandlerMapping set must equal reviewed application inventory plus explicitly core-owned mappings. HEAD inherits GET; wrong verbs/trailing slashes/encoded/semicolon/case/unknown paths never get implicit public grant. Verify generated docs endpoints against runtime, not source regex alone.
 - [ ] Run targeted AuthSurfaceMatrixTest under shared JVM lock; preserve exact failure proving missing policy (not compilation/environment failure).
@@ -76,7 +88,7 @@ auth/account routes;153 must not intercept them with competing sports defaults.
 
 ### Task 2: identity, transport and effect barriers
 
-**Files:** AuthSurfaceAuthorization.kt and src/test/kotlin/com/github/mihanizzm/ultistats/auth/AuthExpectedIdentityTest.kt; shared chain integration only via152-owned hook.
+**Files:** src/test/kotlin/com/github/mihanizzm/ultistats/auth/AuthSurfaceMatrixTest.kt and tools/auth153/check.mjs; shared chain/transaction integration only via152-owned hooks.
 **Consumes:**152 captured identity validation, current principal, auth denial/CSRF behavior;154 actual connector classifier. **Produces:** uniform raw ProblemDetail401/403 and no pre-controller domain effects.
 
 - [ ] RED: each protected unsafe row with missing/partial/malformed/individually mismatched installation/account/session; forged valid other-session cookie; expired/revoked/blocked/temp sessions. Include malformed JSON and multipart so denials precede binding/files. No auth redirect or stale Set-Cookie clearing; ProblemDetail code/status/requestRejectedBeforeExecution:true exact.
@@ -89,7 +101,7 @@ auth/account routes;153 must not intercept them with competing sports defaults.
 ### Task 3: secure OBS and Swagger adapters
 
 **Files:** static/auth/staff-session.mjs; static/obs/admin.mjs, scoreboard-admin.mjs, obs-admin.html;153-owned Swagger initialization resource/config; src/test/js/auth-staff-session.test.mjs.
-**Consumes:** frozen GET auth/session, GET auth/csrf JSON masked token and expected UUID headers; API_DOCS/OBS_ADMIN permissions. **Produces:** proposed `createStaffSession({fetchImpl})`, `bootstrap(permission)`, `protectedFetch(url, options, capturedContext)`; finalize exact exports in RED test.
+**Consumes:** frozen GET auth/session, GET auth/csrf JSON masked token and expected UUID headers; API_DOCS/OBS_ADMIN permissions. **Produces:** `createStaffSession({fetchImpl,origin})` with `bootstrap(permission)`, `prepareRequest(url,options)` and `protectedFetch(url,options)`; immutable internal owner capture, no new-owner retry.
 
 - [ ] RED: adapter bootstraps permitted context then CSRF, sends same-origin credentials and captured three UUIDs plus X-CSRF-TOKEN on unsafe save. Missing/temp/denied/stale identity leaves draft intact and makes no unsafe retry. Context/CSRF in memory only, neither local/session storage nor URL. Delayed bootstrap/CSRF cannot adopt a new owner during save.
 - [ ] RED: Swagger requestInterceptor guards unsafe try-it-out requests and private read capture; docs bootstrap does not recursively intercept auth bootstrap. Native public source import graph contains no staff-session import, token/URL credential or login call.
@@ -108,100 +120,55 @@ auth/account routes;153 must not intercept them with competing sports defaults.
 - [ ] Deliver inventory + row-level evidence map to general QA; all unmatched24-matrix scenarios stay NOT_RUN/other-owner.153 remainsOPEN until shared QA+PO.
 - [ ] After consumer END clean only owned processes/containers/networks under locks, retain volumes/JAR/source/evidence, receipt before archive.
 
-## Current verification and self-review
+## Reviewed transaction integration design
 
-Executed: inventory generation and --check (57 mappings,19 packaged files) at
-baseline5c9781. No enforcement/product/security tests run yet. No runtime/fixtures
-created. No auth capability claimed. Review focus mapped to Tasks1–3; real
-connector coverage coordinated with154 rather than a MockMvc spoof substitute.
-The only deliberate unbound implementation detail is152's not-yet-published
-chain hook; it is a hard pre-edit dependency, surfaced to lead rather than guessed.
+Core152 owns ordered advisors: actual transaction advice outerorder0, auth guard
+innerorder1, matching Spring/Jakarta through actual TransactionAttributeSource.
+On the SAME existing domain transaction/thread-bound physical connection, acquire
+PostgreSQL shared transaction advisory fence, then refresh session/account/expiry/
+permission/all3captured IDs AFTER grant. Require active nonautocommit transaction
+and READ_COMMITTED so a blocked request does not retain a pre-wait stale snapshot.
+Security management takes exclusive samekey first in its own transaction before
+singleton/account/session rows. No outer HTTP transaction, independent fence
+connection, upgrades, GET/SSE fences or hashing inside a held fence.
 
-## Integration decision received after initial plan commit
+An outer HTTP transaction would break appendBatch's rollback-before-controller
+catch and commit-before-response/AFTER_COMMIT behavior. An independent fence
+connection can die while the domain connection commits after revocation. Both
+approaches are rejected. Required actualPG proofs are cross-match UUID201/409
+with loser position unchanged/SSEonce, real commit failure without success/event,
+and kill-only-owned-fence-backend plus revoke-before-blocked-write race.
 
-Core152 plan93d5fa9 publishes packages/auth types. Worker coordination selected
-the following **core-owned** extension;153 consumes it after frozen publication:
-
-```kotlin
-// com.github.mihanizzm.ultistats.auth.security
-sealed interface AuthRequirement {
-    data object PublicRead : AuthRequirement
-    data object Core : AuthRequirement
-    data object Deny : AuthRequirement
-    data class Permission(val permission: AuthPermission) : AuthRequirement
-}
-interface AuthSurfacePolicy {
-    fun requirement(request: HttpServletRequest): AuthRequirement
-}
-```
-
-153 implementation `AuthSurfacePolicyImpl` replaces the proposed classify/adapter
-split above: core owns chain/filter/transaction/denial rendering. Core handles its
-auth/account/installation/health routes before extension dispatch; extension
-unknown routes Deny. One requirement is saved under
-`AuthRequirement::class.java.name` request attribute, avoiding duplicate match
-status lookups. Transport requirement is evaluated before CSRF/cookie parsing;
-public reads ignore cookie entirely. After CSRF, unsafe permission chain runs
-inside core authority singleton lock and shared transaction manager, refreshing
-DB authority and expected identity **after** lock acquisition, never trusting a
-stale principal attribute. GET/SSE do not take mutation lock or renew activity.
-
-Statistics UUID resolves via existing MatchService.get; only existing FINISHED
-returns PublicRead. All other states/missing/deleted/malformed require
-STATISTICS_READ_ALL; authorized requests retain controller404/validation400.
-No missing-match public grant. Core default policy is Deny when153 absent.
-No competing chain, AuthSurfaceAuthorization class or core configuration is
-needed in153. Exact implemented type commit and wire freeze still pending.
-
-Detailed expected test oracles are now versioned at
-`docs/api/auth-enforcement-test-matrix-v1.md`:57 application cases,24resource
-groups,25negative/effect cases. Every row is PREPARED/NOT_RUN. Independent source
-annotation count and unique method/path pairs match57; multiline legacy team
-uploadPhoto is explicitly checked.
-
-## Reviewer authority-fence correction (before integrated chain code)
-
-The earlier shared outer-transaction wording is superseded.152 owns an isolated,
-bounded, unpooled PostgreSQL coordination connection with session advisory SHARED
-fence for unsafe domain mutations, EXCLUSIVE for security management. Existing
-sports service transactions remain untouched; **no outer Spring transaction spans
-chain.doFilter**. This preserves appendBatch rollback-before-controller-catch,
-commit-before-response and AFTER_COMMIT notifications. Domain permission/identity
-is refreshed after fence acquisition; management takes its exclusive fence before
-its own transaction/row guard. No upgrade, no GET/SSE fence, no password hashing
-inside it.152 must publish exact budget/timeout/cleanup/lock-order implementation
-and reviewer review before integration.153 consumes the boundary and verifies
-real-PG cross-match UUID201/409, canonical position/SSEonce, commit-failure negative
-control and revoke-before-blocked-write race through final chain; these are not
-proved by current policy unit tests.
-
-Source prerequisites imported:152 f8f548cd7e5017236ba25a1fe60b9598c1b5c091
-(cherry-pickf09f8d3),154 origin SPI926b3eb (cherry-pick856cae7). Wire hash verified
-by lead and mutualfreeze recorded; no further wire hold.
-
-## Final authority design replacing the earlier correction
-
-Independent reviewer rejected the separate coordination connection because its
-death releases the fence while a different domain transaction could still commit.
-152 now owns ordered advisors: actual transaction advice outerorder0, auth guard
-innerorder1, matching both Spring/Jakarta via actual TransactionAttributeSource.
-Inside the SAME existing domain transaction/thread-bound physical connection,
-acquire PostgreSQL shared transaction advisory fence and revalidate current
-authority/capture AFTER grant. Security management takes exclusive samekey first
-in its own transaction before singleton/account/session rows. No outer HTTP
-transaction, no independent fence connection, no upgrades, no GET/SSE locks.
 152 owns narrow missing Team/Player CRUD, TeamPlayer.add/remove and Match.delete
-transaction annotations;153 does not duplicate those edits.
+transaction annotations. Team/PlayerFacade photo upload/delete already have
+Spring@Transactional: guard those before filesystem effects. Do not introduce a
+new broad photo transaction wrapper; record commit-failure/file cleanup behavior
+separately.153 consumes these152changes and does not duplicate shared service edits.
 
-Photo facade upload/delete methods already have Spring@Transactional, so advisor
-must guard those before filesystem effects. An initial audit overlooked the
-outer facade annotation; that incorrect callback-commit assumption was corrected
-with152/reviewer immediately. File cleanup commit-failure behavior is separately
-verified/dispositioned, never silently changed by a broad transaction wrapper.
+## Verification checkpoints (engineering scope only)
 
-Additional reviewer gates: supplied expected IDs reject before CSRF materialization
-with zero Set-Cookie, including missing CSRF cookie. Bootstrap CSRF/login remain
-usable with expired/revoked cookies per152 endpoint-specific policy.153 HTTP
-harness checks each UUID mismatch on every protected unsafe inventory row with
-malformed body/missingCSRFcookie, plus domain fingerprints and receipt invariance.
-Actual run pending integrated chain/owned PG; syntax validation is not execution.
+- Preparation270e709/c6c3fe7: independent source count/unique method-path57/19 PASS.
+- dc14fe9 policy/UI/CORS: observed policy84RED→85GREEN, CORS2RED→2GREEN,
+  staff adapter/interceptor missing-feature RED→15GREEN, plus40existingOBS NodeGREEN.
+- 7b7d95c: actual Spring handler mapping equals reviewed58pairs, explicit ownership
+  inventory prepares core/ingress integration; client HTTP harness syntaxPASS only.
+- Imported152 c42ecc1/062718e and154 source/readiness/installation: inventory71/24.
+ 135policy+2CORS+1mapping+role matrix139JVM GREEN; later account HTTP matrix adds
+ one test covering guest/organizer/temp denial, admin list, expired stepup no effects
+ and fresh stepup create/PATCH/reset. Every protected unsafe enforcement route is
+ also checked with7missing/partial/mismatched capture scenarios and missingCSRFcookie,
+ asserting zero Set-Cookie and zero domain-entry-probe calls.
+- Actual Chromium component PASS against synthetic HTTP: global/profile saves,
+ captured headers, changed owner stops save/preserves draft, actual Swagger5.21
+ try-it-out, fresh public source no auth module/request/cookie. It is not a real
+ backend/PostgreSQL/native OBS proof. Temporary server/browser exited normally.
+- Own PG22153 created under host originalGID/free-port guards and heavy→networkEX;
+ exact resources recorded privately at /tmp/ultistats-auth153/resource-inventory.json,
+ volume retained. No consumer leases yet. CLI actual full nonweb context exposed
+ missing DefaultAuthRequestAccess injection from scanned AuthController;152 accepted
+ the defect and owns conditional-web fix/full-context regression. No alternate
+ bootstrap or synthetic owner creation was used. No API availability claim yet.
+
+Remaining: fixed CLI+final domain-advisor integration, actual ownHTTP/PG matrix and
+fingerprints, relevant full build, actual CI/independent review/checked merge,
+consumer availability callback and cleanup after END. Shared24QA remains NOT_RUN.

@@ -5,10 +5,114 @@
   "routes": [
     {
       "method": "GET",
+      "path": "/api/v1/accounts",
+      "policy": "CORE",
+      "owner": "core",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AccountController.kt",
+      "line": 13
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts",
+      "policy": "CORE",
+      "owner": "core",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AccountController.kt",
+      "line": 15
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/accounts/{id}",
+      "policy": "CORE",
+      "owner": "core",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AccountController.kt",
+      "line": 17
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/{id}/password-reset",
+      "policy": "CORE",
+      "owner": "core",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AccountController.kt",
+      "line": 19
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/csrf",
+      "policy": "CORE",
+      "owner": "core",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AuthController.kt",
+      "line": 28
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/session",
+      "policy": "CORE",
+      "owner": "core",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AuthController.kt",
+      "line": 32
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "policy": "CORE",
+      "owner": "core",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AuthController.kt",
+      "line": 33
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/renew",
+      "policy": "CORE",
+      "owner": "core",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AuthController.kt",
+      "line": 44
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "policy": "CORE",
+      "owner": "core",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AuthController.kt",
+      "line": 52
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/password",
+      "policy": "CORE",
+      "owner": "core",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AuthController.kt",
+      "line": 59
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/reauth",
+      "policy": "CORE",
+      "owner": "core",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/AuthController.kt",
+      "line": 65
+    },
+    {
+      "method": "GET",
       "path": "/swagger-ui/index.html",
       "policy": "API_DOCS",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/StaffToolsController.kt",
+      "line": 14
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/installation",
+      "policy": "PUBLIC",
+      "owner": "ingress",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/ingress/InstallationController.kt",
+      "line": 27
+    },
+    {
+      "method": "GET",
+      "path": "/health/ready",
+      "policy": "PUBLIC",
+      "owner": "ingress",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/ingress/ReadinessController.kt",
       "line": 14
     },
     {
