@@ -92,6 +92,15 @@ class AuthConcurrencyPostgresTest {
         while(!predicate()) { check(System.nanoTime()<end) { "Timed out waiting for owned PostgreSQL fence" };Thread.sleep(10) }
     }
 
+    @Test fun `actual application mapper preserves every nullable auth context field`() {
+        val response=HttpClient.newHttpClient().send(HttpRequest.newBuilder(uri("/api/v1/auth/session")).GET().build(),HttpResponse.BodyHandlers.ofString())
+        assertEquals(200,response.statusCode())
+        val body=mapper.readTree(response.body())
+        assertEquals(setOf("contractVersion","installationId","serverNow","state","sessionId","account","permissions",
+            "lastActivityAt","idleExpiresAt","reauthenticatedUntil","replacedSessionId"),body.fieldNames().asSequence().toSet())
+        listOf("sessionId","account","lastActivityAt","idleExpiresAt","reauthenticatedUntil","replacedSessionId").forEach { assertTrue(body[it].isNull,it) }
+    }
+
     @Test fun `wrong origin on actual private HTTP returns frozen problem before CORS plaintext fallback`() {
         val response=post("/api/v1/teams",mapOf("name" to "must-not-exist"),"https://unapproved.invalid")
         assertEquals(403,response.statusCode())
