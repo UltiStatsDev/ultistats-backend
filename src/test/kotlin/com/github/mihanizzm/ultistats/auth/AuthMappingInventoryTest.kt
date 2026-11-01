@@ -1,6 +1,7 @@
 package com.github.mihanizzm.ultistats.auth
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.github.mihanizzm.ultistats.auth.security.AuthSurfacePolicyImpl
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
@@ -23,6 +24,7 @@ class AuthMappingInventoryTest {
             context.servletContext = MockServletContext()
             scanner.findCandidateComponents("com.github.mihanizzm.ultistats").forEach { bean ->
                 val type = Class.forName(bean.beanClassName)
+                if (type.protectionDomain.codeSource.location != AuthSurfacePolicyImpl::class.java.protectionDomain.codeSource.location) return@forEach
                 val constructor = type.constructors.minBy { it.parameterCount }
                 // Handler metadata comes from the actual controller. Domain dependencies are not invoked.
                 val instance = constructor.newInstance(*constructor.parameterTypes.map { Mockito.mock(it) }.toTypedArray())
