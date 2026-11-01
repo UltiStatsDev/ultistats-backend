@@ -19,6 +19,9 @@ import org.springframework.security.config.http.SessionCreationPolicy
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.csrf.CsrfFilter
 import org.springframework.web.filter.OncePerRequestFilter
+import org.springframework.web.filter.CorsFilter
+import org.springframework.web.cors.CorsUtils
+import jakarta.servlet.http.HttpServletRequestWrapper
 import java.net.URI
 import java.time.Clock
 import com.github.mihanizzm.ultistats.auth.repository.AuthTransactionFence
@@ -59,7 +62,7 @@ class AuthSecurityConfig {
             }
             .headers { it.frameOptions { frame -> frame.sameOrigin() } }
             .authorizeHttpRequests { it.anyRequest().permitAll() }
-            .addFilterBefore(boundary,CsrfFilter::class.java)
+            .addFilterBefore(boundary,CorsFilter::class.java)
         return http.build()
     }
 }
@@ -68,6 +71,19 @@ private class AuthBoundaryFilter(private val runtime:AuthSecurityRuntime,private
     private val policies:ObjectProvider<AuthSurfacePolicy>,private val writer:AuthProblemWriter):OncePerRequestFilter() {
     override fun doFilterInternal(request:HttpServletRequest,response:HttpServletResponse,chain:FilterChain) {
         try {
+            if(CorsUtils.isPreFlightRequest(request)) {
+                val intended=object:HttpServletRequestWrapper(request) {
+                    override fun getMethod():String=request.getHeader("Access-Control-Request-Method")
+                }
+                val requirement=requirement(intended)
+                if(runtime.classifier.classify(request)==AuthEntryMode.ANONYMOUS && requirement!=AuthRequirement.PublicRead)
+                    throw AuthProblem(403,"PUBLIC_TRANSPORT_READ_ONLY")
+                if(requirement==AuthRequirement.Deny) throw AuthProblem(403,"AUTH_PERMISSION_DENIED")
+                checkOrigin(request)
+                // Credential-free preflight is completed by configured CorsFilter, never a controller.
+                chain.doFilter(request,response)
+                return
+            }
             val requirement=requirement(request)
             request.setAttribute(AuthRequirement::class.java.name,requirement)
             if(requirement==AuthRequirement.PublicRead) { chain.doFilter(request,response);return }

@@ -11,5 +11,10 @@ import org.springframework.security.web.SecurityFilterChain
 class LegacyDomainHttpSecurity {
     @Bean @Order(-100)
     fun legacyDomainChain(http:HttpSecurity):SecurityFilterChain = http
+        .securityMatcher { request -> request.getHeader("X-Legacy-Domain-Test")=="domain-contract" }
         .csrf { it.disable() }.authorizeHttpRequests { it.anyRequest().permitAll() }.build()
+    @Bean fun legacyDomainRequests()=org.springframework.boot.test.autoconfigure.web.servlet.MockMvcBuilderCustomizer { builder ->
+        builder.defaultRequest<org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder>(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/").header("X-Legacy-Domain-Test","domain-contract"))
+    }
 }
