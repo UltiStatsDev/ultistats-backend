@@ -100,8 +100,8 @@ document authentication navigation; API/assets/captured intents/mismatches keep
 raw ProblemDetail. The concrete staff-entry allowlist/login and temporary-password return routes are
 now integrated from153. The genuine-activity cross-tab coordinator is integrated
 at `57e7c1c`, importing153 checkpoint `55caa179`. Its adapter consumes the exact
-frozen Web ESM module. A subsequent reviewer finding about uncertain OBS write
-outcome wording remains a final-candidate gate.
+frozen Web ESM module. The subsequent reviewer finding about uncertain OBS write
+outcome wording is corrected at `b603d62` with independent component verification.
 
 The final atomic head still requires its own CI, independent review, immutable
 availability and checked merge. Engineering callbacks go immediately after actual
@@ -164,3 +164,29 @@ receipt at `/tmp/ultistats-auth152/source-57e7c1c/`; build and JS logs are
 The leased9cc runtime was not upgraded. After these checks completed, a
 user-reported Docker stop affected its PostgreSQL container; recovery must record
 the outage and consumer pause/resume separately from this test evidence.
+
+
+## Reviewed OBS completion wording
+
+Source `b603d6210814c322610aa612890d47cce529f88f` imports153 fix `756c7dc8`.
+The OBS profile catch reports an unconfirmed outcome after a stale completion.
+An independent Chromium component run passed all11 checks, including actual
+synthetic-server commit followed by withheld response, session invalidation and
+response release: draft retained, controls disabled, one mutation and no replay.
+All10 Node test files passed. These are synthetic component/JS results.
+
+`bootJar` passed for this source, and the three changed production module byte
+streams were verified inside the packaged JAR. JAR SHA256 is
+`196de57773ca66ab925171f036442ef4884dc0c518dd2f2796de1962c89c9d7d`;
+full production tree is `d35fd844a5ef6e28985a482b54295339785a780d`.
+JVM source, JVM tests and build inputs are unchanged from the734-test checkpoint;
+that earlier run is not relabeled as a later-head execution. The private packet
+is `/tmp/ultistats-auth152/source-b603d62/`; fresh logs are
+`/tmp/auth152-uncertain-{js,component,package}.log`. Final exact-head CI, independent
+review and runtime/shared acceptance remain separate gates.
+
+The accidental Docker interruption was recovered by starting the same owned
+PostgreSQL container with unchanged mounts. The existing9cc API process reconnected
+without a JVM restart; readiness and installation identity/origins were verified.
+The sanitized outage/recovery receipt is
+`/tmp/ultistats-auth152/pg-recovery-receipt.json`. Root controls consumer resume.
