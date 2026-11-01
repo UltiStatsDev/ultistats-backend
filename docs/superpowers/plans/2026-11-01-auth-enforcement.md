@@ -187,3 +187,18 @@ Observed production-chain regression RED (missing problem MIME)→GREEN; valid
 credentialed preflight still200 and bad-origin public/preflight/private-anonymous
 responses have exactcode/body/no-cookie oracle. Final focused141JVM GREEN and
 bootJar built. Actual154TLS affected-case rerun remains its owner gate.
+
+### Native staff document login/return
+
+Exact Web mapping received: returnTo with canonical /obs-admin.html and
+/swagger-ui.html; /swagger-ui/index.html normalizes to /swagger-ui.html.153
+StaffHtmlEntryNavigation consumes core0881aa0/6cfd5f5 guarded SPI. Only native
+GET explicit HTML and approved staff document paths on SECURE/LOOPBACK navigate
+302 to configured secureOrigin/login, or TEMP to /account/password; query/hash,
+Host/forwarding and arbitrary return paths never carry. APIs/assets/XHR/POST,
+expected-ID captures, unrelated403 and anonymous transport remain raw JSON.
+HTTP only permitted for explicit loopback gateway. No cookie clearing.
+Observed3RED of4 tests before implementation; final5navigation+core-hook/role/CORS
+regressions GREEN /tmp/ultistats-auth153-html-final.log. Actual core-chain tests
+exercise no-cookie/stale-cookie/temp documents, APIs/assets and public transport.
+Full browser return after frontend login remains Web101/canonical-gateway gate.
