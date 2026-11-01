@@ -19,13 +19,13 @@ import java.time.ZoneOffset
 import java.util.UUID
 import kotlin.test.*
 
-internal class AuthTestClock(var now: Instant = Instant.parse("2026-11-01T00:00:00Z")) : Clock() {
+class AuthTestClock(var now: Instant = Instant.parse("2026-11-01T00:00:00Z")) : Clock() {
     override fun instant() = now
     override fun getZone(): ZoneId = ZoneOffset.UTC
     override fun withZone(zone: ZoneId): Clock = this
 }
 
-internal class AuthTestFixture {
+class AuthTestFixture {
     val dataSource = DriverManagerDataSource("jdbc:h2:mem:auth_${UUID.randomUUID()};MODE=PostgreSQL;DB_CLOSE_DELAY=-1", "sa", "")
     val jdbc = JdbcTemplate(dataSource)
     val clock = AuthTestClock()
@@ -130,13 +130,18 @@ class AuthSessionLifecycleTest {
         val first = f.login()
         val second = f.login()
         f.clock.now = f.clock.now.plusSeconds(120)
-        val changed = f.service.changePassword(first.context.principal(), "owner-password", "new-password")
+        val changedResult = f.service.changePassword(first.context.principal(), "owner-password", "new-password")
+        val changed = changedResult.context
         assertEquals(first.context.sessionId, changed.sessionId)
         assertEquals(first.context.lastActivityAt, changed.lastActivityAt)
         assertEquals(AuthState.AUTHENTICATED, changed.state)
         assertTrue(AuthPermission.ACCOUNT_ADMIN in changed.permissions)
         assertEquals(Instant.parse("2026-11-01T00:07:00Z"), changed.reauthenticatedUntil)
         assertAuthProblem("AUTH_SESSION_REVOKED") { f.service.context(second.credential) }
+        assertAuthProblem("AUTH_SESSION_REVOKED") { f.service.context(first.credential) }
+        assertEquals(changed.sessionId,f.service.context(changedResult.credential).sessionId)
+        assertAuthProblem("AUTH_SESSION_REVOKED") { f.service.logout(first.credential,changed.sessionId!!) }
+        assertEquals(changed.sessionId,f.service.context(changedResult.credential).sessionId)
         assertAuthProblem("AUTH_CREDENTIALS_INVALID") { f.service.login("owner", "owner-password", null) }
         assertEquals(changed.account!!.id, f.service.login("owner", "new-password", null).context.account!!.id)
     }
