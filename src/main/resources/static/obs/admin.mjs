@@ -1,11 +1,11 @@
-import {obsSession} from '../auth/obs-session.mjs';
-import {mountScoreboardAdmin} from './scoreboard-admin.mjs';
+import {obsSession,obsSources} from '../auth/obs-session.mjs';
+import {mountScoreboardAdmin,setScoreboardSourceUrl} from './scoreboard-admin.mjs';
 import {readJson,watchConfig} from './client.mjs';
 import {teamAccent,imageAccent} from './colors.mjs';
 const $=id=>document.getElementById(id),uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
-let config=null,draftColors={},teams=[],auto={},page=0,dirty=false;
+let config=null,draftColors={},teams=[],auto={},page=0,dirty=false,installationId=null;
 const message=text=>$('save-status').textContent=text;
-try {await obsSession.bootstrap('OBS_ADMIN');$('auth-status').textContent='Организатор: защищённая сессия проверена.';}
+try {const context=await obsSession.bootstrap('OBS_ADMIN');installationId=context.installationId;$('auth-status').textContent='Организатор: защищённая сессия проверена.';}
 catch(error){$('auth-status').textContent=error.message;message('Изменения не отправляются. Войдите и откройте страницу заново.');throw error;}
 function renderTeams() {
  $('teams').replaceChildren();
@@ -53,12 +53,19 @@ async function loadMatches() {
 let openGeneration=0;
 async function openMatch() {
  const selected=++openGeneration;
- const id=$('match-id').value.trim().toLowerCase();mountScoreboardAdmin(id);if(!uuid.test(id)){$('status').textContent='Введите UUID матча';return;}
+ const id=$('match-id').value.trim().toLowerCase();$('obs-url').value='';$('copy').disabled=true;$('source-link-status').textContent='';mountScoreboardAdmin(id);if(!uuid.test(id)){$('status').textContent='Введите UUID матча';return;}
  try {
   const match=await readJson(`/api/v1/matches/${id}`);if(selected!==openGeneration)return;teams=match.teams;
-  $('obs-url').value=new URL(`/obs-battle-log.html?matchId=${id}`,location.origin).href;
   $('preview').src=`/obs-battle-log.html?matchId=${id}&preview=1`;$('status').textContent='Подключение…';
   renderTeams();for(const team of teams)void imageAccent(team.photoUrl).then(color=>{auto[team.teamId]=color;renderTeams();});
+  $('source-link-status').textContent='Проверка публичных ссылок…';
+  try {
+   await obsSources.load(installationId);if(selected!==openGeneration)return;
+   $('obs-url').value=obsSources.sourceUrl('/obs-battle-log.html',id);$('copy').disabled=false;
+   setScoreboardSourceUrl(id,obsSources.sourceUrl('/obs-scoreboard.html',id));
+   $('source-link-status').textContent='Публичные ссылки OBS готовы.';
+  }catch(error){if(selected===openGeneration)$('source-link-status').textContent=error.message;}
+
  }catch(error){if(selected===openGeneration)$('status').textContent=`Матч: ${error.message}`;}
 }
 $('matches').onchange=()=>{if($('matches').value){$('match-id').value=$('matches').value;void openMatch();}};
