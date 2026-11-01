@@ -9,7 +9,7 @@ import subprocess
 
 p=argparse.ArgumentParser()
 p.add_argument('--phase',required=True)
-p.add_argument('--database',required=True,choices=['auth154_v9','auth154_restore_v9','auth154_restore_v10','auth154_restore_auth'])
+p.add_argument('--database',required=True,choices=['auth154_v9','auth154_restore_v9','auth154_restore_v10','auth154_restore_auth','auth154_restore_auth_final'])
 p.add_argument('--storage',required=True)
 p.add_argument('--output',required=True)
 p.add_argument('--previous')

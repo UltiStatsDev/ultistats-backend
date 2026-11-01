@@ -84,4 +84,26 @@ Produces classifier bean implementing the core interface; `GET /api/v1/installat
 
 ## Self-review and current gate
 
-Scope covers backend Task154 and relevant approved joint Task5. Security session/admin behavior belongs152, exhaustive permissions153, browser startup/old-profile checksWeb103. Candidate freeze and canonical152 accessor remain external prerequisites, not guessed product interfaces. No product tests have been executed; prepared QA matrix is NOT_RUN. Current plan is reviewable inventory and ordered test decisions; dependent Task1 code begins only after prerequisites are concrete.
+Scope covers backend Task154 and relevant approved joint Task5. Security session/admin behavior belongs152, exhaustive permissions153, browser startup/old-profile checksWeb103. Wire freeze and canonical152 accessor are published; actual core integration remains sequential with152 source availability. Implementation and scoped runtime checks are recorded in docs/qa/auth154/README.md; the prepared shared QA matrix remains NOT_RUN here. The atomic152 integrator owns final combined full build/CI/review and available target.154 supplies its coherent source/evidence and cleanup receipt; it does not open a competing PR.
+
+## Coordination acknowledgment
+
+151 callback confirms PR155 head `14e4f33e7c6d58a8715d6ef9aa936993885b43a2` does not edit `deploy/deploy.sh` or `deploy/tests/deploy_test.sh`;154 owns those changes. Preserve the full lowercase40SHA image/revision interface.151 review/CI/merge and frozen wire/core availability are not implied by this file-ownership acknowledgment.
+
+## Concrete connector/config decisions (frozen wire, core interfaces available)
+
+- `auth.ingress.AuthOriginConfiguration` SPI committed926b3eb; properties `AuthIngressProperties(publicOrigin:String="http://localhost:8080", secureOrigin:String="https://localhost:8443", loopbackMode:Boolean=false, anonymousAddress:String="127.0.0.1", privatePort:Int=8081)` implements it. Prefix `app.auth.ingress`. Primary port stays standard `server.port`; privatePort0 allows isolated test allocation. Numeric bind choices only, no DNS resolution. Configured origins permit HTTP(S) authority only, no path/query/fragment/userinfo; private HTTPS mandatory except explicit loopback HTTP.
+- `ListenerAuthEntryClassifier(properties:AuthIngressProperties)` stores actual Tomcat connector references registered by `AuthConnectorConfiguration`. It compares servlet localPort/localAddr with actual bound connector, never Host/XFP/Origin/credentials. Unrecognized socket returns ANONYMOUS. LOOPBACK main connector is loopback-only; otherwise main is ANONYMOUS and private additional connector binds127.0.0.1. No forwarded header processing/RemoteIpValve allowed. Private connector reports secure scheme to framework but capability comes from connector identity.
+- `AuthConnectorConfiguration` enables properties, supplies classifier and Tomcat customizer after standard server properties. Checks conflicting primary/private fixed ports, enforces bind, disables server-header forwarding, and rejects unsafe forwarding config.152/153 consume shared types/SPI; no duplicate security chain.
+- Docker opt-in Caddy uses `network_mode: service:app`; private loopback remains within that namespace. App publishes only Caddy80/443, not backend primary/private/PG. Caddy public listener always proxies anonymous socket; staff TLS proxies private socket. Backend loopback mode has no exposed network staff option and must pair with loopback-only Web proxy.
+- Readiness implementation will use DataSource live query with bounded timeout, plus successful Flyway/validation startup (fail startup on invalid migrations); metadata controller consumes actual core AuthService only after its implementation is available.
+- Lead newer callback requires151merge/rebase before committing deploy.sh/deploy_test.sh changes. Existing local RED→GREEN changes remain uncommitted until that gate; config/test work continues.
+
+### Verified rate-limit source interface
+
+Core152 requests `auth.ingress.AuthClientSource { fun source(request:HttpServletRequest):String }`, committed separately a36c2c3.154 implements `ListenerAuthClientSource(classifier:AuthEntryClassifier)` as a bean. ANONYMOUS/LOOPBACK use raw socket peer, ignore all source headers. SECURE requires actual private connector plus loopback peer and one dedicated `X-UltiStats-Client-IP` numeric IP; missing/malformed/duplicate values fail closed403 AUTH_PERMISSION_DENIED. Caddy always overwrites it from `{remote_host}`, never forwards a client-supplied value/XFF. IP normalization permits numeric IPv4/IPv6 only, no DNS/zone/comma/port. No trusted_proxies are enabled; external reverse proxies need a separately reviewed source trust configuration. This prevents staff clients sharing one localhost rate bucket and prevents forged source bypass.
+
+## Execution closeout
+
+Owned engineering slice, actual247/V9→V10→V11 preserving upgrade, populated-auth backup/restore, no-write old recovery and HTTPS boundary checks are recorded in `docs/qa/auth154/README.md`. All154selftests reached consumerEND, no external154runtimelease existed, exact owned resources cleaned with private receipt. Source/model/schema final alignment and atomicPR remain152 responsibilities; product154/150 remainOPEN pending combinedQA/PO. Later nullableJSON/OpenAPI correction is not covered by the older87ca154checkpoint as full-wire acceptance.
+

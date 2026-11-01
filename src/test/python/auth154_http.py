@@ -13,33 +13,9 @@ ca,output=sys.argv[1:]
 trusted=ssl.create_default_context(cafile=ca)
 findings=[]
 origin='https://127.0.0.1:24154'
-class Client:
-    def __init__(self,source):
-        self.source=source;self.cookies={};self.token=None
-    def request(self,path,method='GET',body=None,headers=None,send_cookies=True):
-        headers=dict(headers or {})
-        if send_cookies and self.cookies: headers['Cookie']='; '.join(k+'='+v for k,v in self.cookies.items())
-        if body is not None:
-            body=json.dumps(body);headers['Content-Type']='application/json'
-        conn=http.client.HTTPSConnection('127.0.0.1',24154,context=trusted,timeout=5,source_address=(self.source,0))
-        try:
-            conn.request(method,path,body=body,headers=headers);r=conn.getresponse();raw=r.read();response_headers=r.getheaders()
-            for name,value in response_headers:
-                if name.lower()=='set-cookie':
-                    cookie=SimpleCookie();cookie.load(value)
-                    for key,morsel in cookie.items(): self.cookies[key]=morsel.value
-            try: parsed=json.loads(raw) if raw else None
-            except json.JSONDecodeError: parsed={'_nonJson':raw.decode(errors='replace')[:120]}
-            return r.status,parsed,response_headers
-        finally:conn.close()
-    def csrf(self):
-        status,body,headers=self.request('/api/v1/auth/csrf');assert status==200,(status,body)
-        assert body['headerName']=='X-CSRF-TOKEN';self.token=body['token']
-        cookie=next(value for key,value in headers if key.lower()=='set-cookie')
-        assert '__Host-ULTISTATS_CSRF=' in cookie and 'Secure' in cookie and 'HttpOnly' in cookie and 'Path=/' in cookie and 'SameSite=Lax' in cookie and 'Domain=' not in cookie,cookie.split('=',1)[0]
-        return headers
+from auth154_client import Client
 
-initial=Client('127.0.0.4')
+initial=Client('127.0.0.4',ca)
 status,info,_=initial.request('/api/v1/installation');assert status==200 and info['entryMode']=='SECURE'
 assert set(info)=={'contractVersion','installationId','entryMode','publicOrigin','secureOrigin'}
 # Wrong captured owner with no CSRF cookie fails before materialization, not Set-Cookie.
@@ -53,7 +29,7 @@ status,body,headers=initial.request('/api/v1/auth/login','POST',{'login':'absent
 if not (status==403 and body.get('code')=='CSRF_INVALID'):
     findings.append({'case':'wrongOrigin','expected':'403 RFC9457 CSRF_INVALID','actualStatus':status,'actualBody':body})
 assert not any(k.lower()=='set-cookie' for k,v in headers)
-clients=[Client('127.0.0.2'),Client('127.0.0.3')]
+clients=[Client('127.0.0.2',ca),Client('127.0.0.3',ca)]
 for client in clients:client.csrf()
 first,second=clients
 for i in range(20):
