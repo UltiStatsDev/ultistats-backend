@@ -1,0 +1,609 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ultistats.invalid/schema/backend-helper-v1",
+  "title": "Backend stable helper v1",
+  "description": "Private local files only. Pair record schema remains Web-owned. Request conditional requirements and successful evidence semantics are documented in backend-helper-v1-contract.md.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/result"
+    }
+  ],
+  "$defs": {
+    "request": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "operation": {
+          "enum": [
+            "inspect",
+            "fence-acquire",
+            "fence-recheck",
+            "fence-release",
+            "backup",
+            "postflight",
+            "rollback-plan"
+          ]
+        },
+        "transactionId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9-]{8,80}$"
+        },
+        "installationManifestPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "targetRecordPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "targetRecordSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "evidenceDirectory": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "fencePath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "backupPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "previousManifestPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "rollbackPlanPath": {
+          "type": "string",
+          "pattern": "^/"
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "operation",
+        "transactionId",
+        "installationManifestPath",
+        "targetRecordPath",
+        "targetRecordSha256",
+        "evidenceDirectory"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "fence-acquire",
+                  "fence-recheck",
+                  "fence-release",
+                  "backup",
+                  "postflight",
+                  "rollback-plan"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "fencePath"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "backup",
+                  "postflight",
+                  "fence-release",
+                  "rollback-plan"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "backupPath"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "rollback-plan"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "previousManifestPath"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "rollbackPlanPath"
+            ]
+          },
+          "then": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "postflight",
+                  "fence-release"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "result": {
+      "type": "object",
+      "properties": {
+        "protocolVersion": {
+          "const": 1
+        },
+        "operation": {
+          "enum": [
+            "inspect",
+            "fence-acquire",
+            "fence-recheck",
+            "fence-release",
+            "backup",
+            "postflight",
+            "rollback-plan"
+          ]
+        },
+        "transactionId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9-]{8,80}$"
+        },
+        "disposition": {
+          "enum": [
+            "ok",
+            "blocked",
+            "maintenance_required"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+        },
+        "evidence": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/evidence"
+            },
+            {
+              "type": "object",
+              "maxProperties": 0
+            }
+          ]
+        }
+      },
+      "required": [
+        "protocolVersion",
+        "operation",
+        "transactionId",
+        "disposition",
+        "reason",
+        "evidence"
+      ],
+      "additionalProperties": false
+    },
+    "pair": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "web": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "backend": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        }
+      },
+      "required": [
+        "version",
+        "web",
+        "backend"
+      ],
+      "additionalProperties": false
+    },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "instanceId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{12}$"
+        },
+        "databaseContainerId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "databaseVolume": {
+          "type": "string"
+        },
+        "uploadsVolume": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "instanceId",
+        "databaseContainerId",
+        "databaseVolume",
+        "uploadsVolume",
+        "origin"
+      ],
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": 9
+        },
+        "activeMatches": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "current": {
+          "$ref": "#/$defs/pair"
+        },
+        "target": {
+          "$ref": "#/$defs/pair"
+        },
+        "identity": {
+          "$ref": "#/$defs/identity"
+        },
+        "compatibility": {
+          "type": "object",
+          "properties": {
+            "verified": {
+              "const": true
+            },
+            "productBaseline": {
+              "const": "24704e11143a0bf919559a41324603f936ae03cf"
+            },
+            "migrationFingerprint": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "verified",
+            "productBaseline",
+            "migrationFingerprint"
+          ],
+          "additionalProperties": false
+        },
+        "runtime": {
+          "type": "object",
+          "properties": {
+            "imageId": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "jarSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "sourceSha": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{40}$"
+            }
+          },
+          "required": [
+            "imageId",
+            "jarSha256",
+            "sourceSha"
+          ],
+          "additionalProperties": false
+        },
+        "ready": {
+          "const": true
+        },
+        "fencePath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "fenceSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "quiet": {
+          "const": true
+        },
+        "backupPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "manifestPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "manifestSha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "complete": {
+          "const": true
+        },
+        "verified": {
+          "const": true
+        },
+        "preserved": {
+          "const": true
+        },
+        "postflightPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "released": {
+          "const": true
+        },
+        "releasePath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "compatible": {
+          "const": true
+        },
+        "previous": {
+          "$ref": "#/$defs/pair"
+        },
+        "rollbackPlanPath": {
+          "type": "string",
+          "pattern": "^/"
+        }
+      },
+      "required": [
+        "schema",
+        "activeMatches",
+        "current",
+        "target",
+        "identity",
+        "compatibility"
+      ],
+      "additionalProperties": false
+    },
+    "helper": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "databaseContainerId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "writerContainerIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true
+        },
+        "databaseName": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]{0,62}$"
+        },
+        "databaseUser": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]{0,62}$"
+        },
+        "databaseNetwork": {
+          "type": "string"
+        },
+        "uploadsMount": {
+          "const": "/app/uploads"
+        },
+        "databaseMount": {
+          "const": "/var/lib/postgresql/data"
+        },
+        "settingsPaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^/"
+          }
+        },
+        "productBaseline": {
+          "const": "24704e11143a0bf919559a41324603f936ae03cf"
+        },
+        "migrationFingerprint": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "jarSha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sourceCheckout": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "ingressContainerId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "ingressImageId": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "databaseContainerId",
+        "writerContainerIds",
+        "databaseName",
+        "databaseUser",
+        "databaseNetwork",
+        "uploadsMount",
+        "databaseMount",
+        "settingsPaths",
+        "productBaseline",
+        "migrationFingerprint",
+        "jarSha256",
+        "sourceCheckout"
+      ],
+      "additionalProperties": false
+    },
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "configPath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "containerId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "imageId": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "backendNetwork": {
+          "type": "string"
+        },
+        "edgeNetwork": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "configPath",
+        "containerId",
+        "imageId",
+        "backendNetwork",
+        "edgeNetwork"
+      ],
+      "additionalProperties": false
+    },
+    "installation": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "mode",
+        "instanceId",
+        "backend",
+        "release"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "mode": {
+          "const": "stable"
+        },
+        "instanceId": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{12}$"
+        },
+        "backend": {
+          "type": "object",
+          "required": [
+            "ownership",
+            "project",
+            "revision",
+            "imageId",
+            "databaseVolume",
+            "uploadsVolume",
+            "origin",
+            "helper",
+            "ingress"
+          ],
+          "properties": {
+            "ownership": {
+              "const": "managed"
+            },
+            "project": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{40}$"
+            },
+            "imageId": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "databaseVolume": {
+              "type": "string"
+            },
+            "uploadsVolume": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "helper": {
+              "$ref": "#/$defs/helper"
+            },
+            "ingress": {
+              "$ref": "#/$defs/ingress"
+            }
+          }
+        },
+        "release": {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "string"
+            },
+            "webSource": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{40}$"
+            },
+            "backendSource": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{40}$"
+            }
+          },
+          "required": [
+            "version",
+            "webSource",
+            "backendSource"
+          ],
+          "additionalProperties": false
+        }
+      }
+    }
+  }
+}
