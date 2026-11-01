@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.controller
 
+import org.springframework.context.annotation.Import
+import com.github.mihanizzm.ultistats.fixture.LegacyDomainHttpSecurity
+
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.github.mihanizzm.ultistats.model.Player
 import com.github.mihanizzm.ultistats.model.Team
@@ -22,7 +25,6 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Import
 import org.springframework.mock.web.MockMultipartFile
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -47,7 +49,7 @@ import java.util.concurrent.TimeUnit
 @Suppress("NonAsciiCharacters")
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import(PhotoResourceTestConfiguration::class)
+@Import(LegacyDomainHttpSecurity::class, PhotoResourceTestConfiguration::class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class PhotoResourceIntegrationTest {
     @Autowired
@@ -209,47 +211,38 @@ class PhotoResourceIntegrationTest {
     }
 
     @Test
-    fun `ошибка удаления старого файла при замене восстанавливает прежний photo resource`() {
+    fun `ошибка очистки старого файла после commit сохраняет новый canonical photo resource`() {
         val player = scenarioFactory.createPlayer()
         val oldUrl = putPhoto("/api/v1/players/${player.id}/photo", "image/png", PNG_BYTES)
             .responseUrl()
         doThrow(FileStorageException("delete failed"))
             .`when`(fileStorageService)
             .delete(oldUrl)
-        doThrow(IllegalStateException("restore failed"))
-            .`when`(playerService)
-            .update(matchingPlayer { it.id == player.id && it.photoUrl == oldUrl })
-
-        mockMvc.perform(photoPutRequest("/api/v1/players/${player.id}/photo", "image/jpeg", JPEG_BYTES))
-            .andExpect(status().isServiceUnavailable)
-            .andExpect(jsonPath("$.code").value("FILE_STORAGE_ERROR"))
+        val newUrl = mockMvc.perform(photoPutRequest("/api/v1/players/${player.id}/photo", "image/jpeg", JPEG_BYTES))
+            .andExpect(status().isOk)
+            .andReturn().responseUrl()
 
         mockMvc.perform(get("/api/v1/players/${player.id}/photo"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.url").value(oldUrl))
+            .andExpect(jsonPath("$.url").value(newUrl))
+        assertThat(Files.readAllBytes(storedPath(newUrl))).isEqualTo(JPEG_BYTES)
         assertThat(Files.list(storageRoot).use { it.toList() })
-            .containsExactly(storedPath(oldUrl))
+            .containsExactlyInAnyOrder(storedPath(oldUrl), storedPath(newUrl))
     }
 
     @Test
-    fun `ошибка удаления файла восстанавливает удаленный photo resource`() {
+    fun `ошибка очистки файла после commit не восстанавливает удаленный photo resource`() {
         val player = scenarioFactory.createPlayer()
         val oldUrl = putPhoto("/api/v1/players/${player.id}/photo", "image/png", PNG_BYTES)
             .responseUrl()
         doThrow(FileStorageException("delete failed"))
             .`when`(fileStorageService)
             .delete(oldUrl)
-        doThrow(IllegalStateException("restore failed"))
-            .`when`(playerService)
-            .update(matchingPlayer { it.id == player.id && it.photoUrl == oldUrl })
-
         mockMvc.perform(delete("/api/v1/players/${player.id}/photo"))
-            .andExpect(status().isServiceUnavailable)
-            .andExpect(jsonPath("$.code").value("FILE_STORAGE_ERROR"))
+            .andExpect(status().isNoContent)
 
         mockMvc.perform(get("/api/v1/players/${player.id}/photo"))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.url").value(oldUrl))
+            .andExpect(status().isNotFound)
         assertThat(storedPath(oldUrl)).exists()
     }
 

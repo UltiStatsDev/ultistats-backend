@@ -8,6 +8,7 @@ import com.github.mihanizzm.ultistats.model.Player
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataPlayerRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 import java.util.UUID
 
@@ -23,14 +24,17 @@ class PlayerServiceImpl(
 
     override fun getForUpdate(playerId: UUID): Player? = playerRepository.findByIdForUpdate(playerId)
 
+    @Transactional
     override fun create(player: Player) {
         playerRepository.save(player)
     }
 
+    @Transactional
     override fun update(player: Player) {
         playerRepository.save(player)
     }
 
+    @Transactional
     override fun delete(playerId: UUID) {
         get(playerId)?.let { playerRepository.save(it.copy(deletedAt = Instant.now())) }
     }

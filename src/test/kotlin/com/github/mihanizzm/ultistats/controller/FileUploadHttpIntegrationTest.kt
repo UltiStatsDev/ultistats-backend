@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.controller
 
+import org.springframework.context.annotation.Import
+import com.github.mihanizzm.ultistats.fixture.LegacyDomainHttpSecurity
+
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterAll
@@ -19,6 +22,7 @@ import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
 
+@Import(LegacyDomainHttpSecurity::class)
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = [
@@ -41,6 +45,10 @@ class FileUploadHttpIntegrationTest {
 
     @BeforeEach
     fun prepareStorage() {
+        restTemplate.restTemplate.interceptors = listOf(org.springframework.http.client.ClientHttpRequestInterceptor { request, body, execution ->
+            request.headers.set("X-Legacy-Domain-Test", "domain-contract")
+            execution.execute(request, body)
+        })
         FileSystemUtils.deleteRecursively(storageRoot)
         Files.createDirectories(storageRoot)
     }
@@ -123,6 +131,7 @@ class FileUploadHttpIntegrationTest {
             .toURL()
             .openConnection() as HttpURLConnection
         connection.requestMethod = "POST"
+        connection.setRequestProperty("X-Legacy-Domain-Test", "domain-contract")
         connection.doOutput = true
         connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
         connection.setFixedLengthStreamingMode(body.size)

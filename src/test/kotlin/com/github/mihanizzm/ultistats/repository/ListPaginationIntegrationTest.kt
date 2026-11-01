@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.repository
 
+import org.springframework.context.annotation.Import
+import com.github.mihanizzm.ultistats.fixture.LegacyDomainHttpSecurity
+
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.github.mihanizzm.ultistats.dto.common.PageResponse
@@ -7,7 +10,6 @@ import com.github.mihanizzm.ultistats.dto.response.PlayerListItemResponse
 import com.github.mihanizzm.ultistats.dto.response.TeamListItemResponse
 import com.github.mihanizzm.ultistats.dto.response.MatchListItemResponse
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
-import org.springframework.context.annotation.Import
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -35,7 +37,7 @@ import kotlin.test.assertTrue
 @SpringBootTest(properties = ["spring.jpa.properties.hibernate.generate_statistics=true"])
 @Transactional
 @AutoConfigureMockMvc
-@Import(ListPaginationFixture::class)
+@Import(LegacyDomainHttpSecurity::class, ListPaginationFixture::class)
 class ListPaginationIntegrationTest {
     @Autowired lateinit var fixture: ListPaginationFixture
     @Autowired lateinit var mvc: MockMvc

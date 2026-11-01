@@ -123,6 +123,7 @@ class MatchServiceImpl(
     override fun update(match: Match): MatchCommandResult<Match> =
         update(match.id, match.teamIds, match.plannedStartTimestamp, match.playersPerTeam)
 
+    @Transactional
     override fun delete(matchId: UUID) {
         get(matchId)?.let {
             val deletedAt = Instant.now()

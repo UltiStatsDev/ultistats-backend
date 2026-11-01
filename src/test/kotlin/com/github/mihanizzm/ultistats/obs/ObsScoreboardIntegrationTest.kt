@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.obs
 
+import org.springframework.context.annotation.Import
+import com.github.mihanizzm.ultistats.fixture.LegacyDomainHttpSecurity
+
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.model.Team
@@ -20,6 +23,7 @@ import org.springframework.transaction.support.TransactionTemplate
 import java.time.Instant
 import java.util.UUID
 
+@Import(LegacyDomainHttpSecurity::class)
 @SpringBootTest
 @AutoConfigureMockMvc
 class ObsScoreboardIntegrationTest {
