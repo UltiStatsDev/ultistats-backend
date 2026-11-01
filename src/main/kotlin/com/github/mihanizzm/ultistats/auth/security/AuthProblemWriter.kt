@@ -27,7 +27,12 @@ class AuthProblemWriter(private val mapper:ObjectMapper,private val navigation:A
     }
     private fun canNavigate(request:HttpServletRequest,problem:AuthProblem):Boolean {
         val path=request.requestURI.removePrefix(request.contextPath)
-        if(request.method!="GET" || problem.status!=401 || problem.code !in setOf("AUTH_REQUIRED","AUTH_SESSION_INVALID","AUTH_SESSION_EXPIRED","AUTH_SESSION_REVOKED")) return false
+        val authEntry=problem.status==401 && problem.code in setOf("AUTH_REQUIRED","AUTH_SESSION_INVALID","AUTH_SESSION_EXPIRED","AUTH_SESSION_REVOKED")
+        val passwordEntry=problem.status==403 && problem.code=="AUTH_PASSWORD_CHANGE_REQUIRED"
+        if(request.method!="GET" || (!authEntry && !passwordEntry)) return false
+        if(request.getHeader("X-Requested-With")?.equals("XMLHttpRequest",true)==true) return false
+        val fetchMode=request.getHeader("Sec-Fetch-Mode")
+        if(fetchMode!=null && !fetchMode.equals("navigate",true)) return false
         if(path=="/api" || path.startsWith("/api/") || path=="/v3" || path.startsWith("/v3/")) return false
         if(path.substringAfterLast('.').lowercase() in setOf("js","mjs","css","svg","png","jpg","jpeg","gif","webp","ico","woff","woff2","map")) return false
         if(DefaultAuthRequestAccess.headers.any { request.getHeaders(it).hasMoreElements() }) return false

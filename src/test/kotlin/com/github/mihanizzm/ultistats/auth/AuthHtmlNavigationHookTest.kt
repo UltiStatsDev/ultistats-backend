@@ -11,17 +11,31 @@ class AuthHtmlNavigationHookTest {
     private val mapper=jacksonObjectMapper()
     private fun writer()=AuthProblemWriter(mapper,object:AuthHtmlEntryNavigation {
         override fun redirect(request:jakarta.servlet.http.HttpServletRequest,response:jakarta.servlet.http.HttpServletResponse,problem:AuthProblem):Boolean {
-            response.status=303;response.setHeader("Location","https://staff.example/login?return=test");return true
+            response.status=302;response.setHeader("Location","https://staff.example/login?returnTo=test");return true
         }
     })
     @Test fun `eligible HTML document auth denial can navigate without cookie clearing`() {
         val request=MockHttpServletRequest("GET","/obs-admin.html").apply { addHeader("Accept","text/html") }
         val response=MockHttpServletResponse()
         writer().write(request,response,AuthProblem(401,"AUTH_REQUIRED"))
-        assertEquals(303,response.status)
-        assertEquals("https://staff.example/login?return=test",response.getHeader("Location"))
+        assertEquals(302,response.status)
+        assertEquals("https://staff.example/login?returnTo=test",response.getHeader("Location"))
         assertTrue(response.getHeaders("Set-Cookie").isEmpty())
         assertEquals("no-store",response.getHeader("Cache-Control"))
+    }
+    @Test fun `temporary password document denial may navigate but XHR remains JSON`() {
+        val response=MockHttpServletResponse()
+        writer().write(MockHttpServletRequest("GET","/swagger-ui.html").apply { addHeader("Accept","text/html") },response,
+            AuthProblem(403,"AUTH_PASSWORD_CHANGE_REQUIRED"))
+        assertEquals(302,response.status)
+        for(header in listOf("X-Requested-With" to "XMLHttpRequest","Sec-Fetch-Mode" to "cors")) {
+            val xhr=MockHttpServletResponse()
+            writer().write(MockHttpServletRequest("GET","/obs-admin.html").apply {
+                addHeader("Accept","text/html");addHeader(header.first,header.second)
+            },xhr,AuthProblem(401,"AUTH_REQUIRED"))
+            assertEquals(401,xhr.status);assertNull(xhr.getHeader("Location"))
+            assertEquals("AUTH_REQUIRED",mapper.readTree(xhr.contentAsString)["code"].asText())
+        }
     }
     @Test fun `API assets captured identity wrong methods and nonHTML retain raw problem semantics`() {
         val cases=listOf(
