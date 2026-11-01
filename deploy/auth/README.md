@@ -37,3 +37,15 @@ Set `app.auth.ingress.loopback-mode=true`, `anonymous-address=127.0.0.1` (or::1)
 ## Verification status
 
 Compose rendering, origin/source validation, connector and controller focused tests are engineering evidence. Real Caddy routing/TLS tests, full auth+CSRF tests, synthetic247→V10→V11, browser/native OBS and combined QA each retain their own exact-source execution receipt. No prepared configuration or unit test constitutes a full product acceptance result.
+
+## Shared staff authentication module
+
+The frozen Web producer59588da publishes `/staff-auth-v1.mjs` on the same canonical secure origin. This root path deliberately falls through each Caddy site's generic Web proxy; it does not match Backend `/auth/*`, and Caddy does not rewrite its path or override its response headers. Backend OBS/Swagger adapters can therefore import that URL while sharing Web's credential coordinator. Do not move it under Backend `/auth/*` or an immutable hashed-assets path.
+
+Web103 owns the explicit development/production JS route, JavaScript MIME, `Cache-Control: no-store`, and rejection of SPA fallback for this exact URL. Caddy forwarding alone is not evidence of that upstream response contract. Source-only regression (no runtime/Docker/TLS startup):
+
+```sh
+python3 deploy/tests/auth-staff-module_test.py --caddy /path/to/existing/caddy
+```
+
+The check adapts the actual LAN/Internet Caddyfiles, resolves the frozen module to Web, keeps `/auth/staff-session.mjs` and API requests on Backend, and rejects a deliberate module-to-backend route mutation. Existing Caddy routing needs no duplicate explicit handler.
