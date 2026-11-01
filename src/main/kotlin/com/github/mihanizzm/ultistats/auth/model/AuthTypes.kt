@@ -2,6 +2,7 @@ package com.github.mihanizzm.ultistats.auth.model
 
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
+import io.swagger.v3.oas.annotations.media.Schema
 import java.time.Instant
 import java.util.UUID
 
@@ -18,9 +19,20 @@ data class AccountView(val id: UUID, val login: String, val displayName: String,
     val status: AuthAccountStatus, val mustChangePassword: Boolean, val createdAt: Instant, val updatedAt: Instant)
 @JsonInclude(JsonInclude.Include.ALWAYS)
 data class AuthContext(val installationId: UUID, val serverNow: Instant, val state: AuthState,
-    val sessionId: UUID?, val account: AccountView?, val permissions: List<AuthPermission>,
-    val lastActivityAt: Instant?, val idleExpiresAt: Instant?, val reauthenticatedUntil: Instant?,
-    val replacedSessionId: UUID? = null, val contractVersion: String = "1.0.0")
+    @field:Schema(types=["string","null"],format="uuid",requiredMode=Schema.RequiredMode.REQUIRED)
+    val sessionId: UUID?,
+    @field:Schema(requiredMode=Schema.RequiredMode.REQUIRED)
+    val account: AccountView?, val permissions: List<AuthPermission>,
+    @field:Schema(types=["string","null"],format="date-time",requiredMode=Schema.RequiredMode.REQUIRED)
+    val lastActivityAt: Instant?,
+    @field:Schema(types=["string","null"],format="date-time",requiredMode=Schema.RequiredMode.REQUIRED)
+    val idleExpiresAt: Instant?,
+    @field:Schema(types=["string","null"],format="date-time",requiredMode=Schema.RequiredMode.REQUIRED)
+    val reauthenticatedUntil: Instant?,
+    @field:Schema(types=["string","null"],format="uuid",requiredMode=Schema.RequiredMode.REQUIRED)
+    val replacedSessionId: UUID? = null,
+    @field:Schema(allowableValues=["1.0.0"],requiredMode=Schema.RequiredMode.REQUIRED)
+    val contractVersion: String = "1.0.0")
 class AuthLoginResult(val context: AuthContext, @get:JsonIgnore val credential: String) {
     override fun toString() = "AuthLoginResult(sessionId=${context.sessionId})"
 }

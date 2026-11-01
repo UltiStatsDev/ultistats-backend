@@ -101,6 +101,26 @@ class AuthConcurrencyPostgresTest {
         listOf("sessionId","account","lastActivityAt","idleExpiresAt","reauthenticatedUntil","replacedSessionId").forEach { assertTrue(body[it].isNull,it) }
     }
 
+    @Test fun `untouched protected OpenAPI validates actual anonymous and authenticated auth contexts`() {
+        val docs=client.send(HttpRequest.newBuilder(uri("/v3/api-docs")).GET().build(),HttpResponse.BodyHandlers.ofString())
+        assertEquals(200,docs.statusCode())
+        val document=mapper.readTree(docs.body())
+        val required=document["components"]["schemas"]["AuthContext"]["required"].map { it.asText() }.toSet()
+        assertEquals(setOf("contractVersion","installationId","serverNow","state","sessionId","account","permissions",
+            "lastActivityAt","idleExpiresAt","reauthenticatedUntil","replacedSessionId"),required)
+        val root=mapper.createObjectNode().put("\$schema","https://json-schema.org/draft/2020-12/schema").put("\$ref","#/components/schemas/AuthContext")
+        root.set<com.fasterxml.jackson.databind.JsonNode>("components",document["components"])
+        val schema=com.networknt.schema.JsonSchemaFactory.getInstance(com.networknt.schema.SpecVersion.VersionFlag.V202012)
+            .getSchema(root,com.networknt.schema.SchemaValidatorsConfig.builder().formatAssertionsEnabled(true).build())
+        for(http in listOf(HttpClient.newHttpClient(),client)) {
+            val response=http.send(HttpRequest.newBuilder(uri("/api/v1/auth/session")).GET().build(),HttpResponse.BodyHandlers.ofString())
+            val body=mapper.readTree(response.body())
+            assertEquals(emptySet(),schema.validate(body))
+            val missing=body.deepCopy<com.fasterxml.jackson.databind.node.ObjectNode>().apply { remove("sessionId") }
+            assertTrue(schema.validate(missing).isNotEmpty())
+        }
+    }
+
     @Test fun `wrong origin on actual private HTTP returns frozen problem before CORS plaintext fallback`() {
         val response=post("/api/v1/teams",mapOf("name" to "must-not-exist"),"https://unapproved.invalid")
         assertEquals(403,response.statusCode())
