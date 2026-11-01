@@ -147,3 +147,35 @@ test('explicit repository identity is unaffected by ambient Git directory overri
   try { assert.equal(readExactTag(actual.repo, 'v0.1.0', actual.sha), actual.sha); }
   finally { if (prior === undefined) delete process.env.GIT_DIR; else process.env.GIT_DIR = prior; }
 });
+
+test('local Web/Backend replace refs cannot change canonical application pin or commit type', async t => {
+  const { backend, web, record, repos } = pair(t);
+  const { verifyPairSources, verifySource, readExactTag } = await api();
+  backend.git('tag', 'v0.1.0'); web.git('tag', 'v0.1.0');
+  writeFileSync(join(web.repo, 'dev/backend/revision'), `${BASE_BACKEND}\n`);
+  web.git('commit', '-am', 'replacement pin must not be consumed');
+  const replacement = web.git('rev-parse', 'HEAD');
+  web.git('replace', web.sha, replacement);
+  // A real unscoped Git read proves the replacement is active at the original SHA.
+  assert.equal(web.git('show', `${web.sha}:dev/backend/revision`), BASE_BACKEND);
+  const blob = backend.git('rev-parse', `${backend.sha}:source`);
+  backend.git('replace', '-f', backend.sha, blob);
+  assert.equal(backend.git('cat-file', '-t', backend.sha), 'blob');
+  assert.equal(verifySource(backend.repo, backend.sha), backend.sha);
+  assert.equal(readExactTag(backend.repo, 'v0.1.0', backend.sha), backend.sha);
+  assert.equal(verifyPairSources(record, repos).backend.commit, backend.sha);
+  assert.equal(web.git('show-ref', '--hash', 'refs/tags/v0.1.0'), web.sha);
+  assert.equal(backend.git('show-ref', '--hash', 'refs/tags/v0.1.0'), backend.sha);
+});
+
+test('a Web replace ref cannot repair a canonically mismatched application pin', async t => {
+  const { backend, web, record, repos } = pair(t); const { verifyPairSources } = await api();
+  backend.git('tag', 'v0.1.0');
+  writeFileSync(join(web.repo, 'dev/backend/revision'), `${BASE_BACKEND}\n`);
+  web.git('commit', '-am', 'canonical wrong pin'); const wrong = web.git('rev-parse', 'HEAD');
+  web.git('tag', 'v0.1.0', wrong);
+  web.git('replace', wrong, web.sha);
+  assert.equal(web.git('show', `${wrong}:dev/backend/revision`), backend.sha);
+  const wrongRecord = { ...record, repositories: { ...record.repositories, web: { ...record.repositories.web, commit: wrong } } };
+  assert.throws(() => verifyPairSources(wrongRecord, repos), /pin/i);
+});

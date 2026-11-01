@@ -44,3 +44,5 @@ Forward-port the fix separately to current master through an independently revie
 ## Local verification scope
 
 Temporary-Git tests exercise exact/missing/changed/annotated refs, moving main, interrupted source preparation, retries, canonical sources, pins and initial compatibility, plus sanitized CLI and CI/CD isolation. Web tests own interrupted metadata publication, finalized record history/immutability and SemVer selection. No Docker/runtime is required for this slice. Linux Node verification does not establish executed macOS behavior.
+
+All producer Git reads use command-scoped `--no-replace-objects` and remove inherited `GIT_*` directory/object/config overrides from the child environment. Local replace refs cannot alter the canonical application pin or commit type behind a fixed SHA/tag. Real-Git regressions cover both an accepted pair with misleading replacements and an invalid pin concealed by a replacement. These controls do not change global Git configuration.
