@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 
 const BASELINE = '24704e11143a0bf919559a41324603f936ae03cf';
 const PARITY_PATHS = ['src/main', 'src/test', 'build.gradle.kts', 'settings.gradle.kts', 'gradle', 'gradlew', 'Dockerfile'];
-const gitArgs = args => ['--no-replace-objects', '-c', 'core.fsmonitor=false', ...args];
+const gitArgs = args => ['--no-replace-objects', '--no-optional-locks', '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', ...args];
 const git = (cwd, ...args) => execFileSync('git', gitArgs(args), { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000 }).trim();
 
 function readonlyStatus(sourceDir) {

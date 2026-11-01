@@ -225,3 +225,20 @@ test('readonly source preflight does not execute configured clean filter program
   await f.inspectSource(f.source, git(f.source, 'rev-parse', 'HEAD'));
   assert.throws(() => readFileSync(marker), { code: 'ENOENT' });
 });
+
+test('readonly preflight does not refresh the index or execute Git index hooks', async t => {
+  const f = await fixture(t);
+  const marker = join(f.root, 'index-hook-executed');
+  const hooks = git(f.source, 'rev-parse', '--git-path', 'hooks');
+  const hook = resolve(f.source, hooks, 'post-index-change');
+  const { chmodSync } = await import('node:fs');
+  writeFileSync(hook, `#!/bin/sh\nprintf 'synthetic hook' > '${marker}'\n`, { mode: 0o700 });
+  chmodSync(hook, 0o700);
+  const target = join(f.source, 'src/main/resources/static/obs/obs.css');
+  writeFileSync(target, readFileSync(target));
+  const index = resolve(f.source, git(f.source, 'rev-parse', '--git-path', 'index'));
+  const before = readFileSync(index);
+  await f.inspectSource(f.source, git(f.source, 'rev-parse', 'HEAD'));
+  assert.throws(() => readFileSync(marker), { code: 'ENOENT' });
+  assert.deepEqual(readFileSync(index), before);
+});
