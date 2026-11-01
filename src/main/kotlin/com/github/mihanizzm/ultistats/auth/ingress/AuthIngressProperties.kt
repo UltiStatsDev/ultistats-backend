@@ -2,6 +2,7 @@ package com.github.mihanizzm.ultistats.auth.ingress
 
 import org.springframework.boot.context.properties.ConfigurationProperties
 import java.net.URI
+import java.util.Locale
 
 @ConfigurationProperties("app.auth.ingress")
 data class AuthIngressProperties(
@@ -11,9 +12,9 @@ data class AuthIngressProperties(
     val anonymousAddress: String = "127.0.0.1",
     val privatePort: Int = 8081,
 ) : AuthOriginConfiguration {
-    override fun publicOrigin(): String = publicOrigin
-    override fun secureOrigin(): String = secureOrigin
-    override fun secureOrigins(): Set<String> = setOf(secureOrigin)
+    override fun publicOrigin(): String = canonicalOrigin(publicOrigin)
+    override fun secureOrigin(): String = canonicalOrigin(secureOrigin)
+    override fun secureOrigins(): Set<String> = setOf(secureOrigin())
 
     fun validate() {
         val public = origin(publicOrigin)
@@ -30,6 +31,12 @@ data class AuthIngressProperties(
             require(anonymousAddress == "127.0.0.1" || anonymousAddress == "::1") { "loopback mode requires a loopback bind" }
             require(loopbackHost(public.host) && loopbackHost(secure.host)) { "loopback mode requires loopback origins" }
         }
+    }
+
+    private fun canonicalOrigin(value: String): String {
+        val uri = origin(value)
+        val port = if ((uri.scheme == "https" && uri.port == 443) || (uri.scheme == "http" && uri.port == 80)) -1 else uri.port
+        return "${uri.scheme}://${uri.host.lowercase(Locale.ROOT)}" + if (port == -1) "" else ":$port"
     }
 
     private fun origin(value: String): URI {
