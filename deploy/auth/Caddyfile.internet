@@ -1,18 +1,20 @@
 {
-    admin off
+	http_port {$CADDY_HTTP_PORT:80}
+	https_port {$CADDY_HTTPS_PORT:443}
+	admin off
 }
 
 # PUBLIC_ORIGIN and SECURE_ORIGIN must both equal this single HTTPS origin.
 # Caddy obtains and renews a public certificate only after owner DNS/network setup.
-https://{$STAFF_HOST} {
-    @backend path /api/* /uploads/* /health/* /obs /obs/* /swagger-ui.html /swagger-ui/* /v3/api-docs /v3/api-docs/* /auth/*
-    handle @backend {
-        reverse_proxy 127.0.0.1:8081 {
-            header_up X-UltiStats-Client-IP {remote_host}
-            header_up -Forwarded
-        }
-    }
-    handle {
-        reverse_proxy web:80
-    }
+https://{$STAFF_HOST}:{$CADDY_HTTPS_PORT:443} {
+	@backend path /api/* /uploads/* /health/* /obs* /swagger-ui.html /swagger-ui/* /v3/api-docs /v3/api-docs/* /auth/*
+	handle @backend {
+		reverse_proxy {$PRIVATE_UPSTREAM:127.0.0.1:8081} {
+			header_up X-UltiStats-Client-IP {remote_host}
+			header_up -Forwarded
+		}
+	}
+	handle {
+		reverse_proxy {$WEB_UPSTREAM:web:80}
+	}
 }
