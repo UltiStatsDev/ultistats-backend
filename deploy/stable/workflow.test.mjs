@@ -14,7 +14,7 @@ test('candidate, stable, hotfix and immutable tags receive ordinary CI', () => {
 });
 test('push branch validation uses actual ref and existing checks are retained', () => {
   assert.match(ci, /github.head_ref \|\| github.ref_name/);
-  assert.match(ci, /node --test deploy\/stable\/\*\.test\.mjs/);
+  assert.match(ci, /node --test/);
   assert.match(ci, /\.\/gradlew build/);
   assert.match(ci, /node --test src\/test\/js\/\*\.test\.mjs/);
   for (const script of ['validate-compose.sh', 'deploy_test.sh', 'validate-workflow.sh']) assert.ok(ci.includes(`bash deploy/tests/${script}`));
@@ -24,4 +24,8 @@ test('publication paths cannot dispatch existing production deployment', () => {
   const triggers = cd.slice(cd.indexOf('on:'), cd.indexOf('concurrency:'));
   for (const event of ['tags:', 'release:', 'workflow_run:', 'workflow_dispatch:', 'candidate/']) assert.ok(!triggers.includes(event));
   assert.ok(!ci.includes('workflow_dispatch'));
+});
+test('CI discovers nested build/helper boundary tests as well as promotion tests', () => {
+  assert.match(ci, /find deploy\/stable -name '\*\.test\.mjs' -type f -print0/);
+  assert.match(ci, /xargs -0 node --test/);
 });

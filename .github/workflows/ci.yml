@@ -93,4 +93,4 @@ jobs:
         with:
           node-version: '22'
       - name: Test immutable source refs and publication isolation
-        run: node --test deploy/stable/*.test.mjs
+        run: find deploy/stable -name '*.test.mjs' -type f -print0 | sort -z | xargs -0 node --test
