@@ -7,6 +7,7 @@
       "method": "GET",
       "path": "/swagger-ui/index.html",
       "policy": "API_DOCS",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/StaffToolsController.kt",
       "line": 14
     },
@@ -14,6 +15,7 @@
       "method": "GET",
       "path": "/api/v2/matches/{matchId}/events",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/EventBatchController.kt",
       "line": 29
     },
@@ -21,6 +23,7 @@
       "method": "POST",
       "path": "/api/v2/matches/{matchId}/events/batch",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/EventBatchController.kt",
       "line": 39
     },
@@ -28,6 +31,7 @@
       "method": "GET",
       "path": "/api/v1/matches/{matchId}/events",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/EventController.kt",
       "line": 34
     },
@@ -35,6 +39,7 @@
       "method": "GET",
       "path": "/api/v1/matches/{matchId}/events/{eventId}",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/EventController.kt",
       "line": 42
     },
@@ -42,6 +47,7 @@
       "method": "POST",
       "path": "/api/v1/matches/{matchId}/events",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/EventController.kt",
       "line": 52
     },
@@ -49,6 +55,7 @@
       "method": "PATCH",
       "path": "/api/v1/matches/{matchId}/events/{eventId}",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/EventController.kt",
       "line": 223
     },
@@ -56,6 +63,7 @@
       "method": "POST",
       "path": "/api/v1/matches/{matchId}/events/undo",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/EventController.kt",
       "line": 317
     },
@@ -63,6 +71,7 @@
       "method": "DELETE",
       "path": "/api/v1/matches/{matchId}/events/{eventId}",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/EventController.kt",
       "line": 367
     },
@@ -70,6 +79,7 @@
       "method": "GET",
       "path": "/api/v1/matches",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchController.kt",
       "line": 46
     },
@@ -77,6 +87,7 @@
       "method": "GET",
       "path": "/api/v1/matches/{id}",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchController.kt",
       "line": 74
     },
@@ -84,6 +95,7 @@
       "method": "POST",
       "path": "/api/v1/matches",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchController.kt",
       "line": 81
     },
@@ -91,6 +103,7 @@
       "method": "PUT",
       "path": "/api/v1/matches/{id}",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchController.kt",
       "line": 92
     },
@@ -98,6 +111,7 @@
       "method": "PATCH",
       "path": "/api/v1/matches/{id}",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchController.kt",
       "line": 104
     },
@@ -105,6 +119,7 @@
       "method": "DELETE",
       "path": "/api/v1/matches/{id}",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchController.kt",
       "line": 116
     },
@@ -112,6 +127,7 @@
       "method": "POST",
       "path": "/api/v1/matches/{id}/start",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchController.kt",
       "line": 123
     },
@@ -119,6 +135,7 @@
       "method": "POST",
       "path": "/api/v1/matches/{id}/end",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchController.kt",
       "line": 135
     },
@@ -126,6 +143,7 @@
       "method": "GET",
       "path": "/api/v1/matches/{matchId}/events/stream",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchEventStreamController.kt",
       "line": 30
     },
@@ -133,6 +151,7 @@
       "method": "POST",
       "path": "/api/v1/matches/export",
       "policy": "TRANSFER",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchTransferController.kt",
       "line": 38
     },
@@ -140,6 +159,7 @@
       "method": "POST",
       "path": "/api/v1/matches/import",
       "policy": "TRANSFER",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchTransferController.kt",
       "line": 53
     },
@@ -147,6 +167,7 @@
       "method": "GET",
       "path": "/api/v1/players",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PlayerController.kt",
       "line": 47
     },
@@ -154,6 +175,7 @@
       "method": "GET",
       "path": "/api/v1/players/{id}",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PlayerController.kt",
       "line": 75
     },
@@ -161,6 +183,7 @@
       "method": "GET",
       "path": "/api/v1/players/{playerId}/teams",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PlayerController.kt",
       "line": 82
     },
@@ -168,6 +191,7 @@
       "method": "POST",
       "path": "/api/v1/players",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PlayerController.kt",
       "line": 88
     },
@@ -175,6 +199,7 @@
       "method": "PUT",
       "path": "/api/v1/players/{id}",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PlayerController.kt",
       "line": 93
     },
@@ -182,6 +207,7 @@
       "method": "PATCH",
       "path": "/api/v1/players/{id}",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PlayerController.kt",
       "line": 100
     },
@@ -189,6 +215,7 @@
       "method": "DELETE",
       "path": "/api/v1/players/{id}",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PlayerController.kt",
       "line": 107
     },
@@ -196,6 +223,7 @@
       "method": "PUT",
       "path": "/api/v1/players/{playerId}/photo",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PlayerController.kt",
       "line": 114
     },
@@ -203,6 +231,7 @@
       "method": "GET",
       "path": "/api/v1/players/{playerId}/photo",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PlayerController.kt",
       "line": 158
     },
@@ -210,6 +239,7 @@
       "method": "DELETE",
       "path": "/api/v1/players/{playerId}/photo",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PlayerController.kt",
       "line": 165
     },
@@ -217,6 +247,7 @@
       "method": "POST",
       "path": "/api/v1/players/{playerId}/uploadPhoto",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PlayerController.kt",
       "line": 180
     },
@@ -224,6 +255,7 @@
       "method": "GET",
       "path": "/api/v1/players/{playerId}/photoUrl",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PlayerController.kt",
       "line": 217
     },
@@ -231,6 +263,7 @@
       "method": "DELETE",
       "path": "/api/v1/players/{playerId}/photoUrl",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PlayerController.kt",
       "line": 224
     },
@@ -238,6 +271,7 @@
       "method": "GET",
       "path": "/api/v1/matches/{matchId}/statistics",
       "policy": "FINISHED_OR_STATISTICS_READ_ALL",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/StatisticsController.kt",
       "line": 34
     },
@@ -245,6 +279,7 @@
       "method": "GET",
       "path": "/api/v1/matches/{matchId}/statistics/export",
       "policy": "FINISHED_OR_STATISTICS_READ_ALL",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/StatisticsController.kt",
       "line": 66
     },
@@ -252,6 +287,7 @@
       "method": "GET",
       "path": "/api/v1/teams",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/TeamController.kt",
       "line": 50
     },
@@ -259,6 +295,7 @@
       "method": "GET",
       "path": "/api/v1/teams/{id}",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/TeamController.kt",
       "line": 78
     },
@@ -266,6 +303,7 @@
       "method": "POST",
       "path": "/api/v1/teams",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/TeamController.kt",
       "line": 85
     },
@@ -273,6 +311,7 @@
       "method": "PUT",
       "path": "/api/v1/teams/{id}",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/TeamController.kt",
       "line": 90
     },
@@ -280,6 +319,7 @@
       "method": "PATCH",
       "path": "/api/v1/teams/{id}",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/TeamController.kt",
       "line": 97
     },
@@ -287,6 +327,7 @@
       "method": "DELETE",
       "path": "/api/v1/teams/{id}",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/TeamController.kt",
       "line": 104
     },
@@ -294,6 +335,7 @@
       "method": "GET",
       "path": "/api/v1/teams/{teamId}/players",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/TeamController.kt",
       "line": 111
     },
@@ -301,6 +343,7 @@
       "method": "PUT",
       "path": "/api/v1/teams/{teamId}/players/{playerId}",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/TeamController.kt",
       "line": 117
     },
@@ -308,6 +351,7 @@
       "method": "DELETE",
       "path": "/api/v1/teams/{teamId}/players/{playerId}",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/TeamController.kt",
       "line": 133
     },
@@ -315,6 +359,7 @@
       "method": "PUT",
       "path": "/api/v1/teams/{teamId}/photo",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/TeamController.kt",
       "line": 142
     },
@@ -322,6 +367,7 @@
       "method": "GET",
       "path": "/api/v1/teams/{teamId}/photo",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/TeamController.kt",
       "line": 186
     },
@@ -329,6 +375,7 @@
       "method": "DELETE",
       "path": "/api/v1/teams/{teamId}/photo",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/TeamController.kt",
       "line": 193
     },
@@ -336,6 +383,7 @@
       "method": "POST",
       "path": "/api/v1/teams/{teamId}/uploadPhoto",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/TeamController.kt",
       "line": 208
     },
@@ -343,6 +391,7 @@
       "method": "GET",
       "path": "/api/v1/teams/{teamId}/photoUrl",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/TeamController.kt",
       "line": 246
     },
@@ -350,6 +399,7 @@
       "method": "DELETE",
       "path": "/api/v1/teams/{teamId}/photoUrl",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/TeamController.kt",
       "line": 253
     },
@@ -357,6 +407,7 @@
       "method": "POST",
       "path": "/api/v2/matches/{matchId}/events/undo",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/UndoCommandController.kt",
       "line": 29
     },
@@ -364,6 +415,7 @@
       "method": "GET",
       "path": "/api/v2/matches/{matchId}/events/undo/{commandId}",
       "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/UndoCommandController.kt",
       "line": 60
     },
@@ -371,6 +423,7 @@
       "method": "GET",
       "path": "/api/v1/obs/config",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsConfigController.kt",
       "line": 13
     },
@@ -378,6 +431,7 @@
       "method": "PUT",
       "path": "/api/v1/obs/config",
       "policy": "OBS_ADMIN",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsConfigController.kt",
       "line": 17
     },
@@ -385,6 +439,7 @@
       "method": "GET",
       "path": "/api/v1/obs/config/stream",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsConfigController.kt",
       "line": 21
     },
@@ -392,6 +447,7 @@
       "method": "GET",
       "path": "/api/v1/obs/stream",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsNotificationStream.kt",
       "line": 75
     },
@@ -399,6 +455,7 @@
       "method": "GET",
       "path": "/api/v1/obs/scoreboard/{matchId}",
       "policy": "PUBLIC",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsScoreboardController.kt",
       "line": 20
     },
@@ -406,6 +463,7 @@
       "method": "PUT",
       "path": "/api/v1/obs/scoreboard/{matchId}/profile",
       "policy": "OBS_ADMIN",
+      "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsScoreboardController.kt",
       "line": 24
     }
