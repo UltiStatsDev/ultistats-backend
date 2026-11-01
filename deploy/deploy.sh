@@ -9,7 +9,7 @@ readonly compose_file="$deploy_root/compose.prod.yml"
 readonly env_file="$deploy_root/.env"
 readonly backup_directory="$deploy_root/backups"
 readonly revision_file="$deploy_root/DEPLOYED_REVISION"
-readonly health_url="${DEPLOY_HEALTH_URL:-http://127.0.0.1/v3/api-docs}"
+readonly health_url="${DEPLOY_HEALTH_URL:-http://127.0.0.1/health/ready}"
 readonly health_attempts="${DEPLOY_HEALTH_ATTEMPTS:-30}"
 readonly health_interval_seconds="${DEPLOY_HEALTH_INTERVAL_SECONDS:-2}"
 readonly minimum_free_kb="${DEPLOY_MIN_FREE_KB:-1048576}"
@@ -39,6 +39,8 @@ fail() {
     || fail 'DEPLOY_BACKUP_RETENTION must be a positive integer'
 [[ -f "$compose_file" ]] || fail "$compose_file does not exist"
 [[ -f "$env_file" ]] || fail "$env_file does not exist"
+[[ ! -e "$deploy_root/MAINTENANCE_REQUIRED" ]] \
+    || fail 'MAINTENANCE_REQUIRED exists; reconcile backup/schema/writer safety before an explicit recovery attempt'
 
 exec 9> "$lock_file"
 flock --nonblock 9 || fail 'another deployment is already running'
@@ -48,9 +50,10 @@ compose() {
 }
 
 wait_until_healthy() {
-    local attempt
+    local attempt response
     for ((attempt = 1; attempt <= health_attempts; attempt++)); do
-        if curl --fail --silent --show-error "$health_url" >/dev/null; then
+        if response="$(curl --fail --silent --show-error --connect-timeout 3 --max-time 5 "$health_url")" \
+            && [[ "${response//[[:space:]]/}" == '{"status":"UP"}' ]]; then
             return 0
         fi
         sleep "$health_interval_seconds"
@@ -156,13 +159,19 @@ bootstrap_uploads_volume() {
     return "$restore_status"
 }
 
-rollback() {
+hold_for_recovery() {
     local reason="$1"
+    local temporary_marker="$deploy_root/.MAINTENANCE_REQUIRED.$$"
 
-    log "$reason; rolling back to $previous_image"
-    APP_IMAGE="$previous_image" compose up -d --no-deps app
-    wait_until_healthy || fail 'new image failed and rollback is unhealthy'
-    fail "$reason; previous image restored"
+    # The old image may have no authentication. Never reopen its writes, even
+    # when additive migrations happen to remain readable by that binary.
+    (umask 077; printf 'failed_revision=%s\nprevious_image=%s\nbackup=%s\nuploads_backup=%s\n' \
+        "$target_revision" "$previous_image" "$backup_file" "$uploads_backup_file" > "$temporary_marker")
+    mv "$temporary_marker" "$deploy_root/MAINTENANCE_REQUIRED"
+    if ! APP_IMAGE="$target_image" compose stop app; then
+        fail "$reason; application stop failed: keep ingress closed and stop writers before recovery; see MAINTENANCE_REQUIRED"
+    fi
+    fail "$reason; application stopped, no automatic old-image rollback; retain maintenance and verify compatible recovery from MAINTENANCE_REQUIRED"
 }
 
 mkdir -p "$backup_directory"
@@ -211,10 +220,12 @@ log "pulling $target_image"
 APP_IMAGE="$target_image" compose pull app
 bootstrap_uploads_volume "$uploads_backup_file" \
     || fail 'uploads restoration failed; current application container was kept'
-APP_IMAGE="$target_image" compose up -d --no-deps app
+if ! APP_IMAGE="$target_image" compose up -d --no-deps app; then
+    hold_for_recovery 'new image failed to start'
+fi
 
 if ! wait_until_healthy; then
-    rollback 'new image failed its health check'
+    hold_for_recovery 'new image failed its health check'
 fi
 
 write_image_to_env "$target_image"
