@@ -385,6 +385,8 @@ export async function observeInstallation(
   const db = inspect(h.databaseContainerId),
     writers = h.writerContainerIds.map(inspect),
     ingress = inspect(b.ingress.containerId);
+  if (b.databaseImageId !== undefined)
+    check(db.Image === b.databaseImageId, "IDENTITY_MISMATCH");
   const network = JSON.parse(
     docker("network", "inspect", h.databaseNetwork),
   )[0];
@@ -516,7 +518,7 @@ export async function observeInstallation(
     "NETWORK_NOT_ISOLATED",
   );
   const allowed = allowedIPs.length
-    ? `AND NOT (usename='${h.databaseUser}' AND client_addr::text IN (${allowedIPs.map((ip) => `'${ip}'`).join(",")}))`
+    ? `AND NOT (usename='${h.databaseUser}' AND host(client_addr) IN (${allowedIPs.map((ip) => `'${ip}'`).join(",")}))`
     : "";
   o.otherClients = parseCount(
     sql(
@@ -590,4 +592,21 @@ export function databaseContent(m, { run = command } = {}) {
   );
   const rows = JSON.parse(sql(m, contentQuery(tables), { run }));
   return hash(JSON.stringify(rows));
+}
+export function databaseCatalog(m, { run = command } = {}) {
+  const catalog = JSON.parse(
+    sql(
+      m,
+      `SELECT json_build_object('columns',(SELECT coalesce(json_agg(r ORDER BY table_name,ordinal_position),'[]') FROM (SELECT table_name,column_name,ordinal_position,is_nullable,data_type,udt_schema,udt_name,character_maximum_length,numeric_precision,numeric_scale,column_default FROM information_schema.columns WHERE table_schema='public') r),'constraints',(SELECT coalesce(json_agg(r ORDER BY table_name,conname),'[]') FROM (SELECT t.relname AS table_name,c.conname,c.contype,pg_get_constraintdef(c.oid,true) AS definition FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid JOIN pg_namespace n ON n.oid=t.relnamespace WHERE n.nspname='public') r),'indexes',(SELECT coalesce(json_agg(r ORDER BY tablename,indexname),'[]') FROM (SELECT tablename,indexname,indexdef FROM pg_indexes WHERE schemaname='public') r));`,
+      { run },
+    ),
+  );
+  check(
+    catalog &&
+      ["columns", "constraints", "indexes"].every((k) =>
+        Array.isArray(catalog[k]),
+      ),
+    "DATABASE_CATALOG_UNPROVEN",
+  );
+  return hash(JSON.stringify(catalog));
 }
