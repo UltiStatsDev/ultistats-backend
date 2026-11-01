@@ -211,47 +211,38 @@ class PhotoResourceIntegrationTest {
     }
 
     @Test
-    fun `ошибка удаления старого файла при замене восстанавливает прежний photo resource`() {
+    fun `ошибка очистки старого файла после commit сохраняет новый canonical photo resource`() {
         val player = scenarioFactory.createPlayer()
         val oldUrl = putPhoto("/api/v1/players/${player.id}/photo", "image/png", PNG_BYTES)
             .responseUrl()
         doThrow(FileStorageException("delete failed"))
             .`when`(fileStorageService)
             .delete(oldUrl)
-        doThrow(IllegalStateException("restore failed"))
-            .`when`(playerService)
-            .update(matchingPlayer { it.id == player.id && it.photoUrl == oldUrl })
-
-        mockMvc.perform(photoPutRequest("/api/v1/players/${player.id}/photo", "image/jpeg", JPEG_BYTES))
-            .andExpect(status().isServiceUnavailable)
-            .andExpect(jsonPath("$.code").value("FILE_STORAGE_ERROR"))
+        val newUrl = mockMvc.perform(photoPutRequest("/api/v1/players/${player.id}/photo", "image/jpeg", JPEG_BYTES))
+            .andExpect(status().isOk)
+            .andReturn().responseUrl()
 
         mockMvc.perform(get("/api/v1/players/${player.id}/photo"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.url").value(oldUrl))
+            .andExpect(jsonPath("$.url").value(newUrl))
+        assertThat(Files.readAllBytes(storedPath(newUrl))).isEqualTo(JPEG_BYTES)
         assertThat(Files.list(storageRoot).use { it.toList() })
-            .containsExactly(storedPath(oldUrl))
+            .containsExactlyInAnyOrder(storedPath(oldUrl), storedPath(newUrl))
     }
 
     @Test
-    fun `ошибка удаления файла восстанавливает удаленный photo resource`() {
+    fun `ошибка очистки файла после commit не восстанавливает удаленный photo resource`() {
         val player = scenarioFactory.createPlayer()
         val oldUrl = putPhoto("/api/v1/players/${player.id}/photo", "image/png", PNG_BYTES)
             .responseUrl()
         doThrow(FileStorageException("delete failed"))
             .`when`(fileStorageService)
             .delete(oldUrl)
-        doThrow(IllegalStateException("restore failed"))
-            .`when`(playerService)
-            .update(matchingPlayer { it.id == player.id && it.photoUrl == oldUrl })
-
         mockMvc.perform(delete("/api/v1/players/${player.id}/photo"))
-            .andExpect(status().isServiceUnavailable)
-            .andExpect(jsonPath("$.code").value("FILE_STORAGE_ERROR"))
+            .andExpect(status().isNoContent)
 
         mockMvc.perform(get("/api/v1/players/${player.id}/photo"))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.url").value(oldUrl))
+            .andExpect(status().isNotFound)
         assertThat(storedPath(oldUrl)).exists()
     }
 

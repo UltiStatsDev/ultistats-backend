@@ -8,6 +8,10 @@ import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.model.Team
 import com.github.mihanizzm.ultistats.service.MatchService
 import com.github.mihanizzm.ultistats.service.TeamService
+import com.github.mihanizzm.ultistats.service.PlayerService
+import com.github.mihanizzm.ultistats.service.LocalFileStorageService
+import com.github.mihanizzm.ultistats.service.FileStorageException
+import com.github.mihanizzm.ultistats.model.Player
 import com.github.mihanizzm.ultistats.realtime.MatchEventStreamService
 import org.junit.jupiter.api.*
 import org.junit.jupiter.api.Test
@@ -27,6 +31,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.sql.DriverManager
 import java.time.Instant
+import java.nio.file.Files
 import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -39,6 +44,7 @@ import kotlin.test.*
 class AuthConcurrencyPostgresTest {
     companion object {
         val schema="auth152_"+UUID.randomUUID().toString().replace("-","")
+        val photoRoot=Files.createTempDirectory("auth152-pg-photos-")
         @JvmStatic @DynamicPropertySource fun properties(registry:DynamicPropertyRegistry) {
             registry.add("spring.datasource.url") { System.getenv("TEST_POSTGRES_URL") }
             registry.add("spring.datasource.username") { System.getenv("TEST_POSTGRES_USERNAME") }
@@ -51,6 +57,7 @@ class AuthConcurrencyPostgresTest {
             registry.add("spring.flyway.schemas") { schema }
             registry.add("spring.flyway.default-schema") { schema }
             registry.add("spring.sql.init.mode") { "never" }
+            registry.add("app.storage.root") { photoRoot.toString() }
         }
     }
     @Autowired lateinit var auth:AuthService
@@ -58,6 +65,8 @@ class AuthConcurrencyPostgresTest {
     @Autowired lateinit var mapper:ObjectMapper
     @Autowired lateinit var teams:TeamService
     @Autowired lateinit var matches:MatchService
+    @Autowired lateinit var players:PlayerService
+    @MockitoSpyBean lateinit var fileStorage:LocalFileStorageService
     @MockitoSpyBean lateinit var streams:MatchEventStreamService
     @LocalServerPort var port:Int=0
     private val password="Synthetic-owner-152"
@@ -90,6 +99,94 @@ class AuthConcurrencyPostgresTest {
     private fun waitFor(predicate:()->Boolean) {
         val end=System.nanoTime()+TimeUnit.SECONDS.toNanos(10)
         while(!predicate()) { check(System.nanoTime()<end) { "Timed out waiting for owned PostgreSQL fence" };Thread.sleep(10) }
+    }
+    private val oldPhoto=byteArrayOf(0x89.toByte(),0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,1)
+    private val newPhoto=byteArrayOf(0x89.toByte(),0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,2)
+    private fun photoRequest(id:UUID,bytes:ByteArray?=null):HttpResponse<String> {
+        val boundary="auth152-photo-boundary"
+        val body=bytes?.let { ("--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"synthetic.png\"\r\nContent-Type: image/png\r\n\r\n").toByteArray()+it+("\r\n--$boundary--\r\n").toByteArray() }
+        val builder=HttpRequest.newBuilder(uri("/api/v1/players/$id/photo"))
+            .header("X-CSRF-TOKEN",token).header("X-UltiStats-Installation-Id",login.context.installationId.toString())
+            .header("X-UltiStats-Account-Id",login.context.account!!.id.toString()).header("X-UltiStats-Session-Id",login.context.sessionId.toString())
+        if(body==null) builder.DELETE() else builder.header("Content-Type","multipart/form-data; boundary=$boundary").PUT(HttpRequest.BodyPublishers.ofByteArray(body))
+        return client.send(builder.build(),HttpResponse.BodyHandlers.ofString())
+    }
+    private fun photoFixture():Pair<UUID,String> {
+        val player=Player(UUID.randomUUID(),"Auth152","Synthetic photo")
+        players.create(player)
+        val response=photoRequest(player.id,oldPhoto)
+        assertEquals(200,response.statusCode())
+        return player.id to mapper.readTree(response.body())["url"].asText()
+    }
+    private fun photoPath(url:String)=photoRoot.resolve(url.substringAfterLast('/'))
+    private fun photoFiles()=Files.list(photoRoot).use { it.map { path -> path.fileName.toString() }.toList().toSet() }
+    private fun assertOriginalPhoto(id:UUID,url:String,before:Set<String>) {
+        assertEquals(url,players.get(id)!!.photoUrl)
+        assertTrue(Files.exists(photoPath(url)),"Original photo must survive the failed transaction")
+        assertContentEquals(oldPhoto,Files.readAllBytes(photoPath(url)))
+        assertEquals(before,photoFiles(),"Failed replacement must clean only its staged upload")
+    }
+    @Test fun `photo replacement commit failure preserves original URL file and hash`() {
+        val (id,url)=photoFixture();val before=photoFiles()
+        jdbc.execute("CREATE FUNCTION auth152_photo_fail() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''synthetic photo commit failure''; END'")
+        jdbc.execute("CREATE CONSTRAINT TRIGGER auth152_photo_fail AFTER UPDATE ON players DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION auth152_photo_fail()")
+        try {
+            assertTrue(photoRequest(id,newPhoto).statusCode()>=500)
+            assertOriginalPhoto(id,url,before)
+        } finally { jdbc.execute("DROP TRIGGER auth152_photo_fail ON players");jdbc.execute("DROP FUNCTION auth152_photo_fail()") }
+    }
+    @Test fun `photo deletion commit failure preserves original URL file and hash`() {
+        val (id,url)=photoFixture();val before=photoFiles()
+        jdbc.execute("CREATE FUNCTION auth152_photo_fail() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''synthetic photo commit failure''; END'")
+        jdbc.execute("CREATE CONSTRAINT TRIGGER auth152_photo_fail AFTER UPDATE ON players DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION auth152_photo_fail()")
+        try {
+            assertTrue(photoRequest(id).statusCode()>=500)
+            assertOriginalPhoto(id,url,before)
+        } finally { jdbc.execute("DROP TRIGGER auth152_photo_fail ON players");jdbc.execute("DROP FUNCTION auth152_photo_fail()") }
+    }
+    @Test fun `photo successful commit retains new file and removes old only after commit`() {
+        val (id,url)=photoFixture()
+        val response=photoRequest(id,newPhoto)
+        assertEquals(200,response.statusCode())
+        val replacement=mapper.readTree(response.body())["url"].asText()
+        assertEquals(replacement,players.get(id)!!.photoUrl)
+        assertContentEquals(newPhoto,Files.readAllBytes(photoPath(replacement)))
+        assertFalse(Files.exists(photoPath(url)))
+        assertEquals(204,photoRequest(id).statusCode())
+        assertNull(players.get(id)!!.photoUrl)
+        assertFalse(Files.exists(photoPath(replacement)))
+    }
+    @Test fun `photo postcommit cleanup failure never deletes the new canonical upload`() {
+        val (id,url)=photoFixture()
+        Mockito.doThrow(FileStorageException("Synthetic old-file cleanup failure")).`when`(fileStorage).delete(url)
+        try {
+            val response=photoRequest(id,newPhoto)
+            assertEquals(200,response.statusCode())
+            val replacement=mapper.readTree(response.body())["url"].asText()
+            assertEquals(replacement,players.get(id)!!.photoUrl)
+            assertContentEquals(newPhoto,Files.readAllBytes(photoPath(replacement)))
+            assertTrue(Files.exists(photoPath(url)),"Failed completion cleanup may retain the old file")
+        } finally { Mockito.doCallRealMethod().`when`(fileStorage).delete(url);fileStorage.delete(url) }
+    }
+    @Test fun `photo writer backend loss before commit preserves original and cleans staged file`() {
+        val (id,url)=photoFixture();val before=photoFiles()
+        jdbc.execute("CREATE FUNCTION auth152_photo_pause() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN PERFORM pg_advisory_xact_lock(1598115923,155); RETURN NEW; END'")
+        jdbc.execute("CREATE CONSTRAINT TRIGGER auth152_photo_pause AFTER UPDATE ON players DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION auth152_photo_pause()")
+        try { connection().use { holder ->
+            holder.autoCommit=false;holder.createStatement().execute("SELECT pg_advisory_xact_lock(1598115923,155)")
+            Executors.newSingleThreadExecutor().use { executor ->
+                val writer=executor.submit<HttpResponse<String>> { photoRequest(id,newPhoto) }
+                try {
+                    waitFor { jdbc.queryForObject("SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND classid=1598115923 AND objid=155 AND NOT granted",Int::class.java)!!>0 }
+                    val pid=jdbc.queryForObject("SELECT pid FROM pg_locks WHERE locktype='advisory' AND classid=1598115923 AND objid=152 AND granted AND mode='ShareLock'",Int::class.java)!!
+                    assertTrue(jdbc.queryForObject("SELECT pg_terminate_backend(?)",Boolean::class.java,pid)!!)
+                    auth.logout(login.credential,login.context.sessionId!!)
+                    holder.rollback()
+                    assertTrue(writer.get(10,TimeUnit.SECONDS).statusCode()>=500)
+                } finally { holder.rollback() }
+            }
+        } } finally { jdbc.execute("DROP TRIGGER auth152_photo_pause ON players");jdbc.execute("DROP FUNCTION auth152_photo_pause()") }
+        assertOriginalPhoto(id,url,before)
     }
 
     @Test fun `actual application mapper preserves every nullable auth context field`() {
