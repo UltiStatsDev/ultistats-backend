@@ -97,9 +97,10 @@ fields. The frozen contract bytes remain SHA256
 The subsequent optional AuthHtmlEntryNavigation core hook passed its RED→GREEN
 boundary tests plus HTTP/CSRF/CORS regressions. It allows only eligible HTML
 document authentication navigation; API/assets/captured intents/mismatches keep
-raw ProblemDetail. The concrete staff-entry allowlist/login return route and
-genuine-activity cross-tab coordinator integration are owned by153/Web and remain
-an explicit atomic-PR gate until their exact inputs and tests are supplied.
+raw ProblemDetail. The concrete staff-entry allowlist/login and temporary-password return routes are
+now integrated from153. Genuine-activity cross-tab coordinator integration remains
+an explicit atomic-PR gate owned by153/Web; it consumes the exact frozen Web ESM
+module rather than a second independent credential coordinator.
 
 The final atomic head still requires its own CI, independent review, immutable
 availability and checked merge. Engineering callbacks go immediately after actual
@@ -113,3 +114,29 @@ leases. Superseded unleased APIs were stopped with exact ownership guards; their
 source/JAR/evidence and all data remain. The current target must stay until consumer
 END or a verified lifecycle handoff. Remove only owned unused containers/networks
 after END; retain volumes, credentials/backups privately, source and evidence.
+
+
+## Versioned follow-up evidence after719-test checkpoint
+
+These records do not relabel the older full build as a final-head run:
+
+| Source checkpoint | Actual scoped verification |
+| --- | --- |
+| Photo lifecycle `b0b9d99` | Five real-PostgreSQL photo cases and13 legacy photo-domain cases passed after RED. Replacement/delete deferred commit failure and same-backend loss preserve the old URL/file/hash; successful commit cleans the old object; an old-cleanup fault cannot delete the new canonical object. |
+| Fault ownership `1777cfa` | Five photo cases reran with current-database/current-user/unique-application/exact-paused-backend guards. The retained five-case JUnit report predates the subsequent waiter correction. |
+| Waiter correction `7c4fd11` | Two connection-loss cases reran using the same fully owned paused predicate for both polling and atomic termination. This is two latest cases, not a relabeled five-case rerun. |
+| Staff documents `f643271` |153 supplies the exact configured login/password return allowlist; APIs/assets/XHR/captured intents/unrelated403 remain raw problems. Core hook and temporary-password/XHR gates passed focused RED-to-GREEN regressions. |
+| Public source links `af25ce7` | OBS source links consume verified public installation origin, preserving secure same-origin previews. Ten JavaScript test files passed in the integration worktree. |
+| Module routing `e4cd1a5` | Actual Caddy adaptation routes frozen Web `/staff-auth-v1.mjs` to Web and backend adapters/API to Backend; deliberate wrong-backend matcher mutations fail. No listener, certificate or live deployment was created. |
+
+Photo completion cleanup is best effort after the database result is committed.
+A cleanup failure retains an orphan and logs it; it does not pretend the database
+rolled back or remove the new canonical file. New staged uploads are deleted only
+on confirmed rollback. Unknown transaction outcomes retain files for reconciliation.
+Original facade transaction boundaries, propagation and authority fences are unchanged.
+
+The premerge engineering lease uses immutable9cc source/JAR and preserved installation,
+accounts, sports, uploads and sessions. A single pre-lease configuration-only restart
+aligned public/secure origin with the selected canonical Web front. The active lease
+forbids hot source/config/schema/process changes until Root explicit END. Later source
+fixes above are not silently applied to that leased target or claimed as its proof.
