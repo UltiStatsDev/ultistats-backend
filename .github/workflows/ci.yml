@@ -4,6 +4,17 @@ on:
   pull_request:
     branches:
       - master
+      - release
+      - candidate/stable-v0.1.0
+  push:
+    branches:
+      - release
+      - candidate/stable-v0.1.0
+      - hotfix/**
+      - agent/hotfix/**
+      # Bootstrap exact-head checks before the first candidate-target PR.
+      - agent/feature/160-stable-promotion
+    tags: ['v*']
 
 permissions:
   contents: read
@@ -16,10 +27,14 @@ jobs:
     steps:
       - name: Check branch name
         env:
-          BRANCH_NAME: ${{ github.head_ref }}
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
         run: |
           pattern='^((agent/)?(issue|feature|bugfix|chore|hotfix)/[0-9]+-|agent/(issue|feature|bugfix|chore|hotfix)-[0-9]+-)[a-z0-9]+(-[a-z0-9]+)*$'
-          if [[ "$BRANCH_NAME" =~ $pattern ]]; then
+          version='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          if [[ "$REF_TYPE" == tag && "$BRANCH_NAME" =~ $version ]]; then
+            echo "Stable version tag is valid: $BRANCH_NAME"
+          elif [[ "$BRANCH_NAME" == release || "$BRANCH_NAME" == candidate/stable-v0.1.0 || "$BRANCH_NAME" =~ $pattern ]]; then
             echo "Branch name is valid: $BRANCH_NAME"
           else
             echo "Invalid branch name: $BRANCH_NAME"
@@ -66,3 +81,16 @@ jobs:
           node-version: '22'
       - name: Test OBS feed, reconciliation and colors
         run: node --test src/test/js/*.test.mjs
+
+  stable-promotion:
+    name: Stable promotion guards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test immutable source refs and publication isolation
+        run: find deploy/stable -name '*.test.mjs' -type f -print0 | sort -z | xargs -0 node --test
