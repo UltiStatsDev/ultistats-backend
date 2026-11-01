@@ -50,7 +50,7 @@ with contextlib.ExitStack() as stack:
     root = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix='auth154-caddy-')))
     root.chmod(0o700)
     env = dict(os.environ, PUBLIC_HOST='127.0.0.1', STAFF_HOST='127.0.0.1',
-        CADDY_HTTP_PORT=str(ports['public']), CADDY_HTTPS_PORT=str(ports['tls']),
+        CADDY_BIND='127.0.0.1', CADDY_HTTP_PORT=str(ports['public']), CADDY_HTTPS_PORT=str(ports['tls']),
         ANONYMOUS_UPSTREAM=f"127.0.0.1:{ports['anonymous']}", PRIVATE_UPSTREAM=f"127.0.0.1:{ports['private']}",
         WEB_UPSTREAM=f'127.0.0.1:{servers[2].server_port}', XDG_DATA_HOME=str(root/'data'), XDG_CONFIG_HOME=str(root/'config'))
     log = stack.enter_context((root/'caddy.log').open('w'))
