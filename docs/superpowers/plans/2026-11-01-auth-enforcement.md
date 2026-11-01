@@ -172,3 +172,18 @@ separately.153 consumes these152changes and does not duplicate shared service ed
 Remaining: fixed CLI+final domain-advisor integration, actual ownHTTP/PG matrix and
 fingerprints, relevant full build, actual CI/independent review/checked merge,
 consumer availability callback and cleanup after END. Shared24QA remains NOT_RUN.
+
+### CORS rejection correction
+
+Actual154 HTTPS repro showed Spring's default CorsFilter emits plaintext403.
+153's AuthCorsProcessor retains DefaultCorsProcessor origin/preflight checks,
+replacing only rejection with shared AuthProblemWriter. Actual anonymous/private
+path denial keeps PUBLIC_TRANSPORT_READ_ONLY even with unapproved Origin;
+otherwise CORS denial is403CSRF_INVALID, requestRejectedBeforeExecution:true,
+no Set-Cookie or allow-origin grant. WebConfig provides the namedcorsFilter from
+MVCHandlerMappingIntrospector; servlet auto-registration disabled so Security owns
+one invocation. Web-only bean condition preserves the nonweb owner CLI.
+Observed production-chain regression RED (missing problem MIME)→GREEN; valid
+credentialed preflight still200 and bad-origin public/preflight/private-anonymous
+responses have exactcode/body/no-cookie oracle. Final focused141JVM GREEN and
+bootJar built. Actual154TLS affected-case rerun remains its owner gate.
