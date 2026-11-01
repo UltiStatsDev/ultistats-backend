@@ -10,6 +10,9 @@ group = "com.github.mihanizzm"
 version = "0.0.1-SNAPSHOT"
 description = "Web application for just-in-time statistics gathering in Ultimate Frisbee championships."
 
+extra["spring-security.version"] = "6.5.11"
+extra["spring-framework.version"] = "6.2.19"
+
 java {
 	toolchain {
 		languageVersion = JavaLanguageVersion.of(21)
@@ -30,6 +33,8 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-web")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+	implementation("org.springframework.boot:spring-boot-starter-security")
+	implementation("org.bouncycastle:bcprov-jdk18on:1.86")
 	implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.8")
@@ -40,6 +45,7 @@ dependencies {
 	compileOnly("org.projectlombok:lombok")
 	annotationProcessor("org.projectlombok:lombok")
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
+	testImplementation("org.springframework.security:spring-security-test")
 	testImplementation("com.networknt:json-schema-validator:1.5.9")
 	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
 	testRuntimeOnly("com.h2database:h2")
