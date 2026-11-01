@@ -39,7 +39,7 @@ class AuthSecurityConfig {
     @Bean fun authAccess(service:AuthService,runtime:AuthSecurityRuntime)=DefaultAuthRequestAccess(service,runtime.classifier)
     @Bean fun authCsrf(runtime:AuthSecurityRuntime)=AuthCsrfRepository(runtime.classifier)
     @Bean fun authLimiter(clock:Clock)=AuthRateLimiter(clock)
-    @Bean fun authProblems(mapper:ObjectMapper)=AuthProblemWriter(mapper)
+    @Bean fun authProblems(mapper:ObjectMapper,navigation:ObjectProvider<AuthHtmlEntryNavigation>)=AuthProblemWriter(mapper,navigation.ifAvailable)
     @Bean fun authDomainAdvisor(fence:AuthTransactionFence,access:DefaultAuthRequestAccess)=AuthDomainTransactionAdvisor(fence,access)
     // Disables Boot's generated default-user password without an HTTP login provider.
     @Bean fun authenticationManager()=AuthenticationManager { throw BadCredentialsException("Cookie authentication required") }
