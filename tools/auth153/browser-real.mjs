@@ -1,0 +1,60 @@
+// Real owned loopback API/PG only. Not native OBS or a network-TLS acceptance test.
+import {createRequire} from 'node:module';
+import {readFile,stat} from 'node:fs/promises';
+import {randomUUID} from 'node:crypto';
+import assert from 'node:assert/strict';
+const require=createRequire(import.meta.url);
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE??'/home/mihanizzm/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const origin=process.env.AUTH153_ORIGIN??'http://127.0.0.1:21153';
+assert.equal(new URL(origin).hostname,'127.0.0.1','Only owned loopback API');assert.equal(new URL(origin).port,'21153','Assigned worker153 API port required');
+const manifest=JSON.parse(await readFile(process.env.AUTH153_HTTP_RESULT??'/tmp/ultistats-auth153/http-matrix-f6ff091-second.json','utf8'));
+assert.equal(manifest.status,'PASS');const matchId=manifest.ownedFixtures.find(f=>f.type==='matches').id;
+const credentialFile=process.env.AUTH153_CREDENTIALS_FILE??'/tmp/ultistats-auth153/private/credentials.json';assert.equal((await stat(credentialFile)).mode&0o077,0);
+const credentials=JSON.parse(await readFile(credentialFile,'utf8'));
+const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+const errors=[];let createdTeam=null;
+try{
+ const staff=await browser.newContext();
+ const installation=await (await staff.request.get(origin+'/api/v1/installation')).json();
+ assert.equal(installation.entryMode,'LOOPBACK','This check uses explicit loopback, not insecure staff LAN');
+ const csrf=await (await staff.request.get(origin+'/api/v1/auth/csrf')).json();
+ const login=await staff.request.post(origin+'/api/v1/auth/login',{headers:{'X-CSRF-TOKEN':csrf.token,'X-UltiStats-Installation-Id':installation.installationId},data:credentials});
+ assert.equal(login.status(),200);const identity=await login.json();assert.equal(identity.state,'AUTHENTICATED');
+ const contextHeaders={'X-UltiStats-Installation-Id':identity.installationId,'X-UltiStats-Account-Id':identity.account.id,'X-UltiStats-Session-Id':identity.sessionId};
+ async function guarded(method,path,data){const token=await (await staff.request.get(origin+'/api/v1/auth/csrf',{headers:contextHeaders})).json();return staff.request.fetch(origin+path,{method,headers:{...contextHeaders,'X-CSRF-TOKEN':token.token},data});}
+ const initialConfig=await (await staff.request.get(origin+'/api/v1/obs/config')).json();
+ const initialProfile=await (await staff.request.get(origin+`/api/v1/obs/scoreboard/${matchId}`)).json();
+ const publicContext=await browser.newContext();const publicRequests=[];
+ publicContext.on('request',request=>publicRequests.push({url:request.url(),headers:request.headers()}));
+ const source=await publicContext.newPage();source.on('pageerror',error=>errors.push(error.message));
+ await source.goto(origin+`/obs-scoreboard.html?matchId=${matchId}`);await source.locator('.scoreboard-score').first().waitFor();
+ const page=await staff.newPage();page.setDefaultTimeout(8000);page.on('pageerror',error=>errors.push(error.message));await page.goto(origin+'/obs-admin.html');
+ await page.waitForFunction(()=>!document.getElementById('save').disabled);
+ const changed=initialConfig.maxRows===8?9:8;await page.locator('#maxRows').fill(String(changed));
+ const globalSaved=page.waitForResponse(response=>response.request().method()==='PUT'&&new URL(response.url()).pathname==='/api/v1/obs/config');
+ await page.locator('#save').click();assert.equal((await globalSaved).status(),200);
+ assert.equal((await (await staff.request.get(origin+'/api/v1/obs/config')).json()).maxRows,changed);
+ await page.locator('#match-id').fill(matchId);await page.locator('#open-match').click();
+ await page.frameLocator('#scoreboard-preview').locator('.scoreboard-score').first().waitFor();
+ const name=page.locator('[data-scoreboard-name]').first();await name.waitFor();await name.fill('AUTH153 ЭФИР');
+ const profileSaved=page.waitForResponse(response=>response.request().method()==='PUT'&&new URL(response.url()).pathname.endsWith('/profile'));
+ await page.locator('#scoreboard-save').click();assert.equal((await profileSaved).status(),200);
+ await source.waitForFunction(()=>document.querySelector('.scoreboard-name')?.textContent==='AUTH153 ЭФИР');
+ const docs=await staff.newPage();docs.setDefaultTimeout(8000);docs.on('pageerror',error=>errors.push(error.message));await docs.goto(origin+'/swagger-ui/index.html');
+ const operation=docs.locator('.opblock-post').filter({has:docs.getByText('/api/v1/teams',{exact:true})});await operation.waitFor();await operation.locator('.opblock-summary').click();await operation.getByRole('button',{name:'Try it out'}).click();
+ await operation.locator('textarea.body-param__text').fill(JSON.stringify({name:`auth153-browser-${randomUUID()}`}));
+ const responsePromise=docs.waitForResponse(response=>response.request().method()==='POST'&&new URL(response.url()).pathname==='/api/v1/teams');
+ await operation.getByRole('button',{name:'Execute',exact:true}).click();const created=await responsePromise;assert.equal(created.status(),201);createdTeam=(await created.json()).id;
+ assert.equal((await guarded('DELETE',`/api/v1/teams/${createdTeam}`)).status(),204);createdTeam=null;
+ assert.equal(publicRequests.some(r=>new URL(r.url).pathname.startsWith('/auth/')||new URL(r.url).pathname.startsWith('/api/v1/auth/')),false);
+ assert.equal(publicRequests.some(r=>r.headers.cookie||r.headers.authorization),false);
+ assert.deepEqual(errors,[]);
+ // Restore only owned presentation settings and prove cleanup before closing the staff session.
+ assert.equal((await guarded('PUT','/api/v1/obs/config',initialConfig)).status(),200);
+ assert.equal((await guarded('PUT',`/api/v1/obs/scoreboard/${matchId}/profile`,initialProfile.profile)).status(),200);
+ assert.deepEqual(await (await staff.request.get(origin+'/api/v1/obs/config')).json(),initialConfig);
+ assert.deepEqual((await (await staff.request.get(origin+`/api/v1/obs/scoreboard/${matchId}`)).json()).profile,initialProfile.profile);
+ assert.equal((await guarded('POST','/api/v1/auth/logout',{expectedSessionId:identity.sessionId})).status(),200);
+ await publicContext.close();await staff.close();
+ console.log(JSON.stringify({status:'PASS',scope:'actual Chromium and own real loopback API/PostgreSQL; not native OBS/TLS/shared QA',matchId,checks:['real CSRF/cookie context','OBS global save','same-origin protected preview','scoreboard save reaches public source','actual Swagger POST201 with captured headers','public source no staff credentials/auth imports','presentation restored and browser session logged out'],errors:0,createdTeamRetained:createdTeam}));
+}finally{await browser.close();}
