@@ -85,3 +85,7 @@ Produces classifier bean implementing the core interface; `GET /api/v1/installat
 ## Self-review and current gate
 
 Scope covers backend Task154 and relevant approved joint Task5. Security session/admin behavior belongs152, exhaustive permissions153, browser startup/old-profile checksWeb103. Candidate freeze and canonical152 accessor remain external prerequisites, not guessed product interfaces. No product tests have been executed; prepared QA matrix is NOT_RUN. Current plan is reviewable inventory and ordered test decisions; dependent Task1 code begins only after prerequisites are concrete.
+
+## Coordination acknowledgment
+
+151 callback confirms PR155 head `14e4f33e7c6d58a8715d6ef9aa936993885b43a2` does not edit `deploy/deploy.sh` or `deploy/tests/deploy_test.sh`;154 owns those changes. Preserve the full lowercase40SHA image/revision interface.151 review/CI/merge and frozen wire/core availability are not implied by this file-ownership acknowledgment.
