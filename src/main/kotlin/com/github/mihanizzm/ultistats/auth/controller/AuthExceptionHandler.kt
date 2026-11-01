@@ -9,10 +9,16 @@ import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import java.net.URI
 
-@RestControllerAdvice(basePackages=["com.github.mihanizzm.ultistats.auth"])
+@RestControllerAdvice
+@org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication(type=org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type.SERVLET)
 class AuthExceptionHandler(private val writer:AuthProblemWriter) {
     @ExceptionHandler(AuthProblem::class)
-    fun problem(problem:AuthProblem,request:HttpServletRequest,response:HttpServletResponse) = writer.write(request,response,problem,false)
+    fun problem(problem:AuthProblem,request:HttpServletRequest,response:HttpServletResponse) = writer.write(request,response,problem,problem.rejectedBeforeExecution)
+}
+
+@RestControllerAdvice(basePackages=["com.github.mihanizzm.ultistats.auth"])
+@org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication(type=org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type.SERVLET)
+class AuthValidationExceptionHandler {
     @ExceptionHandler(IllegalArgumentException::class)
     fun invalid(request:HttpServletRequest):ProblemDetail = ProblemDetail.forStatusAndDetail(org.springframework.http.HttpStatus.BAD_REQUEST,"Invalid auth request fields").apply {
         instance=URI.create(request.requestURI);setProperty("code","INVALID_REQUEST")

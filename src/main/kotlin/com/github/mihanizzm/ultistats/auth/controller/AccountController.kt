@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*
 import java.util.UUID
 
 @RestController
+@org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication(type=org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type.SERVLET)
 @RequestMapping("/api/v1/accounts")
 class AccountController(private val service:AuthService) {
     @GetMapping fun list(@RequestParam(defaultValue="0") page:Int,@RequestParam(defaultValue="20") size:Int,
