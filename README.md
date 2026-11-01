@@ -401,10 +401,12 @@ SHA ветки workflow не подменяет выбранный release SHA. 
 3. копирует на сервер только `deploy/compose.prod.yml` и `deploy/deploy.sh`;
 4. создаёт PostgreSQL dump и резервную копию загруженных файлов;
 5. до замены application-контейнера переносит старые файлы в новый persistent
-   volume, затем разворачивает SHA-tagged image и проверяет `/v3/api-docs` через
-   Caddy;
-6. при ошибке переноса сохраняет текущий контейнер, а при ошибке health check
-   возвращает предыдущий application image.
+   volume, затем разворачивает SHA-tagged image и проверяет минимальный `/health/ready`
+   через Caddy (только200 с `{"status":"UP"}`);
+6. при ошибке переноса сохраняет текущий контейнер, а при ошибке запуска/health
+   check останавливает candidate app и создаёт приватный `MAINTENANCE_REQUIRED`.
+   Предыдущий unauthenticated image автоматически не запускается. Пока marker
+   не разобран владельцем, повторный deploy отклоняется до Docker-операций.
 
 Перед резервным копированием скрипт требует минимум 1 GiB свободного места и
 хранит не более 10 комплектов `pre-*.dump` и соответствующих
@@ -512,7 +514,7 @@ ssh appuser@158.160.219.91
   <previous-40-character-sha>
 ```
 
-Скрипт перед rollback также создаёт свежий dump и проверяет API. Он пересоздаёт только контейнер приложения и не пересоздаёт PostgreSQL.
+Скрипт перед выбранной promotion создаёт свежий dump и проверяет readiness. Он не восстанавливает прежний image автоматически. При `MAINTENANCE_REQUIRED` владелец сохраняет failure backup, проверяет schema/артефакт/закрытие writes и выбирает совместимое восстановление; лишь после этого вручную снимает marker. PostgreSQL не пересоздаётся.
 
 Важно: rollback Docker image не отменяет уже применённую Flyway migration. Новые миграции должны быть обратно совместимы с предыдущей версией приложения. Восстановление БД из dump выполняется только вручную после остановки приложения, потому что это деструктивная операция.
 
@@ -687,3 +689,19 @@ node --test src/test/js/*.test.mjs
 ```
 
 Точность исходного времени событий, legacy fallback и совместимость V10 описаны в [event precision](docs/events-v2-precision.md).
+
+### Auth ingress и переход существующей установки
+
+Опциональная топология LAN guest HTTP/staff HTTPS и Internet одного TLS origin:
+[deploy/auth](deploy/auth/README.md). Private upstream только loopback в общем
+namespace Caddy/app, без опубликованных API/DB портов; origins задаются явно.
+Стандартный legacy workflow пока копирует только старый deployment layout:
+он не является автоматическим установщиком opt-in auth topology. До реальной
+доставки нужен проверенный matching deployment bundle, разрешённый owner scope
+и общий QA/PO; CD остаётся выключенным.
+
+[Auth upgrade](docs/deployment/auth-upgrade.md) описывает owner SYNC/preflight
+старых profiles, private backup/restore,247/V9→71/V10→auth/V11 и maintenance
+rollback. Known pending/uncertain означает DEFER. Старый unauth binary нельзя
+возвращать с открытыми writes; V10 original metadata добавляет отдельный
+no-write hold до возврата precision-aware writer.

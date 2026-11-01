@@ -54,6 +54,7 @@ elif [[ "$*" == *'exec -T postgres pg_dump'* ]]; then
 elif [[ "$1" == 'inspect' ]]; then
     cat "$FAKE_STATE"
 elif [[ "$*" == *'up -d --no-deps app'* ]]; then
+    [[ "$SCENARIO" == 'start-failure' ]] && exit 1
     printf '%s\n' "${APP_IMAGE:?}" > "$FAKE_STATE"
 elif [[ "$1" == 'exec' && "$2" == 'fake-old-app-container' ]]; then
     [[ "$SCENARIO" == 'probe-failure' ]] && exit 125
@@ -91,7 +92,11 @@ current_image="$(cat "$FAKE_STATE")"
 if [[ "$SCENARIO" == 'health-failure' && "$current_image" == ghcr.io/* ]]; then
     exit 22
 fi
-printf '{"openapi":"3.1.0"}'
+if [[ "$SCENARIO" == 'wrong-health-body' ]]; then
+    printf '{"openapi":"3.1.0"}'
+else
+    printf '{"status":"UP"}'
+fi
 FAKE_CURL
 
     cat > "$fixture/bin/flock" <<'FAKE_FLOCK'
@@ -122,6 +127,8 @@ run_success_test() {
         || fail 'success path did not create a non-empty backup'
     assert_contains "$fixture/root/.env" "APP_IMAGE=$image"
     assert_contains "$fixture/root/DEPLOYED_REVISION" "$revision"
+    assert_contains "$fixture/curl.log" '/health/ready'
+    ! grep -Fq '/v3/api-docs' "$fixture/curl.log" || fail 'readiness probes protected docs'
     assert_contains "$fixture/docker.log" "pull app APP_IMAGE=$image"
     assert_contains "$fixture/docker.log" 'run --rm --no-deps'
     assert_contains "$fixture/docker.log" "up -d --no-deps app APP_IMAGE=$image"
@@ -196,28 +203,45 @@ run_probe_failure_test() {
     rm -rf "$fixture"
 }
 
-run_rollback_test() {
-    make_fixture health-failure
+run_maintenance_failure_test() {
+    local scenario="$1"
+    make_fixture "$scenario"
     if "$deploy_script" "$image" "$revision"; then
-        fail 'deployment succeeded despite an unhealthy new image'
+        fail 'deployment succeeded despite an unhealthy or unrelated health response'
     fi
-
-    [[ "$(cat "$fixture/state")" == 'legacy-image:old' ]] \
-        || fail 'failed deployment did not restore the old image'
+    ! grep -Fq 'up -d --no-deps app APP_IMAGE=legacy-image:old' "$fixture/docker.log" \
+        || fail 'failed auth deployment reopened an unauthenticated old image'
+    assert_contains "$fixture/docker.log" 'stop app'
+    assert_contains "$fixture/root/MAINTENANCE_REQUIRED" "$revision"
     assert_contains "$fixture/persistent-uploads/legacy-photo.jpg" 'legacy-photo'
-    assert_contains "$fixture/docker.log" 'up -d --no-deps app APP_IMAGE=legacy-image:old'
     ! grep -Fq 'APP_IMAGE=' "$fixture/root/.env" \
-        || fail 'rollback changed the environment file'
+        || fail 'failed deployment changed the environment file'
     [[ ! -e "$fixture/root/DEPLOYED_REVISION" ]] \
         || fail 'failed deployment recorded a successful revision'
+    [[ -n "$(find "$fixture/root/backups" -name '*.dump' -size +0 -print -quit)" ]] \
+        || fail 'maintenance failure lost backup'
+    rm -rf "$fixture"
+}
+
+run_existing_maintenance_test() {
+    make_fixture success
+    printf 'owner-recovery-required\n' > "$fixture/root/MAINTENANCE_REQUIRED"
+    if "$deploy_script" "$image" "$revision"; then
+        fail 'deployment ignored an unresolved maintenance recovery'
+    fi
+    [[ ! -e "$fixture/docker.log" ]] || fail 'maintenance fence allowed Docker changes'
+    assert_contains "$fixture/root/MAINTENANCE_REQUIRED" 'owner-recovery-required'
     rm -rf "$fixture"
 }
 
 [[ -x "$deploy_script" ]] || fail "$deploy_script is not executable"
+run_existing_maintenance_test
 run_success_test
 run_existing_volume_test
 run_empty_backup_test
 run_restore_failure_test
 run_probe_failure_test
-run_rollback_test
+run_maintenance_failure_test start-failure
+run_maintenance_failure_test health-failure
+run_maintenance_failure_test wrong-health-body
 echo 'deploy script tests passed'
