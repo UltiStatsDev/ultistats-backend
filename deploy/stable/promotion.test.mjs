@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -59,4 +59,91 @@ test('invalid versions and option-like revisions fail closed', async t => {
     assert.throws(() => planTag(repo, tag, sha), /version|tag/i);
   }
   assert.throws(() => verifySource(repo, '--help'), /sha/i);
+});
+
+const BASE_WEB = '39fc3f4ef736a21c5aa5d75e51b5b559ff4d33ba';
+const BASE_BACKEND = '24704e11143a0bf919559a41324603f936ae03cf';
+function pair(t) {
+  const backend = fixture(t); const web = fixture(t);
+  mkdirSync(join(web.repo, 'dev/backend'), { recursive: true });
+  writeFileSync(join(web.repo, 'dev/backend/revision'), `${backend.sha}\n`);
+  web.git('add', '.'); web.git('commit', '-m', 'pin'); web.sha = web.git('rev-parse', 'HEAD');
+  const record = {
+    schemaVersion: 1, status: 'finalized', version: '0.1.0',
+    repositories: {
+      web: { repository: 'UltiStatsDev/ultistats-web-ui', commit: web.sha, tag: 'v0.1.0' },
+      backend: { repository: 'UltiStatsDev/ultistats-backend', commit: backend.sha, tag: 'v0.1.0' },
+    },
+    backendPin: backend.sha,
+    compatibility: { fromSchema: 9, toSchema: 9, appRollback: true, supportedSourcePairs: [{ web: BASE_WEB, backend: BASE_BACKEND }] },
+    prerequisites: { git: '>=2.39', node: '>=22', docker: '>=24', compose: '>=2.20' },
+    evidence: { qa: 'synthetic', po: 'synthetic' }, notes: 'Synthetic', update: './update.sh', rollback: 'Proven app rollback only',
+  };
+  return { backend, web, record, repos: { webRepo: web.repo, backendRepo: backend.repo } };
+}
+test('one-sided refs fail until both exact application tags exist', async t => {
+  const { backend, web, record, repos } = pair(t); const { verifyPairSources } = await api();
+  backend.git('tag', 'v0.1.0', backend.sha);
+  assert.throws(() => verifyPairSources(record, repos), /missing/i);
+  web.git('tag', 'v0.1.0', web.sha);
+  const before = [backend.git('show-ref'), web.git('show-ref')];
+  assert.equal(verifyPairSources(record, repos).version, '0.1.0');
+  assert.equal(verifyPairSources(record, repos).version, '0.1.0');
+  assert.deepEqual([backend.git('show-ref'), web.git('show-ref')], before);
+});
+test('producer rejects absent/draft descriptor and pin mismatch', async t => {
+  const { backend, record, repos } = pair(t); const { verifyBackend } = await api();
+  backend.git('tag', 'v0.1.0', backend.sha);
+  assert.throws(() => verifyBackend(null, repos), /record/i);
+  assert.throws(() => verifyBackend({ ...record, status: 'draft' }, repos), /finalized/i);
+  assert.throws(() => verifyBackend({ ...record, backendPin: BASE_BACKEND }, repos), /pin/i);
+  assert.throws(() => verifyBackend({ ...record, schemaVersion: 2 }, repos), /schema|version/i);
+});
+test('producer blocks unknown V9 sources and future schema/rollback declarations', async t => {
+  const { backend, record, repos } = pair(t); const { verifyBackend } = await api(); backend.git('tag', 'v0.1.0');
+  for (const compatibility of [
+    { ...record.compatibility, fromSchema: 10 }, { ...record.compatibility, toSchema: 10 },
+    { ...record.compatibility, appRollback: false }, { ...record.compatibility, supportedSourcePairs: [] },
+    { ...record.compatibility, supportedSourcePairs: [{ web: BASE_WEB, backend: backend.sha }] },
+  ]) assert.throws(() => verifyBackend({ ...record, compatibility }, repos), /compatibility|supported|proven/i);
+});
+test('pair verifies pin at application source even when metadata/main pin changes', async t => {
+  const { backend, web, record, repos } = pair(t); const { verifyPairSources } = await api();
+  backend.git('tag', 'v0.1.0'); web.git('tag', 'v0.1.0');
+  writeFileSync(join(web.repo, 'dev/backend/revision'), `${BASE_BACKEND}\n`); web.git('commit', '-am', 'moving main wrong pin');
+  assert.equal(verifyPairSources(record, repos).version, '0.1.0');
+  const bad = { ...record, repositories: { ...record.repositories, web: { ...record.repositories.web, commit: web.git('rev-parse', 'HEAD'), tag: 'v0.1.1' }, backend: { ...record.repositories.backend, tag: 'v0.1.1' } }, version: '0.1.1' };
+  web.git('tag', 'v0.1.1'); backend.git('tag', 'v0.1.1');
+  assert.throws(() => verifyPairSources(bad, repos), /pin/i);
+});
+test('canonical repository/tag fields cannot be substituted', async t => {
+  const { backend, record, repos } = pair(t); const { verifyBackend } = await api(); backend.git('tag', 'v0.1.0');
+  for (const entry of [{ ...record.repositories.backend, repository: 'other/backend' }, { ...record.repositories.backend, tag: 'v0.2.0' }]) {
+    assert.throws(() => verifyBackend({ ...record, repositories: { ...record.repositories, backend: entry } }, repos), /repository|tag/i);
+  }
+});
+
+test('CLI verifies explicit local pair and emits only sanitized failure', async t => {
+  const { backend, web, record, repos } = pair(t); const { runCli } = await api();
+  const recordPath = join(web.repo, 'record.json'); writeFileSync(recordPath, JSON.stringify(record));
+  const args = ['verify', '--record', recordPath, '--web-repo', repos.webRepo, '--backend-repo', repos.backendRepo];
+  const output = []; const emit = data => output.push(JSON.parse(data));
+  assert.equal(runCli(args, emit), 1); assert.equal(output[0].ok, false);
+  backend.git('tag', 'v0.1.0'); web.git('tag', 'v0.1.0');
+  assert.equal(runCli(args, emit), 0);
+  assert.deepEqual(output.at(-1), { ok: true, version: '0.1.0', backend: { commit: backend.sha, tag: 'v0.1.0' }, compatibility: record.compatibility });
+  writeFileSync(recordPath, 'private-invalid-json-token');
+  assert.equal(runCli(args, emit), 1);
+  assert.equal(JSON.stringify(output).includes('private-invalid-json-token'), false);
+  assert.equal(runCli([...args, '--force'], emit), 1);
+  assert.equal(runCli([...args, '--record', recordPath], emit), 1);
+});
+
+test('explicit repository identity is unaffected by ambient Git directory overrides', async t => {
+  const actual = fixture(t); const other = fixture(t); const { readExactTag } = await api();
+  actual.git('tag', 'v0.1.0');
+  const prior = process.env.GIT_DIR;
+  process.env.GIT_DIR = join(other.repo, '.git');
+  try { assert.equal(readExactTag(actual.repo, 'v0.1.0', actual.sha), actual.sha); }
+  finally { if (prior === undefined) delete process.env.GIT_DIR; else process.env.GIT_DIR = prior; }
 });
