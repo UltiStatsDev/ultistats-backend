@@ -202,3 +202,20 @@ Observed3RED of4 tests before implementation; final5navigation+core-hook/role/CO
 regressions GREEN /tmp/ultistats-auth153-html-final.log. Actual core-chain tests
 exercise no-cookie/stale-cookie/temp documents, APIs/assets and public transport.
 Full browser return after frontend login remains Web101/canonical-gateway gate.
+
+### OBS public source links on split LAN origins
+
+Published Browser Source links now come from GETinstallation.publicOrigin,
+credentials:omit/cache:no-store, after verifying captured installation UUID and
+contract1.0.0. Only existing source pages and matchId enter URL; no staff-origin
+fallback after mismatch/offline/bad origin. Existing secure preview paths and
+postMessage origin checks remain unchanged. Copy controls stay disabled with an
+explicit unavailable/retry message until verified links exist. Current-source
+setter ignores stale match selection. Public sources never import this helper.
+
+9source-helper tests REDmissingimplementation→GREEN; its new staff asset
+GET/HEAD failed default-deny policy until explicit OBS_ADMIN rule added, then
+policy/mapping/HTML regressionGREEN. Combined64Node testsGREEN. Actual Chromium
+component confirms both links use configured HTTPpublicOrigin while both previews
+stay same-origin, save/header/draft/Swagger/public-source regressions stillPASS.
+No additional backend stack; native OBS/TLS remains combinedQA/154 evidence.

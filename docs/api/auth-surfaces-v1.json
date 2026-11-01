@@ -578,6 +578,10 @@
       "policy": "OBS_ADMIN"
     },
     {
+      "path": "/auth/public-sources.mjs",
+      "policy": "OBS_ADMIN"
+    },
+    {
       "path": "/auth/staff-session.mjs",
       "policy": "OBS_ADMIN"
     },

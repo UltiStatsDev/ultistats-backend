@@ -27,6 +27,7 @@ const server=createServer(async(request,response)=>{
    if(url.pathname.endsWith('/profile')){profile=JSON.parse(body);return json(profile);}
    return json({saved:true});
   }
+  if(url.pathname==='/api/v1/installation')return json({contractVersion:'1.0.0',installationId:id,entryMode:'SECURE',publicOrigin:'http://public-source.example:8080',secureOrigin:origin});
   if(url.pathname==='/api/v1/auth/session')return json(context);
   if(url.pathname==='/api/v1/auth/csrf')return json({headerName:'X-CSRF-TOKEN',token:'component-masked-token'});
   if(url.pathname==='/api/v1/obs/stream'){
@@ -60,6 +61,11 @@ try{
  await page.locator('#maxRows').fill('7');await page.locator('#save').click();await page.getByText('Сохранено для всех OBS-источников.',{exact:true}).waitFor();
  assert.equal(writes.length,1);assert.equal(JSON.parse(writes[0].body).maxRows,7);
  await page.locator('#match-id').fill(id);await page.locator('#open-match').click();
+ await page.waitForFunction(()=>document.getElementById('obs-url').value.startsWith('http://public-source.example:8080/'));
+ assert.equal(new URL(await page.locator('#obs-url').inputValue()).origin,'http://public-source.example:8080');
+ assert.equal(new URL(await page.locator('#scoreboard-url').inputValue()).origin,'http://public-source.example:8080');
+ assert.equal(new URL(await page.locator('#preview').getAttribute('src'),origin).origin,origin);
+ assert.equal(new URL(await page.locator('#scoreboard-preview').getAttribute('src'),origin).origin,origin);
  const name=page.locator('[data-scoreboard-name]').first();await name.waitFor();await name.fill('Draft');
  await page.locator('#scoreboard-save').click();await page.getByText('Профиль сохранён для всех источников этого матча.',{exact:true}).waitFor();
  assert.equal(writes.length,2);assert.equal(JSON.parse(writes[1].body).shortNames[teamIds[0]],'Draft');
@@ -80,5 +86,5 @@ try{
  assert.equal(requests.some(request=>request.path.startsWith('/api/v1/auth/')||request.path.startsWith('/auth/')),false,'Public source must not import staff adapter or fetch auth context');
  assert.equal(requests.some(request=>request.headers.cookie||request.headers.authorization),false,'Fresh public source has no staff credential');
  assert.deepEqual(errors,[]);await native.close();
- console.log(JSON.stringify({status:'PASS',scope:'Chromium component with synthetic HTTP responses; no real backend authorization/PG/native OBS claim',checks:['global save captured headers','scoreboard save captured headers','changed owner stops save and preserves draft','actual Swagger5.21 try-it-out interceptor','fresh public source without staff imports/auth requests/credentials'],writes:writes.length,errors:0}));
+ console.log(JSON.stringify({status:'PASS',scope:'Chromium component with synthetic HTTP responses; no real backend authorization/PG/native OBS claim',checks:['global save captured headers','scoreboard save captured headers','changed owner stops save and preserves draft','actual Swagger5.21 try-it-out interceptor','configured public source URLs with secure same-origin previews','fresh public source without staff imports/auth requests/credentials'],writes:writes.length,errors:0}));
 }finally{await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
