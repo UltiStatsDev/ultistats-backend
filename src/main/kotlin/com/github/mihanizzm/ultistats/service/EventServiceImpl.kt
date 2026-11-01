@@ -213,7 +213,7 @@ class EventServiceImpl(
         lifecyclePolicy.validateEventUpdate(match).toCommandRejection()?.let { return it }
 
         require(event.type.canReplace(existing.eventType)) { "Event type can only be refined within the block family" }
-        require(event.occurredAt == existing.occurredAt) { "Event occurrence time is immutable" }
+        require(event.occurredAt == existing.effectiveOccurredAt) { "Event occurrence time is immutable" }
         val activeEvents = eventRepository.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(matchId)
         val proposedEvents = activeEvents.map { entity ->
             if (entity.id == eventId) event else entity.toDomain()

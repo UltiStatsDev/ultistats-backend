@@ -32,7 +32,7 @@ import kotlin.test.assertEquals
 @SpringBootTest
 @AutoConfigureMockMvc
 @RecordApplicationEvents
-class EventBatchControllerTest {
+open class EventBatchControllerTest {
     @Autowired lateinit var mvc: MockMvc
     @Autowired lateinit var mapper: ObjectMapper
     @MockitoSpyBean lateinit var matches: MatchService
@@ -109,6 +109,73 @@ class EventBatchControllerTest {
         mvc.perform(post(uri).contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(pull)))
             .andExpect(status().isOk).andExpect(content().json(created))
         assertEquals(1, snapshot()["logRevision"].asInt())
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(longs = [123456123, 123456500, 123456789, 999999789])
+    fun `equal original nanoseconds work across committed batches without accepting earlier time`(nanos: Long) {
+        val original = at.plusNanos(nanos)
+        val pull = event("PULL", time = original)
+        val first = send(batch(listOf(pull)))
+        assertEquals(original.toString(), first["events"][0]["occurredAt"].asText())
+        val earlier = send(batch(listOf(event("PICKUP", time = original.minusNanos(1))), 1, 1), 409)
+        assertEquals("EVENT_OUT_OF_ORDER", earlier["code"].asText())
+        val pickup = event("PICKUP", time = original)
+        val second = send(batch(listOf(pickup), 1, 1))
+        assertEquals(original.toString(), second["events"][0]["occurredAt"].asText())
+        val log = snapshot()
+        assertEquals(listOf(1, 2), log["events"].map { it["sequenceNumber"].asInt() })
+        assertEquals(listOf(original.toString(), original.toString()), log["events"].map { it["occurredAt"].asText() })
+        assertEquals(first["events"], send(batch(listOf(pull)), 200)["events"])
+    }
+
+    @Test
+    fun `v1 and v2 share exact nanosecond ordering across requests`() {
+        val original = at.plusNanos(123456123)
+        val pull = event("PULL", time = original)
+        mvc.perform(post("/api/v1/matches/${match.id}/events").contentType(MediaType.APPLICATION_JSON)
+            .content(mapper.writeValueAsBytes(pull))).andExpect(status().isCreated)
+        val earlier = send(batch(listOf(event("PICKUP", time = original.minusNanos(1))), 1, 1), 409)
+        assertEquals("EVENT_OUT_OF_ORDER", earlier["code"].asText())
+        send(batch(listOf(event("PICKUP", time = original.plusNanos(1))), 1, 1))
+        assertEquals(original.plusNanos(1).toString(), snapshot()["events"][1]["occurredAt"].asText())
+    }
+
+    @Test
+    fun `patch preserves original time and invalidates retry while equal append still works`() {
+        val original = at.plusNanos(999999789)
+        val pull = event("PULL", time = original)
+        val body = batch(listOf(pull))
+        send(body)
+        fun patchParticipant(id: UUID) {
+            mvc.perform(patch("/api/v1/matches/${match.id}/events/${pull["eventId"]}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(mapOf("type" to "PULL", "participantId" to id))))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.occurredAt").value(original.toString()))
+        }
+        patchParticipant(participant) // no-op PATCH still invalidates immutable retry binding
+        send(body, 409)
+        val teammate = matches.getOrThrow(match.id).participantsByTeam.values.first()[1].participantId
+        patchParticipant(teammate)
+        assertEquals(original.toString(), snapshot()["events"][0]["occurredAt"].asText())
+        send(batch(listOf(event("PICKUP", time = original)), 1, 3))
+        assertEquals(4, snapshot()["logRevision"].asInt())
+    }
+
+    @Test
+    fun `finish uses original event time and rejects one nanosecond earlier`() {
+        val original = at.plusNanos(123456123)
+        val teammate = matches.getOrThrow(match.id).participantsByTeam.values.first()[1].participantId
+        val goal = mapOf("eventId" to UUID.randomUUID(), "type" to "GOAL", "occurredAt" to original.toString(),
+            "fromParticipantId" to participant, "toParticipantId" to teammate)
+        send(batch(listOf(event("PULL", time = original), event("PICKUP", time = original), goal)))
+        fun finish(time: Instant) = mvc.perform(post("/api/v1/matches/${match.id}/end")
+            .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(mapOf("timestamp" to time.toString()))))
+        finish(original.minusNanos(1)).andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code").value("END_BEFORE_LAST_EVENT"))
+        finish(original).andExpect(status().isOk)
+        assertEquals(original.toString(), snapshot()["events"].last()["occurredAt"].asText())
     }
 
     @Test

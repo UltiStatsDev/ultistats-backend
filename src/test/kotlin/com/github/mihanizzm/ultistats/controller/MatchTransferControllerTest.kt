@@ -59,6 +59,19 @@ class MatchTransferControllerTest {
     }
 
     @Test
+    fun `portable round trip retains original nanoseconds after database reload`() {
+        fixtures.start(match.id, start)
+        fixtures.addEvent(OnePlayerEvent(passer.id, Instant.parse("2026-10-01T10:00:01.123456789Z"), EventType.PULL), match.id)
+        val source = export(match.id)
+        assertThat(source["matches"][0]["events"][0]["occurredAt"].asText())
+            .isEqualTo("2026-10-01T10:00:01.123456789Z")
+        val result = import(source)
+        val copyId = UUID.fromString(result["matchIds"][match.id.toString()].asText())
+        assertThat(export(copyId)["matches"][0]["events"][0]["occurredAt"].asText())
+            .isEqualTo("2026-10-01T10:00:01.123456789Z")
+    }
+
+    @Test
     fun `round trip preserves finished history and statistics with fresh identities`() {
         finish(match.id)
         fixtures.saveTeam(home.copy(name = "Current name"))

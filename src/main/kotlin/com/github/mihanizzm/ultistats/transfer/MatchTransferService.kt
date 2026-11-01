@@ -37,7 +37,7 @@ class MatchTransferService(
                         })
                 },
                 events.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(id).map {
-                    PortableEvent(it.id, it.sequenceNumber, it.eventType, it.occurredAt, it.fromParticipantId, it.toParticipantId, it.teamId)
+                    PortableEvent(it.id, it.sequenceNumber, it.eventType, it.effectiveOccurredAt, it.fromParticipantId, it.toParticipantId, it.teamId)
                 },
             )
         }

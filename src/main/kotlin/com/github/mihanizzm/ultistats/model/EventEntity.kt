@@ -53,23 +53,39 @@ data class EventEntity(
 
     @Column(name = "creation_fingerprint", length = 64)
     val creationFingerprint: String? = null,
+
+    // Null for pre-V10 rows and inserts made by an older binary. Never backfill lost nanos.
+    @Column(name = "original_occurred_at", length = 40)
+    val originalOccurredAt: String? = occurredAt.toString(),
 ) {
+    /** Trust precision metadata only while it agrees with the physical timestamp.
+     * Older binaries keep occurrence time immutable on PATCH. An out-of-band timestamp
+     * replacement invalidates the metadata whenever its stored value changes.
+     */
+    val effectiveOccurredAt: Instant
+        get() {
+            val original = originalOccurredAt?.let { runCatching { Instant.parse(it) }.getOrNull() }
+                ?: return occurredAt
+            val rounded = Instant.ofEpochSecond(original.epochSecond, ((original.nano + 500L) / 1000) * 1000)
+            return if (occurredAt == original || occurredAt == rounded) original else occurredAt
+        }
+
     fun toDomain(): Event = when (eventType.category) {
         com.github.mihanizzm.ultistats.model.events.EventCategory.ONE_PLAYER -> {
-            OnePlayerEvent(requireNotNull(fromParticipantId), occurredAt, eventType)
+            OnePlayerEvent(requireNotNull(fromParticipantId), effectiveOccurredAt, eventType)
         }
         com.github.mihanizzm.ultistats.model.events.EventCategory.TWO_PLAYER -> {
             TwoPlayerEvent(
                 requireNotNull(fromParticipantId),
                 requireNotNull(toParticipantId),
-                occurredAt,
+                effectiveOccurredAt,
                 eventType,
             )
         }
         com.github.mihanizzm.ultistats.model.events.EventCategory.TEAM ->
-            TeamEvent(requireNotNull(teamId), occurredAt, eventType)
+            TeamEvent(requireNotNull(teamId), effectiveOccurredAt, eventType)
         com.github.mihanizzm.ultistats.model.events.EventCategory.SYSTEM ->
-            SystemEvent(occurredAt, eventType)
+            SystemEvent(effectiveOccurredAt, eventType)
     }
 
     companion object {

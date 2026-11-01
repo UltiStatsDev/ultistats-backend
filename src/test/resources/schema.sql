@@ -97,6 +97,7 @@ CREATE TABLE events (
     team_id UUID,
     deleted_at TIMESTAMP WITH TIME ZONE,
     creation_fingerprint VARCHAR(64),
+    original_occurred_at VARCHAR(40),
     UNIQUE (match_id, sequence_number),
     FOREIGN KEY (match_id, from_participant_id) REFERENCES match_participants(match_id, participant_id),
     FOREIGN KEY (match_id, to_participant_id) REFERENCES match_participants(match_id, participant_id),
