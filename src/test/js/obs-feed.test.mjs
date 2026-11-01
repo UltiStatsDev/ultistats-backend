@@ -33,7 +33,8 @@ test('all event directions and participant labels including unknown and zero num
  {teamId:'t2',participants:[{participantId:'b',kind:'PLAYER',number:44,lastName:'Братчиков',firstName:'Денис'}]}]};
  assert.equal(resolveRow(event(1),match).left.label,'22 Сартаков М.');
  for (const type of ['BLOCK','BLOCK_MARKER','BLOCK_FIELD','INTERCEPTION','CALLAHAN']) {
-   const row=resolveRow(event(1,type),match); assert.equal(row.left.label,'44 Братчиков Д.'); assert.equal(row.right.teamId,'t1');
+   const row=resolveRow(event(1,type),match); assert.deepEqual(row.left,{label:'22 Сартаков М.',teamId:'t1'});
+   assert.deepEqual(row.right,{label:'44 Братчиков Д.',teamId:'t2'});
  }
  assert.equal(resolveRow(event(1,'PASS'),match),null);
  match.teams[0].participants[0]={participantId:'a',kind:'UNKNOWN'};
@@ -51,3 +52,19 @@ test('configured small bounds, canonical unsorted batch and category filtering',
  assert.equal(f.rows().length,1);
  now=9000;assert.equal(f.rows().length,0);
 });
+
+for (const type of ['GOAL','BLOCK','BLOCK_MARKER','BLOCK_FIELD','INTERCEPTION','CALLAHAN']) {
+ test(`${type} keeps zero numbers, UNKNOWN team identity and missing fallback on the correct side`,()=>{
+  const match={teams:[
+   {teamId:'attack',participants:[{participantId:'a',kind:'PLAYER',number:0,lastName:'Атакующий',firstName:'Алексей'}]},
+   {teamId:'defense',participants:[{participantId:'b',kind:'UNKNOWN'}]}
+  ]};
+  const row=resolveRow(event(1,type),match);
+  assert.deepEqual(row.left,{label:'0 Атакующий А.',teamId:'attack'});
+  assert.deepEqual(row.right,{label:'Неизвестный игрок',teamId:'defense'});
+  assert.deepEqual(resolveRow({...event(1,type),fromParticipantId:'missing'},match).left,
+   {label:'Неизвестный игрок',teamId:undefined});
+  assert.deepEqual(resolveRow({...event(1,type),toParticipantId:'missing'},match).right,
+   {label:'Неизвестный игрок',teamId:undefined});
+ });
+}
