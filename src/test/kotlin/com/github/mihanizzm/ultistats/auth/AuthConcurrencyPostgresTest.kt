@@ -73,7 +73,7 @@ class AuthConcurrencyPostgresTest {
         login=auth.login("owner152",password,null)
         client=HttpClient.newBuilder().cookieHandler(CookieManager()).build()
         val manager=client.cookieHandler().get() as CookieManager
-        manager.cookieStore.add(URI("http://127.0.0.1:$port"),java.net.HttpCookie("ULTISTATS_LOOPBACK_SESSION",login.credential).apply { path="/" })
+        manager.cookieStore.add(URI("http://127.0.0.1:$port"),java.net.HttpCookie("ULTISTATS_LOOPBACK_SESSION",login.credential).apply { path="/";domain="127.0.0.1";version=0 })
         val csrf=client.send(HttpRequest.newBuilder(uri("/api/v1/auth/csrf")).GET().build(),HttpResponse.BodyHandlers.ofString())
         assertEquals(200,csrf.statusCode())
         token=mapper.readTree(csrf.body())["token"].asText()
@@ -97,6 +97,16 @@ class AuthConcurrencyPostgresTest {
         assertEquals(403,response.statusCode())
         assertEquals("CSRF_INVALID",mapper.readTree(response.body())["code"]?.asText())
         assertTrue(mapper.readTree(response.body())["requestRejectedBeforeExecution"].asBoolean())
+        assertTrue(response.headers().allValues("Set-Cookie").isEmpty())
+    }
+
+    @Test fun `configured credential-free browser preflight remains allowed`() {
+        val response=HttpClient.newHttpClient().send(HttpRequest.newBuilder(uri("/api/v1/teams"))
+            .header("Origin","http://localhost:21152").header("Access-Control-Request-Method","POST")
+            .header("Access-Control-Request-Headers","content-type,x-csrf-token,x-ultistats-installation-id,x-ultistats-account-id,x-ultistats-session-id")
+            .method("OPTIONS",HttpRequest.BodyPublishers.noBody()).build(),HttpResponse.BodyHandlers.ofString())
+        assertEquals(200,response.statusCode())
+        assertEquals("http://localhost:21152",response.headers().firstValue("Access-Control-Allow-Origin").orElse(null))
         assertTrue(response.headers().allValues("Set-Cookie").isEmpty())
     }
 

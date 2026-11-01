@@ -14,7 +14,7 @@ import jakarta.servlet.http.Cookie
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Configuration
+import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.mock.web.MockServletContext
 import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity
 import org.springframework.test.web.servlet.MockMvc
@@ -37,10 +37,11 @@ class AuthSurfaceMatrixTest {
         val calls = AtomicInteger()
         @RequestMapping("/**") fun reached() = mapOf("reached" to calls.incrementAndGet())
     }
-    @Configuration @EnableWebMvc class Config {
+    @TestConfiguration @EnableWebMvc class Config {
         @Bean fun fixture() = AuthTestFixture()
         @Bean fun service(f: AuthTestFixture) = f.service
         @Bean fun store(f: AuthTestFixture) = f.store
+        @Bean fun fence(f: AuthTestFixture) = com.github.mihanizzm.ultistats.auth.repository.AuthTransactionFence(f.jdbc)
         @Bean fun clock(f: AuthTestFixture): java.time.Clock = f.clock
         @Bean fun mapper(): ObjectMapper = jacksonObjectMapper().findAndRegisterModules()
         @Bean fun mode() = Mode()

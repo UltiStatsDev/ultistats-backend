@@ -22,6 +22,8 @@ class AuthMappingInventoryTest {
         }
         GenericWebApplicationContext().use { context ->
             context.servletContext = MockServletContext()
+            scanner.resourceLoader = context
+            scanner.environment = context.environment
             scanner.findCandidateComponents("com.github.mihanizzm.ultistats").forEach { bean ->
                 val type = Class.forName(bean.beanClassName)
                 if (type.protectionDomain.codeSource.location != AuthSurfacePolicyImpl::class.java.protectionDomain.codeSource.location) return@forEach
