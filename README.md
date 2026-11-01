@@ -648,3 +648,5 @@ SSE-потоки process-local, без durable replay: для нескольки
 ```bash
 node --test src/test/js/*.test.mjs
 ```
+
+Точность исходного времени событий, legacy fallback и совместимость V10 описаны в [event precision](docs/events-v2-precision.md).

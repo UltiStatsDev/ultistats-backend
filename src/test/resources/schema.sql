@@ -97,6 +97,7 @@ CREATE TABLE events (
     team_id UUID,
     deleted_at TIMESTAMP WITH TIME ZONE,
     creation_fingerprint VARCHAR(64),
+    original_occurred_at VARCHAR(40),
     UNIQUE (match_id, sequence_number),
     FOREIGN KEY (match_id, from_participant_id) REFERENCES match_participants(match_id, participant_id),
     FOREIGN KEY (match_id, to_participant_id) REFERENCES match_participants(match_id, participant_id),
@@ -105,6 +106,11 @@ CREATE TABLE events (
 );
 
 CREATE INDEX idx_matches_started_at ON matches(started_at);
+
+ALTER TABLE matches ADD COLUMN original_started_at_second BIGINT;
+ALTER TABLE matches ADD COLUMN original_started_at_nano INTEGER;
+ALTER TABLE matches ADD COLUMN original_ended_at_second BIGINT;
+ALTER TABLE matches ADD COLUMN original_ended_at_nano INTEGER;
 
 ALTER TABLE matches ADD COLUMN event_log_revision BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE matches ADD COLUMN last_event_log_invalidation_revision BIGINT NOT NULL DEFAULT 0;

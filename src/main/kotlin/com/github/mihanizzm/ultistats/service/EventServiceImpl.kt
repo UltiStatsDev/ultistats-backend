@@ -179,7 +179,9 @@ class EventServiceImpl(
         val entities = pending.mapIndexed { index, command ->
             EventEntity.fromDomain(command.id, match.id, last + index + 1, command.event, command.event.creationFingerprint())
         }
-        entities.forEach { entity ->
+        // Sequence numbers and validation follow request order. Acquire global UUID
+        // uniqueness in one order across matches to avoid opposite-key deadlock cycles.
+        entities.sortedBy { it.id }.forEach { entity ->
             try {
                 eventRepository.insert(entity)
             } catch (exception: DataIntegrityViolationException) {
@@ -213,7 +215,7 @@ class EventServiceImpl(
         lifecyclePolicy.validateEventUpdate(match).toCommandRejection()?.let { return it }
 
         require(event.type.canReplace(existing.eventType)) { "Event type can only be refined within the block family" }
-        require(event.occurredAt == existing.occurredAt) { "Event occurrence time is immutable" }
+        require(event.occurredAt == existing.effectiveOccurredAt) { "Event occurrence time is immutable" }
         val activeEvents = eventRepository.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(matchId)
         val proposedEvents = activeEvents.map { entity ->
             if (entity.id == eventId) event else entity.toDomain()
@@ -347,8 +349,8 @@ class EventServiceImpl(
         teamIds = emptyList(),
         events = activeEvents.map { it.toDomain() }.toMutableList(),
         plannedStartTimestamp = plannedStartTimestamp,
-        startedAt = startedAt,
-        endedAt = endedAt,
+        startedAt = effectiveStartedAt,
+        endedAt = effectiveEndedAt,
         deletedAt = deletedAt,
     )
 

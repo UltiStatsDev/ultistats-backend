@@ -38,8 +38,8 @@ data class MatchResponse(
             eventCount = match.eventCount,
             playersPerTeam = match.playersPerTeam,
             plannedStartTimestamp = match.plannedStartTimestamp,
-            startedAt = match.startedAt,
-            endedAt = match.endedAt,
+            startedAt = match.effectiveStartedAt,
+            endedAt = match.effectiveEndedAt,
             status = match.status,
         )
     }

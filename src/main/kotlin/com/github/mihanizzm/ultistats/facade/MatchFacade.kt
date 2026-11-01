@@ -34,8 +34,8 @@ class MatchFacade(
 
         val SORT_FIELD_EXTRACTORS: Map<String, (Match) -> Comparable<*>?> = mapOf(
             "plannedStartTimestamp" to { it.plannedStartTimestamp },
-            "startedAt" to { it.startedAt },
-            "endedAt" to { it.endedAt },
+            "startedAt" to { it.effectiveStartedAt },
+            "endedAt" to { it.effectiveEndedAt },
             "status" to { it.status.name },
         )
     }

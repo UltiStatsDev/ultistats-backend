@@ -32,13 +32,27 @@ class ListQueryRepository(private val em: EntityManager) {
 
     fun matches(filter: MatchFilterRequest, request: ListPageRequest): ListPage<Match> =
         page(Match::class.java, "matches", matchFilter(filter), request, mapOf(
-            "plannedStartTimestamp" to "e.planned_start_timestamp", "startedAt" to "e.started_at",
-            "endedAt" to "e.ended_at", "status" to statusExpression,
+            "plannedStartTimestamp" to "e.planned_start_timestamp", "startedAt" to preciseTimeOrder("started_at"),
+            "endedAt" to preciseTimeOrder("ended_at"), "status" to statusExpression,
         ))
 
     fun countPlayers(filter: PlayerFilterRequest): Long = count("players", playerFilter(filter))
     fun countTeams(filter: TeamFilterRequest): Long = count("teams", teamFilter(filter))
     fun countMatches(filter: MatchFilterRequest): Long = count("matches", matchFilter(filter))
+
+    /** Exact numeric epoch, guarded like Match.effectiveStartedAt/effectiveEndedAt.
+     * Fraction rounding is non-negative even before epoch; no floating point or
+     * whole signed-epoch rounding. Legacy/incomplete/stale metadata uses storage time.
+     */
+    private fun preciseTimeOrder(column: String): String {
+        val seconds = "e.original_${column}_second"
+        val nanos = "e.original_${column}_nano"
+        val stored = "EXTRACT(EPOCH FROM e.$column)"
+        val fraction = "($nanos / 1000000000.0)"
+        return "CASE WHEN $seconds IS NOT NULL AND $nanos BETWEEN 0 AND 999999999 " +
+            "AND $stored = $seconds + ROUND($fraction, 6) " +
+            "THEN $seconds + $fraction ELSE $stored END"
+    }
 
     private class Filter {
         val clauses = mutableListOf("e.deleted_at IS NULL")

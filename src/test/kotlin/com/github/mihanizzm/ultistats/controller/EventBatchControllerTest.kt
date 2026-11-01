@@ -32,7 +32,7 @@ import kotlin.test.assertEquals
 @SpringBootTest
 @AutoConfigureMockMvc
 @RecordApplicationEvents
-class EventBatchControllerTest {
+open class EventBatchControllerTest {
     @Autowired lateinit var mvc: MockMvc
     @Autowired lateinit var mapper: ObjectMapper
     @MockitoSpyBean lateinit var matches: MatchService
@@ -109,6 +109,157 @@ class EventBatchControllerTest {
         mvc.perform(post(uri).contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(pull)))
             .andExpect(status().isOk).andExpect(content().json(created))
         assertEquals(1, snapshot()["logRevision"].asInt())
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(longs = [123456123, 123456500, 123456789, 999999789])
+    fun `equal original nanoseconds work across committed batches without accepting earlier time`(nanos: Long) {
+        val original = at.plusNanos(nanos)
+        val pull = event("PULL", time = original)
+        val first = send(batch(listOf(pull)))
+        assertEquals(original.toString(), first["events"][0]["occurredAt"].asText())
+        val earlier = send(batch(listOf(event("PICKUP", time = original.minusNanos(1))), 1, 1), 409)
+        assertEquals("EVENT_OUT_OF_ORDER", earlier["code"].asText())
+        val pickup = event("PICKUP", time = original)
+        val second = send(batch(listOf(pickup), 1, 1))
+        assertEquals(original.toString(), second["events"][0]["occurredAt"].asText())
+        val log = snapshot()
+        assertEquals(listOf(1, 2), log["events"].map { it["sequenceNumber"].asInt() })
+        assertEquals(listOf(original.toString(), original.toString()), log["events"].map { it["occurredAt"].asText() })
+        assertEquals(first["events"], send(batch(listOf(pull)), 200)["events"])
+    }
+
+    @Test
+    fun `v1 and v2 share exact nanosecond ordering across requests`() {
+        val original = at.plusNanos(123456123)
+        val pull = event("PULL", time = original)
+        mvc.perform(post("/api/v1/matches/${match.id}/events").contentType(MediaType.APPLICATION_JSON)
+            .content(mapper.writeValueAsBytes(pull))).andExpect(status().isCreated)
+        val earlier = send(batch(listOf(event("PICKUP", time = original.minusNanos(1))), 1, 1), 409)
+        assertEquals("EVENT_OUT_OF_ORDER", earlier["code"].asText())
+        send(batch(listOf(event("PICKUP", time = original.plusNanos(1))), 1, 1))
+        assertEquals(original.plusNanos(1).toString(), snapshot()["events"][1]["occurredAt"].asText())
+    }
+
+    @Test
+    fun `patch preserves original time and invalidates retry while equal append still works`() {
+        val original = at.plusNanos(999999789)
+        val pull = event("PULL", time = original)
+        val body = batch(listOf(pull))
+        send(body)
+        fun patchParticipant(id: UUID) {
+            mvc.perform(patch("/api/v1/matches/${match.id}/events/${pull["eventId"]}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(mapOf("type" to "PULL", "participantId" to id))))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.occurredAt").value(original.toString()))
+        }
+        patchParticipant(participant) // no-op PATCH still invalidates immutable retry binding
+        send(body, 409)
+        val teammate = matches.getOrThrow(match.id).participantsByTeam.values.first()[1].participantId
+        patchParticipant(teammate)
+        assertEquals(original.toString(), snapshot()["events"][0]["occurredAt"].asText())
+        send(batch(listOf(event("PICKUP", time = original)), 1, 3))
+        assertEquals(4, snapshot()["logRevision"].asInt())
+    }
+
+    @Test
+    fun `finish uses original event time and rejects one nanosecond earlier`() {
+        val original = at.plusNanos(123456123)
+        val teammate = matches.getOrThrow(match.id).participantsByTeam.values.first()[1].participantId
+        val goal = mapOf("eventId" to UUID.randomUUID(), "type" to "GOAL", "occurredAt" to original.toString(),
+            "fromParticipantId" to participant, "toParticipantId" to teammate)
+        send(batch(listOf(event("PULL", time = original), event("PICKUP", time = original), goal)))
+        fun finish(time: Instant) = mvc.perform(post("/api/v1/matches/${match.id}/end")
+            .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(mapOf("timestamp" to time.toString()))))
+        finish(original.minusNanos(1)).andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code").value("END_BEFORE_LAST_EVENT"))
+        finish(original).andExpect(status().isOk)
+        assertEquals(original.toString(), snapshot()["events"].last()["occurredAt"].asText())
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(longs = [123456123, 123456500, 123456789, 999999789])
+    fun `start and finish retain exact boundaries through reload and portable round trip`(nanos: Long) {
+        val started = at.plusNanos(nanos)
+        val ended = started.plusSeconds(1)
+        val other = Match(UUID.randomUUID(), match.teamIds)
+        matches.create(other)
+        val root = "/api/v1/matches/${other.id}"
+        fun timestamp(command: String, time: Instant) = mvc.perform(post("$root/$command")
+            .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(mapOf("timestamp" to time.toString()))))
+        timestamp("start", started).andExpect(status().isOk)
+        mvc.perform(get(root)).andExpect(status().isOk).andExpect(jsonPath("$.startedAt").value(started.toString()))
+        val players = matches.getOrThrow(other.id).participantsByTeam.values.first()
+        val who = players[0].participantId
+        fun one(type: String, time: Instant) = mapOf("eventId" to UUID.randomUUID(), "type" to type,
+            "occurredAt" to time.toString(), "participantId" to who)
+        val batchPath = "/api/v2/matches/${other.id}/events/batch"
+        mvc.perform(post(batchPath).contentType(MediaType.APPLICATION_JSON)
+            .content(mapper.writeValueAsBytes(batch(listOf(one("PULL", started.minusNanos(1)))))))
+            .andExpect(status().isConflict).andExpect(jsonPath("$.code").value("EVENT_BEFORE_START"))
+        val goal = mapOf("eventId" to UUID.randomUUID(), "type" to "GOAL", "occurredAt" to ended.toString(),
+            "fromParticipantId" to who, "toParticipantId" to players[1].participantId)
+        mvc.perform(post(batchPath).contentType(MediaType.APPLICATION_JSON)
+            .content(mapper.writeValueAsBytes(batch(listOf(one("PULL", started), one("PICKUP", started), goal)))))
+            .andExpect(status().isCreated)
+        timestamp("end", ended.minusNanos(1)).andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code").value("END_BEFORE_LAST_EVENT"))
+        timestamp("end", ended).andExpect(status().isOk)
+        mvc.perform(get(root)).andExpect(status().isOk).andExpect(jsonPath("$.endedAt").value(ended.toString()))
+        fun portable(id: UUID) = mapper.readTree(mvc.perform(post("/api/v1/matches/export")
+            .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(mapOf("matchIds" to listOf(id)))))
+            .andExpect(status().isOk).andReturn().response.contentAsString)
+        val exported = portable(other.id)
+        assertEquals(started.toString(), exported["matches"][0]["startedAt"].asText())
+        assertEquals(ended.toString(), exported["matches"][0]["endedAt"].asText())
+        val imported = mapper.readTree(mvc.perform(post("/api/v1/matches/import").contentType(MediaType.APPLICATION_JSON)
+            .content(mapper.writeValueAsBytes(exported))).andExpect(status().isOk).andReturn().response.contentAsString)
+        val copy = portable(UUID.fromString(imported["matchIds"][other.id.toString()].asText()))["matches"][0]
+        assertEquals(started.toString(), copy["startedAt"].asText())
+        assertEquals(ended.toString(), copy["endedAt"].asText())
+        assertEquals(listOf(started.toString(), started.toString(), ended.toString()), copy["events"].map { it["occurredAt"].asText() })
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = ["2026-07-28T12:00:00Z", "1969-12-31T23:59:49Z"])
+    fun `SQL pagination orders effective start and end precision before limit with legacy and stale fallback`(origin: String) {
+        val teamIds = List(2) { com.github.mihanizzm.ultistats.model.Team(UUID.randomUUID(), "Precision list") }
+            .onEach { teams.create(it) }.map { it.id }
+        val base = Instant.parse(origin)
+        val suffix = UUID.randomUUID().leastSignificantBits
+        val a = Match(UUID(0L, suffix), teamIds, startedAt = base.plusNanos(123456123), endedAt = base.plusSeconds(10).plusNanos(123456123))
+        val tie = a.copy(id = UUID(Long.MIN_VALUE, suffix)) // signed UUID tie-break stays ascending in either direction
+        val b = Match(UUID.randomUUID(), teamIds, startedAt = base.plusNanos(123456124), endedAt = base.plusSeconds(10).plusNanos(123456124))
+        val legacy = Match(UUID.randomUUID(), teamIds, startedAt = base.plusNanos(123456000), endedAt = base.plusSeconds(10).plusNanos(123456000),
+            originalStartedAtSecond = null, originalStartedAtNano = null, originalEndedAtSecond = null, originalEndedAtNano = null)
+        val stale = Match(UUID.randomUUID(), teamIds, startedAt = base.plusNanos(123457000), endedAt = base.plusSeconds(10).plusNanos(123457000),
+            originalStartedAtSecond = base.epochSecond + 5, originalStartedAtNano = 0,
+            originalEndedAtSecond = base.epochSecond + 15, originalEndedAtNano = 0)
+        val invalid = Match(UUID.randomUUID(), teamIds, startedAt = base.plusNanos(123458000), endedAt = base.plusSeconds(10).plusNanos(123458000),
+            originalStartedAtNano = 1000000000, originalEndedAtNano = -1)
+        val partial = Match(UUID.randomUUID(), teamIds, startedAt = base.plusNanos(123459000), endedAt = base.plusSeconds(10).plusNanos(123459000),
+            originalStartedAtSecond = null, originalEndedAtNano = null)
+        val halfCarry = Match(UUID.randomUUID(), teamIds, startedAt = base.plusNanos(999999500), endedAt = base.plusSeconds(10).plusNanos(999999500))
+        val carry = Match(UUID.randomUUID(), teamIds, startedAt = base.plusNanos(999999789), endedAt = base.plusSeconds(10).plusNanos(999999789))
+        val next = Match(UUID.randomUUID(), teamIds, startedAt = base.plusSeconds(1), endedAt = base.plusSeconds(11))
+        val planned = Match(UUID.randomUUID(), teamIds)
+        listOf(a, tie, b, legacy, stale, invalid, partial, halfCarry, carry, next, planned).forEach { matches.create(it) }
+        val ascending = listOf(legacy, tie, a, b, stale, invalid, partial, halfCarry, carry, next, planned)
+        val descending = listOf(planned, next, carry, halfCarry, partial, invalid, stale, b, tie, a, legacy)
+        for (field in listOf("startedAt", "endedAt")) {
+            for ((direction, expected) in listOf("asc" to ascending, "desc" to descending)) {
+                expected.forEachIndexed { page, match ->
+                    val result = mapper.readTree(mvc.perform(get("/api/v1/matches")
+                        .param("teamId", teamIds[0].toString()).param("sort", "$field:$direction")
+                        .param("size", "1").param("page", page.toString())).andReturn().response.contentAsString)
+                    assertEquals(11, result["totalElements"].asInt())
+                    assertEquals(match.id.toString(), result["content"][0]["id"].asText(), "$field:$direction page$page")
+                    val time = if (field == "startedAt") match.effectiveStartedAt else match.effectiveEndedAt
+                    assertEquals(time?.toString(), result["content"][0][field]?.takeUnless { it.isNull }?.asText())
+                }
+            }
+        }
     }
 
     @Test
