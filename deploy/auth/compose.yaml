@@ -1,0 +1,69 @@
+# Opt-in auth topology; this does not modify the existing deployment or volumes.
+name: ${AUTH_PROJECT_NAME:-ultistats-auth}
+services:
+  app:
+    image: ${APP_IMAGE:?APP_IMAGE must be the reviewed immutable auth image}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/ultistats
+      DATABASE_USERNAME: ultistats
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      APP_STORAGE_ROOT: /app/uploads
+      SERVER_PORT: "8080"
+      SERVER_FORWARD_HEADERS_STRATEGY: none
+      APP_AUTH_INGRESS_ANONYMOUS_ADDRESS: 127.0.0.1
+      APP_AUTH_INGRESS_PRIVATE_PORT: "8081"
+      APP_AUTH_INGRESS_LOOPBACK_MODE: "false"
+      APP_AUTH_INGRESS_PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?PUBLIC_ORIGIN is required}
+      APP_AUTH_INGRESS_SECURE_ORIGIN: ${SECURE_ORIGIN:?SECURE_ORIGIN is required}
+      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: "3000"
+    volumes:
+      - uploads_data:/app/uploads
+    ports:
+      # These belong to Caddy in the shared namespace, not backend listeners.
+      - "${PUBLIC_BIND:-127.0.0.1}:${HTTP_PORT:-80}:80"
+      - "${PUBLIC_BIND:-127.0.0.1}:${TLS_PORT:-443}:443"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [database, delivery]
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ultistats
+      POSTGRES_USER: ultistats
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U ultistats -d ultistats"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [database]
+  web:
+    image: ${WEB_IMAGE:?WEB_IMAGE must be the reviewed compatible Web image}
+    restart: unless-stopped
+    networks: [delivery]
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    network_mode: service:app
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?PUBLIC_HOST is required}
+      STAFF_HOST: ${STAFF_HOST:?STAFF_HOST is required}
+    volumes:
+      - ./${CADDY_CONFIG:-Caddyfile.lan}:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [app, web]
+volumes:
+  postgres_data:
+  uploads_data:
+  caddy_data:
+  caddy_config:
+networks:
+  database:
+    internal: true
+  delivery:
