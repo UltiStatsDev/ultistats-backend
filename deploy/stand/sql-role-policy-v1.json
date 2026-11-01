@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "policy": "ultistats-stand-sql-dml",
+  "applicationBaseline": "24704e11143a0bf919559a41324603f936ae03cf",
+  "schema": "public",
+  "tables": [
+    "teams", "players", "team_players", "matches", "match_teams",
+    "match_participants", "events", "event_batch_receipts", "obs_config",
+    "obs_scoreboard_profiles", "undo_command_receipts"
+  ],
+  "tablePrivileges": ["SELECT", "INSERT", "UPDATE", "DELETE"],
+  "sequences": [],
+  "sequencePrivileges": ["USAGE", "SELECT"],
+  "futureObjects": "deny-until-reviewed-policy-update"
+}
