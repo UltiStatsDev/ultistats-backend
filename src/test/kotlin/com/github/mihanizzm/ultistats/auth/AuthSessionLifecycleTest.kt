@@ -68,7 +68,7 @@ class AuthSessionLifecycleTest {
         assertEquals(login.context.installationId, f.service().installationId())
         assertEquals(login.context.sessionId, f.service().context(login.credential).sessionId)
         val digest = f.jdbc.queryForObject("select credential_digest from auth_sessions", String::class.java)!!
-        assertNotEquals(login.credential, digest)
+        assertTrue(login.credential != digest, "Database must not retain the raw bearer")
         assertEquals(64, digest.length)
     }
 

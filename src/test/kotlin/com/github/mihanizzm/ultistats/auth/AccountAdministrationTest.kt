@@ -77,7 +77,7 @@ class AccountAdministrationTest {
         assertAuthProblem("AUTH_SESSION_REVOKED") { f.service.context(third.credential) }
         val fourth = f.service.login("staff", created.temporaryPassword, null)
         val reset = f.service.resetPassword(actor, created.account.id)
-        assertNotEquals(created.temporaryPassword, reset.temporaryPassword)
+        assertTrue(created.temporaryPassword != reset.temporaryPassword, "Reset must generate a new secret")
         assertAuthProblem("AUTH_SESSION_REVOKED") { f.service.context(fourth.credential) }
         assertAuthProblem("AUTH_CREDENTIALS_INVALID") { f.service.login("staff", created.temporaryPassword, null) }
         assertTrue(f.service.login("staff", reset.temporaryPassword, null).context.account!!.mustChangePassword)
