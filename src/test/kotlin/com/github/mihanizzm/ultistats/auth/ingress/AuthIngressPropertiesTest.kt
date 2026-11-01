@@ -42,6 +42,16 @@ class AuthIngressPropertiesTest {
     }
 
     @Test
+    fun `configured default ports and host case use browser serialized origins`() {
+        val properties = AuthIngressProperties(publicOrigin = "http://GUEST.EXAMPLE.TEST:80",
+            secureOrigin = "https://STAFF.EXAMPLE.TEST:443")
+        properties.validate()
+        assertEquals("http://guest.example.test", properties.publicOrigin())
+        assertEquals("https://staff.example.test", properties.secureOrigin())
+        assertEquals(setOf("https://staff.example.test"), properties.secureOrigins())
+    }
+
+    @Test
     fun `LAN and Internet origins are configured unchanged and private port bounded`() {
         val lan = AuthIngressProperties(anonymousAddress = "0.0.0.0",
             publicOrigin = "http://192.0.2.1", secureOrigin = "https://staff.example.test")
