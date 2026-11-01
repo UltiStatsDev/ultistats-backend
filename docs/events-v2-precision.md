@@ -19,3 +19,7 @@ The normal `./gradlew build` includes H2 contract and precision tests. These do 
 ```
 
 `EventBatchPostgresTest` runs the common batch contract against real PostgreSQL/Flyway and adds a crossed-UUID concurrency test. Its test-only insert trigger widens the acquisition interval; the trigger is removed in `finally`. The migration test creates an owned random schema, migrates to V9, seeds events/revisions/fingerprints/batch and undo receipts, upgrades to V10, compares the data, exercises old-column writes, checks actual JDBC rounding, and removes that schema. Neither test is enabled without the explicit database URL.
+
+For an actual HTTP/SSE check on an owned synthetic API, run `python3 src/test/python/batch71_http_race.py http://127.0.0.1:PORT /tmp/owned-race.json`. It checks six opposite-order UUID races, canonical order, loser reconciliation metadata and rollback, winner retry, score and actual SSE delivery once. Physical UUID acquisition uses one deterministic order across matches; assigned sequence numbers, responses and notification tails keep request order.
+
+`src/test/python/batch71_runtime_compat.py` provides the three phases for a binary rollback/restart check. Run `seed` on the new binary, `old` on the previous binary against the same V10 database, then `new` after restarting the new binary, passing the same owned API URL and owned JSON proof path each time. This creates only synthetic fixtures. Retain the database/schema during the binary rollback.

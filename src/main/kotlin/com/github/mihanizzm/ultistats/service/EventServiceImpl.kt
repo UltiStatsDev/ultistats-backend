@@ -179,7 +179,9 @@ class EventServiceImpl(
         val entities = pending.mapIndexed { index, command ->
             EventEntity.fromDomain(command.id, match.id, last + index + 1, command.event, command.event.creationFingerprint())
         }
-        entities.forEach { entity ->
+        // Sequence numbers and validation follow request order. Acquire global UUID
+        // uniqueness in one order across matches to avoid opposite-key deadlock cycles.
+        entities.sortedBy { it.id }.forEach { entity ->
             try {
                 eventRepository.insert(entity)
             } catch (exception: DataIntegrityViolationException) {
