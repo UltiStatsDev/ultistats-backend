@@ -98,9 +98,10 @@ The subsequent optional AuthHtmlEntryNavigation core hook passed its RED→GREEN
 boundary tests plus HTTP/CSRF/CORS regressions. It allows only eligible HTML
 document authentication navigation; API/assets/captured intents/mismatches keep
 raw ProblemDetail. The concrete staff-entry allowlist/login and temporary-password return routes are
-now integrated from153. Genuine-activity cross-tab coordinator integration remains
-an explicit atomic-PR gate owned by153/Web; it consumes the exact frozen Web ESM
-module rather than a second independent credential coordinator.
+now integrated from153. The genuine-activity cross-tab coordinator is integrated
+at `57e7c1c`, importing153 checkpoint `55caa179`. Its adapter consumes the exact
+frozen Web ESM module. A subsequent reviewer finding about uncertain OBS write
+outcome wording remains a final-candidate gate.
 
 The final atomic head still requires its own CI, independent review, immutable
 availability and checked merge. Engineering callbacks go immediately after actual
@@ -140,3 +141,26 @@ accounts, sports, uploads and sessions. A single pre-lease configuration-only re
 aligned public/secure origin with the selected canonical Web front. The active lease
 forbids hot source/config/schema/process changes until Root explicit END. Later source
 fixes above are not silently applied to that leased target or claimed as its proof.
+
+
+## Coherent checkpoint57e7c1c
+
+The combined source `57e7c1cdaef67eb97f4d32d3df88f18bc07a2010` passed
+`./gradlew build --no-daemon --max-workers=2` with the isolated PostgreSQL
+`auth152` database enabled:734 JVM tests, zero failures/errors/skips. All16
+`AuthConcurrencyPostgresTest` cases ran. The10 JavaScript test files and deployment
+shell/Caddy adaptation checks also passed. This does not claim the later OBS
+wording correction was exercised by this run.
+
+- JVM production tree: `620b8a474f7a981f5aa94e5b370735d41ebe123e`.
+- Full production tree: `0656ed523ab2dda54be1ca0270396413f77cb80f`.
+- Deploy tree: `63f8b855f50e3a7045956bf6209690116f6f4467`.
+- Build blob: `afea8bdc37667b94b0df54b875a446b2084c48c9`.
+- Packaged JAR SHA256: `b09f316cf21c49b0c18e4b1b79ce12281d59d4a1de3001275e81bfc5ace6cb70`.
+
+The private immutable packet retains the JAR, original JUnit XML and source/tree
+receipt at `/tmp/ultistats-auth152/source-57e7c1c/`; build and JS logs are
+`/tmp/auth152-coherent-final-build.log` and `/tmp/auth152-coherent-final-js.log`.
+The leased9cc runtime was not upgraded. After these checks completed, a
+user-reported Docker stop affected its PostgreSQL container; recovery must record
+the outage and consumer pause/resume separately from this test evidence.
