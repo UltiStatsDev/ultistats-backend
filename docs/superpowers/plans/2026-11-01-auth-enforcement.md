@@ -8,7 +8,7 @@
 
 **Tech Stack:** Kotlin1.9.25, Java21, Spring Boot3.5.7/Spring MVC/Security, PostgreSQL, existing Node tests.
 
-**Spec:** Web merge50bd486f3a2001b50b3e3f63d2ae4bbcf6f4c3a8, docs/superpowers/specs/2026-11-01-users-auth-design.md. Wire candidate c48eef30bff9e5e89e34da545b0aaad643e3c993 docs/api/auth-contract.md (auth-150-contract checkout), awaiting mutually frozen revision.
+**Spec:** Web merge50bd486f3a2001b50b3e3f63d2ae4bbcf6f4c3a8, docs/superpowers/specs/2026-11-01-users-auth-design.md. Wire FROZEN c48eef30bff9e5e89e34da545b0aaad643e3c993 docs/api/auth-contract.md (auth-150-contract checkout), awaiting mutually frozen revision.
 
 ## Global constraints
 
@@ -59,9 +59,9 @@ auth/account routes;153 must not intercept them with competing sports defaults.
 - [x] Verify clean assigned base and read actual controllers, static clients, SSE, ZIP and transfer bodies.
 - [x] Write versioned inventory and plan; self-review against approved scope.
 - [x] Commit inventory/plan and publish interface needs to lead (270e709, pushed assigned branch).
-- [ ] Receive frozen contract +152 plan/interfaces; record SHAs and exact binding here.
+- [x] Receive frozen contract c48eef30 (SHA256 d9f83750f91758d95803ee8b06c85072c936eaa95bd4fe5867799e9ce873d5bf) and152 plan93d5fa9; shared SPI source commit pending.
 
-### Task1: complete policy and method coverage
+### Task 1: complete policy and method coverage
 
 **Files:** auth/security/AuthSurfacePolicy.kt; auth/security/AuthSurfaceAuthorization.kt; src/test/kotlin/com/github/mihanizzm/ultistats/auth/AuthSurfaceMatrixTest.kt; docs/api/auth-surfaces-v1.*.
 
@@ -74,7 +74,7 @@ auth/account routes;153 must not intercept them with competing sports defaults.
 - [ ] Run matrix and existing StatisticsControllerTest/EventControllerTest/EventBatchControllerTest/ReplaySafeUndoControllerTest/MatchTransferControllerTest; update test authentication setup through152's published fixture only where needed, never disable security for auth assertions.
 - [ ] Commit reviewed implementation with Refs153/150.
 
-### Task2: identity, transport and effect barriers
+### Task 2: identity, transport and effect barriers
 
 **Files:** AuthSurfaceAuthorization.kt and src/test/kotlin/com/github/mihanizzm/ultistats/auth/AuthExpectedIdentityTest.kt; shared chain integration only via152-owned hook.
 **Consumes:**152 captured identity validation, current principal, auth denial/CSRF behavior;154 actual connector classifier. **Produces:** uniform raw ProblemDetail401/403 and no pre-controller domain effects.
@@ -86,7 +86,7 @@ auth/account routes;153 must not intercept them with competing sports defaults.
 - [ ] GREEN bind core checks at published hook, preserve domain/event services unchanged, configured credentialed CORS with approved origins only. Resolve ordering findings directly with lead/152/154.
 - [ ] Run focused identity + transport suites; commit.
 
-### Task3: secure OBS and Swagger adapters
+### Task 3: secure OBS and Swagger adapters
 
 **Files:** static/auth/staff-session.mjs; static/obs/admin.mjs, scoreboard-admin.mjs, obs-admin.html;153-owned Swagger initialization resource/config; src/test/js/auth-staff-session.test.mjs.
 **Consumes:** frozen GET auth/session, GET auth/csrf JSON masked token and expected UUID headers; API_DOCS/OBS_ADMIN permissions. **Produces:** proposed `createStaffSession({fetchImpl})`, `bootstrap(permission)`, `protectedFetch(url, options, capturedContext)`; finalize exact exports in RED test.
@@ -96,7 +96,7 @@ auth/account routes;153 must not intercept them with competing sports defaults.
 - [ ] GREEN shared adapter in OBS editors and Swagger; explicit login destination from configured installation secureOrigin if needed, no secrets in generated links, no unsafe automatic replay. Preserve existing preview behavior and messages except obsolete unauthenticated/trusted-network wording.
 - [ ] Run node --test src/test/js/auth-staff-session.test.mjs and existing src/test/js/obs-*.test.mjs under appropriate bounded browser lease only for browser work; commit.
 
-### Task4: own HTTP/PostgreSQL, review and technical callback
+### Task 4: own HTTP/PostgreSQL, review and technical callback
 
 **Files:** tools/auth153/check.mjs; docs/api/auth-surfaces-v1.md verification results; private sanitized /tmp/ultistats-auth153 evidence/runtime manifest.
 **Consumes:** frozen152+154 integrated prerequisite SHAs, isolated fixture recipe, owned ports21153/22153. **Produces:** immutable checked artifact and consumer handoff; no product QA PASS claim.
@@ -158,3 +158,23 @@ Detailed expected test oracles are now versioned at
 groups,25negative/effect cases. Every row is PREPARED/NOT_RUN. Independent source
 annotation count and unique method/path pairs match57; multiline legacy team
 uploadPhoto is explicitly checked.
+
+## Reviewer authority-fence correction (before integrated chain code)
+
+The earlier shared outer-transaction wording is superseded.152 owns an isolated,
+bounded, unpooled PostgreSQL coordination connection with session advisory SHARED
+fence for unsafe domain mutations, EXCLUSIVE for security management. Existing
+sports service transactions remain untouched; **no outer Spring transaction spans
+chain.doFilter**. This preserves appendBatch rollback-before-controller-catch,
+commit-before-response and AFTER_COMMIT notifications. Domain permission/identity
+is refreshed after fence acquisition; management takes its exclusive fence before
+its own transaction/row guard. No upgrade, no GET/SSE fence, no password hashing
+inside it.152 must publish exact budget/timeout/cleanup/lock-order implementation
+and reviewer review before integration.153 consumes the boundary and verifies
+real-PG cross-match UUID201/409, canonical position/SSEonce, commit-failure negative
+control and revoke-before-blocked-write race through final chain; these are not
+proved by current policy unit tests.
+
+Source prerequisites imported:152 f8f548cd7e5017236ba25a1fe60b9598c1b5c091
+(cherry-pickf09f8d3),154 origin SPI926b3eb (cherry-pick856cae7). Wire hash verified
+by lead and mutualfreeze recorded; no further wire hold.

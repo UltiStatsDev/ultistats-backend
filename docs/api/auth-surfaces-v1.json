@@ -5,6 +5,13 @@
   "routes": [
     {
       "method": "GET",
+      "path": "/swagger-ui/index.html",
+      "policy": "API_DOCS",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/auth/controller/StaffToolsController.kt",
+      "line": 14
+    },
+    {
+      "method": "GET",
       "path": "/api/v2/matches/{matchId}/events",
       "policy": "PUBLIC",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/EventBatchController.kt",
@@ -404,6 +411,26 @@
     }
   ],
   "static": [
+    {
+      "path": "/auth/obs-session.mjs",
+      "policy": "OBS_ADMIN"
+    },
+    {
+      "path": "/auth/staff-session.mjs",
+      "policy": "OBS_ADMIN"
+    },
+    {
+      "path": "/auth/swagger-adapter.mjs",
+      "policy": "API_DOCS"
+    },
+    {
+      "path": "/auth/swagger.html",
+      "policy": "API_DOCS"
+    },
+    {
+      "path": "/auth/swagger.mjs",
+      "policy": "API_DOCS"
+    },
     {
       "path": "/obs/admin.mjs",
       "policy": "OBS_ADMIN"

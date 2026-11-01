@@ -21,7 +21,9 @@ def inventory():
             method = mapping.group(1).upper()
             suffix_match = re.match(r'"([^"]*)"', mapping.group(2) or '')
             path = base + (suffix_match.group(1) if suffix_match else '')
-            if method != 'GET':
+            if path.startswith('/swagger-ui'):
+                permission = 'API_DOCS'
+            elif method != 'GET':
                 permission = ('TRANSFER' if path in ['/api/v1/matches/export', '/api/v1/matches/import']
                               else 'OBS_ADMIN' if path.startswith('/api/v1/obs/') else 'SPORTS_WRITE')
             elif '/statistics' in path:
@@ -37,7 +39,8 @@ def inventory():
     for source in sorted((ROOT / 'src/main/resources/static').rglob('*')):
         if source.is_file():
             path = '/' + str(source.relative_to(ROOT / 'src/main/resources/static'))
-            policy = 'OBS_ADMIN' if path in ['/obs-admin.html', '/obs/admin.mjs', '/obs/scoreboard-admin.mjs'] else 'PUBLIC'
+            policy = ('API_DOCS' if path.startswith('/auth/swagger') else
+                      'OBS_ADMIN' if path in ['/obs-admin.html', '/obs/admin.mjs', '/obs/scoreboard-admin.mjs', '/auth/obs-session.mjs', '/auth/staff-session.mjs'] else 'PUBLIC')
             static.append(dict(path=path, policy=policy))
     return dict(inventoryVersion=1, baseline='5c9781f2895141ca7a430588873c764d8c1e2dd6',
                 scope='Existing sports/OBS application mappings and packaged static resources; generated framework routes documented separately.',

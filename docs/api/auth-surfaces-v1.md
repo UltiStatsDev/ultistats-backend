@@ -4,8 +4,8 @@ Source baseline: `5c9781f2895141ca7a430588873c764d8c1e2dd6`.
 Policy target: auth-v1 candidate1.0.0; implementation awaits mutual freeze and
 published core interfaces. This inventory is preparation, not an access-control PASS.
 
-`auth-surfaces-v1.json` enumerates all **57** actual application method/path
-mappings and **19** packaged static files with source locations. Regenerate with
+`auth-surfaces-v1.json` enumerates all **58** current application method/path
+mappings and **24** packaged static files (original baseline57/19 plus staff tools) with source locations. Regenerate with
 `python3 tools/auth153/inventory.py`, review the diff, then use `--check` to detect
 drift. The scanner covers the checked baseline's literal Kotlin mapping style;
 it is not an authorization implementation. Runtime RequestMappingHandlerMapping
@@ -108,3 +108,21 @@ QA's separate24-row acceptance matrix remains PREPARED/NOT_RUN. Worker tests map
 to it and do not substitute for combined Backend/Web/native OBS acceptance.
 
 Detailed per-method expected oracles: `auth-enforcement-test-matrix-v1.md` (all NOT_RUN).
+
+## Implementation checkpoint (engineering only)
+
+Frozen wire c48eef30 SHA256d9f83750f91758d95803ee8b06c85072c936eaa95bd4fe5867799e9ce873d5bf.
+Policy tests initially85 with84 expected failures against a deny-only stub, then85
+GREEN; new Swagger mapping subsequently added two HEAD/GET cases. CORS tests2RED
+on original wildcard→2GREEN on configured credentialed origins. Node adapter
+tests15GREEN (missing adapter/interceptor RED observed) plus40existing OBS
+regression testsGREEN. These prove classification/client behavior in-process,
+not integrated HTTP authorization, PostgreSQL effects, actual browser/native OBS,
+CI or general QA. Those gates remain pending.
+
+Swagger uses its existing protected `/swagger-ui/index.html` entry with bundled
+Swagger assets and a same-origin module requestInterceptor. Masked CSRF/identity
+remain in memory, mutated credential headers are omitted from displayed curl,
+external validator disabled; try-it-out has one attempt and no owner adoption.
+Primary supported async interceptor interface:
+https://swagger.io/docs/open-source-tools/swagger-ui/usage/configuration/ .
