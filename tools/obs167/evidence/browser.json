@@ -1,0 +1,87 @@
+{
+  "browser": "156.0.8078.79",
+  "rows": [
+    {
+      "id": "BLOCK",
+      "left": "17 Атакующий А.",
+      "right": "42 Защитник Д.",
+      "leftColor": "rgb(255, 204, 0)",
+      "rightColor": "rgb(0, 204, 255)",
+      "leftX": 787.796875,
+      "rightX": 1058.609375,
+      "icon": "Блок"
+    },
+    {
+      "id": "BLOCK_MARKER",
+      "left": "17 Атакующий А.",
+      "right": "42 Защитник Д.",
+      "leftColor": "rgb(255, 204, 0)",
+      "rightColor": "rgb(0, 204, 255)",
+      "leftX": 787.796875,
+      "rightX": 1058.609375,
+      "icon": "Блок"
+    },
+    {
+      "id": "BLOCK_FIELD",
+      "left": "17 Атакующий А.",
+      "right": "42 Защитник Д.",
+      "leftColor": "rgb(255, 204, 0)",
+      "rightColor": "rgb(0, 204, 255)",
+      "leftX": 787.796875,
+      "rightX": 1058.609375,
+      "icon": "Блок"
+    },
+    {
+      "id": "INTERCEPTION",
+      "left": "17 Атакующий А.",
+      "right": "42 Защитник Д.",
+      "leftColor": "rgb(255, 204, 0)",
+      "rightColor": "rgb(0, 204, 255)",
+      "leftX": 787.796875,
+      "rightX": 1058.609375,
+      "icon": "Перехват"
+    },
+    {
+      "id": "CALLAHAN",
+      "left": "17 Атакующий А.",
+      "right": "42 Защитник Д.",
+      "leftColor": "rgb(255, 204, 0)",
+      "rightColor": "rgb(0, 204, 255)",
+      "leftX": 787.796875,
+      "rightX": 1058.609375,
+      "icon": "Кэллахан"
+    },
+    {
+      "id": "GOAL",
+      "left": "17 Атакующий А.",
+      "right": "8 Голевой Г.",
+      "leftColor": "rgb(255, 204, 0)",
+      "rightColor": "rgb(255, 204, 0)",
+      "leftX": 825.625,
+      "rightX": 1096.4375,
+      "icon": "Гол"
+    },
+    {
+      "id": "UNKNOWN",
+      "left": "17 Атакующий А.",
+      "right": "Неизвестный игрок",
+      "leftColor": "rgb(255, 204, 0)",
+      "rightColor": "rgb(0, 204, 255)",
+      "leftX": 743.84375,
+      "rightX": 1014.65625,
+      "icon": "Перехват"
+    },
+    {
+      "id": "MISSING",
+      "left": "Неизвестный игрок",
+      "right": "42 Защитник Д.",
+      "leftColor": "rgb(83, 199, 237)",
+      "rightColor": "rgb(0, 204, 255)",
+      "leftX": 758.265625,
+      "rightX": 1058.609375,
+      "icon": "Блок"
+    }
+  ],
+  "errors": [],
+  "nativeObs": false
+}
