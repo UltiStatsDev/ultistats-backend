@@ -390,10 +390,14 @@ http://<ultistats-host>:8080/obs-diagnostic.html?matchId=<uuid>
 
 ## Production deployment
 
-После merge в `master` workflow `.github/workflows/cd.yml`:
+Обычный merge/push в `master` не запускает production delivery и не публикует
+`latest`. Workflow `.github/workflows/cd.yml` запускается только вручную
+(`workflow_dispatch`) с ветки `master` и обязательным `release_sha`: полный
+40-символьный lowercase SHA commit, уже находящийся в истории `master`.
+SHA ветки workflow не подменяет выбранный release SHA. Workflow:
 
 1. собирает и тестирует приложение на Java 21;
-2. публикует Linux AMD64 image в private GHCR с тегами commit SHA и `latest`;
+2. публикует Linux AMD64 image в private GHCR только с тегом выбранного release SHA;
 3. копирует на сервер только `deploy/compose.prod.yml` и `deploy/deploy.sh`;
 4. создаёт PostgreSQL dump и резервную копию загруженных файлов;
 5. до замены application-контейнера переносит старые файлы в новый persistent
@@ -414,7 +418,40 @@ http://<ultistats-host>:8080/obs-diagnostic.html?matchId=<uuid>
 ghcr.io/ultistatsdev/ultistats-backend:<40-character-commit-sha>
 ```
 
-`latest` предназначен только для удобства и не используется для деплоя или rollback.
+`latest` больше не публикуется этим workflow; старый registry tag может остаться,
+но не является release и не используется для деплоя или rollback.
+
+### Явная promotion и release gates
+
+Текущее состояние CD — `disabled_manually`; сервера для этой доставки нет.
+Изменение workflow не разрешает его включение, dispatch или изменение runtime.
+Auth source merges разрешены после engineering gate #151, но сами по себе не
+разрешают auth rollout.
+
+Перед будущей отдельно разрешённой promotion владелец релиза должен:
+
+1. Зафиксировать полный release SHA из `master` и связать его с успешными CI,
+   независимым review и совместной Backend/Web QA + PO приёмкой этого релиза.
+   GitHub input/checkbox или approval Environment не заменяют эти доказательства.
+2. Проверить старые устройства и очереди перед auth/origin flip: синхронизировать
+   их; при известных pending/uncertain операциях отложить релиз. Не удалять
+   browser storage и не присваивать старые анонимные очереди новому аккаунту.
+3. Подтвердить проверенные backup/restore, сохранность DB/uploads/receipt/profile,
+   TLS/readiness/startup и план rollback в maintenance window. Для auth требуется
+   доказательство synthetic upgrade 247/V9 → 71/V10 → auth; автоматический rollback
+   application image не доказывает совместимость старого кода с новой DB.
+4. Только после этих release gates и отдельного разрешения включить CD и открыть
+   Actions → Promote production release → Run workflow: выбрать `master`, передать
+   проверенный полный SHA в `release_sha`. Не использовать branch/tag/short SHA.
+5. Проверить resolved SHA, SHA-tagged image и Environment `production` approval;
+   deployment files, image tag и `DEPLOYED_REVISION` должны относиться к одному SHA.
+   Сохранить результат backup/health/rollback и фактический deployed revision.
+
+Resolver отвергает несуществующие commits, commits вне `master` и Git tree/tag
+objects. До публикации выбранный исходник проходит build и deployment safety
+checks; старый release без этих promotion checks не поддерживается этим workflow.
+Для rollback используют ранее проверенный полный SHA с совместимой DB/maintenance
+процедурой, а не плавающий tag. Этот runbook не исполняет release gates автоматически.
 
 ### GitHub Environment
 
