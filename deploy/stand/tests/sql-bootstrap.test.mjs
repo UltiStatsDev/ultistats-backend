@@ -354,6 +354,88 @@ test(
       prepared.identity.databaseOid,
     );
     await t.test(
+      "completed bootstrap rejects direct PUBLIC column catalog function and default ACL drift",
+      async () => {
+        await f.authenticated(
+          "migration",
+          "CREATE TABLE credentials_replay169(secret text); INSERT INTO credentials_replay169 VALUES ('synthetic-only')",
+        );
+        const again = () =>
+          provider.finalizeSqlCluster(opts, {
+            ...bindings,
+            application: {
+              containerId: bindings.applicationContainerId,
+              sourceCommit: f.plan.applicationSource,
+              jarSha256: f.plan.applicationJarSha256,
+              jarPath: "/app/app.jar",
+            },
+          });
+        const cases = [];
+        for (const grantee of [f.roles.login, "PUBLIC"]) {
+          for (const access of ["SELECT", "SELECT(secret)"])
+            cases.push({
+              grant: `GRANT ${access} ON public.credentials_replay169 TO ${grantee}`,
+              revoke: `REVOKE ${access} ON public.credentials_replay169 FROM ${grantee}`,
+              witness:
+                "SELECT secret IS NOT NULL FROM public.credentials_replay169",
+            });
+          for (const access of ["SELECT", "SELECT(rolpassword)"])
+            cases.push({
+              grant: `GRANT ${access} ON pg_catalog.pg_authid TO ${grantee}`,
+              revoke: `REVOKE ${access} ON pg_catalog.pg_authid FROM ${grantee}`,
+              witness:
+                "SELECT bool_or(rolpassword IS NOT NULL) FROM pg_catalog.pg_authid",
+            });
+          cases.push({
+            grant: `GRANT EXECUTE ON FUNCTION pg_catalog.pg_read_file(text) TO ${grantee}`,
+            revoke: `REVOKE EXECUTE ON FUNCTION pg_catalog.pg_read_file(text) FROM ${grantee}`,
+            witness:
+              "SELECT has_function_privilege(current_user,'pg_catalog.pg_read_file(text)','EXECUTE')",
+          });
+        }
+        cases.push({
+          grant: `GRANT CREATE ON SCHEMA public TO ${f.roles.login}`,
+          revoke: `REVOKE CREATE ON SCHEMA public FROM ${f.roles.login}`,
+          witness:
+            "SELECT has_schema_privilege(current_user,'public','CREATE')",
+        });
+        cases.push({
+          grant: `GRANT TEMP ON DATABASE ultistats_private TO ${f.roles.login}`,
+          revoke: `REVOKE TEMP ON DATABASE ultistats_private FROM ${f.roles.login}`,
+          witness:
+            "SELECT has_database_privilege(current_user,current_database(),'TEMP')",
+        });
+        cases.push({
+          grant: `ALTER DEFAULT PRIVILEGES FOR ROLE ${f.roles.migration} IN SCHEMA public GRANT SELECT ON TABLES TO ${f.roles.login}`,
+          revoke: `ALTER DEFAULT PRIVILEGES FOR ROLE ${f.roles.migration} IN SCHEMA public REVOKE SELECT ON TABLES FROM ${f.roles.login}`,
+          witness:
+            "SELECT EXISTS(SELECT 1 FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) a WHERE a.grantee=(SELECT oid FROM pg_roles WHERE rolname=current_user) AND a.privilege_type='SELECT')",
+        });
+        for (const item of cases) {
+          await f.sql(item.grant, "ultistats_private");
+          try {
+            assert.equal(
+              await f.authenticated("login", item.witness, {
+                from: bindings.proxyContainerId,
+                host: f.plan.postgresContainer,
+              }),
+              "t",
+              "probe establishes changed permission without reading secret values",
+            );
+            await assert.rejects(again(), /ACL_DRIFT/);
+            await assert.rejects(provider.prepareSqlCluster(opts), /ACL_DRIFT/);
+            await assert.rejects(
+              provider.bindSqlSources(opts, bindings),
+              /ACL_DRIFT/,
+            );
+          } finally {
+            await f.sql(item.revoke, "ultistats_private");
+          }
+          assert.equal((await again()).phase, "SQL_INGRESS_READY_FOR170");
+        }
+      },
+    );
+    await t.test(
       "completed bootstrap rejects privileged frontend identity drift",
       async () => {
         await f.sql(`ALTER ROLE ${f.roles.login} SUPERUSER`);

@@ -350,7 +350,14 @@ async function context(input, operation) {
         JSON.stringify(journal.binding) === JSON.stringify(binding),
         "BOOTSTRAP_RECEIPT_BINDING_MISMATCH",
       );
-    if (journal?.roleProof) await verifyFrontendIdentity(o, journal);
+    if (journal?.roleProof) {
+      await verifyFrontendIdentity(o, journal);
+      check(
+        typeof journal.frontendAclSha256 === "string" &&
+          (await frontendAclFingerprint(o)) === journal.frontendAclSha256,
+        "BOOTSTRAP_ACL_DRIFT_RECONCILIATION_REQUIRED",
+      );
+    }
     return await operation({ o, creation, credentials, binding, journal });
   } finally {
     await lock.close();
@@ -440,6 +447,39 @@ async function databaseIdentity(o, creation) {
   );
   const { owner, comment, ...identity } = result;
   return identity;
+}
+// This is an immutable baseline comparison, not another permission policy.
+// Only the existing169 reconciler decides/grants permissions. Once it succeeds,
+// capture metadata that can affect this NOINHERIT, membership-free login (PUBLIC
+// plus its own grants). Replays are read-only and refuse any such ACL delta.
+async function frontendAclFingerprint(o) {
+  const grants = await jsonSql(
+    o,
+    `WITH subject AS (SELECT oid FROM pg_roles WHERE rolname=${q(LOGIN)}), entries AS (
+    SELECT jsonb_build_array('relation',c.oid::text,a.grantee::text,a.grantor::text,a.privilege_type,a.is_grantable) entry
+      FROM pg_class c CROSS JOIN subject s CROSS JOIN LATERAL aclexplode(COALESCE(c.relacl,acldefault(CASE WHEN c.relkind='S' THEN 'S'::"char" ELSE 'r'::"char" END,c.relowner))) a WHERE a.grantee IN (0,s.oid)
+    UNION ALL SELECT jsonb_build_array('column',c.attrelid::text,c.attnum,a.grantee::text,a.grantor::text,a.privilege_type,a.is_grantable)
+      FROM pg_attribute c CROSS JOIN subject s CROSS JOIN LATERAL aclexplode(c.attacl) a WHERE a.grantee IN (0,s.oid)
+    UNION ALL SELECT jsonb_build_array('routine',p.oid::text,a.grantee::text,a.grantor::text,a.privilege_type,a.is_grantable)
+      FROM pg_proc p CROSS JOIN subject s CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a WHERE a.grantee IN (0,s.oid)
+    UNION ALL SELECT jsonb_build_array('schema',n.oid::text,a.grantee::text,a.grantor::text,a.privilege_type,a.is_grantable)
+      FROM pg_namespace n CROSS JOIN subject s CROSS JOIN LATERAL aclexplode(COALESCE(n.nspacl,acldefault('n',n.nspowner))) a WHERE a.grantee IN (0,s.oid)
+    UNION ALL SELECT jsonb_build_array('database',d.oid::text,a.grantee::text,a.grantor::text,a.privilege_type,a.is_grantable)
+      FROM pg_database d CROSS JOIN subject s CROSS JOIN LATERAL aclexplode(COALESCE(d.datacl,acldefault('d',d.datdba))) a WHERE a.grantee IN (0,s.oid)
+    UNION ALL SELECT jsonb_build_array('default',d.defaclrole::text,d.defaclnamespace::text,d.defaclobjtype,a.grantee::text,a.grantor::text,a.privilege_type,a.is_grantable)
+      FROM pg_default_acl d CROSS JOIN subject s CROSS JOIN LATERAL aclexplode(d.defaclacl) a WHERE a.grantee IN (0,s.oid)
+    UNION ALL SELECT jsonb_build_array('parameter',p.parname,a.grantee::text,a.grantor::text,a.privilege_type,a.is_grantable)
+      FROM pg_parameter_acl p CROSS JOIN subject s CROSS JOIN LATERAL aclexplode(p.paracl) a WHERE a.grantee IN (0,s.oid)
+    UNION ALL SELECT jsonb_build_array('largeobject',l.oid::text,a.grantee::text,a.grantor::text,a.privilege_type,a.is_grantable)
+      FROM pg_largeobject_metadata l CROSS JOIN subject s CROSS JOIN LATERAL aclexplode(l.lomacl) a WHERE a.grantee IN (0,s.oid)
+    UNION ALL SELECT jsonb_build_array('server',f.oid::text,a.grantee::text,a.grantor::text,a.privilege_type,a.is_grantable)
+      FROM pg_foreign_server f CROSS JOIN subject s CROSS JOIN LATERAL aclexplode(f.srvacl) a WHERE a.grantee IN (0,s.oid)
+    UNION ALL SELECT jsonb_build_array('wrapper',f.oid::text,a.grantee::text,a.grantor::text,a.privilege_type,a.is_grantable)
+      FROM pg_foreign_data_wrapper f CROSS JOIN subject s CROSS JOIN LATERAL aclexplode(f.fdwacl) a WHERE a.grantee IN (0,s.oid)
+  ) SELECT coalesce(jsonb_agg(entry ORDER BY entry::text),'[]'::jsonb) FROM entries;`,
+    DB,
+  );
+  return sha(JSON.stringify(grants));
 }
 async function verifyFrontendIdentity(o, journal) {
   const role = await jsonSql(
@@ -831,6 +871,7 @@ export async function finalizeSqlCluster(input, request) {
       `SELECT oid::text FROM pg_roles WHERE rolname=${q(LOGIN)}`,
     );
     await verifyFrontendIdentity(o, journal);
+    journal.frontendAclSha256 = await frontendAclFingerprint(o);
     journal.phase = "ROLE169_RECONCILED";
     await persist(o.bootstrapReceiptPath, journal);
     check(
