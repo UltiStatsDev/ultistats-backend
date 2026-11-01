@@ -193,7 +193,10 @@ export function validateManifest(
       m.release &&
       sha(m.release.webSource) &&
       m.release.backendSource === b.revision &&
-      typeof m.release.version === "string",
+      (m.release.version === "unpublished" ||
+        /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(
+          m.release.version,
+        )),
     "INVALID_MANIFEST",
   );
   check(

@@ -15,7 +15,11 @@ function receipt() {
     targetRecordSha256: "a".repeat(64),
     manifestSha256: "b".repeat(64),
     identity: fixed,
-    current: { version: "0.0.0", web: "c".repeat(40), backend: "d".repeat(40) },
+    current: {
+      version: "unpublished",
+      web: "c".repeat(40),
+      backend: "d".repeat(40),
+    },
   };
 }
 test("stale/replayed/foreign fence cannot authorize backup", () => {
@@ -69,7 +73,7 @@ test("postflight normal target never accepts old pair without proven rollback re
     },
   };
   assert.deepEqual(api.desiredPair(record), {
-    version: "0.1.0",
+    version: "v0.1.0",
     web: "a".repeat(40),
     backend: "b".repeat(40),
   });

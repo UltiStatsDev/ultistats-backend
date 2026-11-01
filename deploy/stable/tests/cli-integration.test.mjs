@@ -119,7 +119,7 @@ function fixture(t) {
       },
     },
     release: {
-      version: "0.0.0",
+      version: "unpublished",
       webSource: "a".repeat(40),
       backendSource: sha,
     },
@@ -350,7 +350,7 @@ test("complete fenced backup target postflight release preserves data and privat
   const backed = await f.call("backup");
   assert.equal(backed.evidence.complete, true);
   assert.equal(f.state.dumpCount, 1);
-  f.m.release.version = "0.1.0";
+  f.m.release.version = "v0.1.0";
   f.write(f.manifestPath, f.m);
   f.api.State.Running = true;
   const checked = await f.call("postflight");
@@ -417,7 +417,7 @@ test("already installed exact target can inspect for no-op without being listed 
   ];
   f.write(f.recordPath, f.record);
   f.base.targetRecordSha256 = hash(readFileSync(f.recordPath));
-  f.m.release.version = "0.1.0";
+  f.m.release.version = "v0.1.0";
   f.write(f.manifestPath, f.m);
   f.state.open = true;
   assert.equal((await f.call("inspect")).evidence.ready, true);

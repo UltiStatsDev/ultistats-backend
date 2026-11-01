@@ -320,6 +320,47 @@ export function verifySourceIdentity(m, { run = command } = {}) {
   };
 }
 
+export function observeMigrations(
+  m,
+  { run = command, bootstrap = false } = {},
+) {
+  const h = m.backend.helper;
+  const migrationDir = join(
+    h.sourceCheckout,
+    "src/main/resources/db/migration",
+  );
+  const expected = readdirSync(migrationDir)
+    .filter((n) => /^V.*\.sql$/.test(n))
+    .map((script) => ({
+      version: script.match(/^V([^_]+(?:_[0-9]+)?)__/)[1].replaceAll("_", "."),
+      script,
+      checksum: flywayChecksum(
+        readFileSync(join(migrationDir, script), "utf8"),
+      ),
+    }));
+  const migrations = JSON.parse(
+    sql(
+      m,
+      `SELECT coalesce(json_agg(r ORDER BY version),'[]') FROM (SELECT version,script,checksum,success FROM public.flyway_schema_history WHERE type <> 'BASELINE') r;`,
+      { run },
+    ),
+  );
+  const canonical = [...migrations]
+    .sort((a, c) => a.version.localeCompare(c.version))
+    .map((r) => ({
+      version: r.version,
+      script: r.script,
+      checksum: r.checksum,
+      success: r.success,
+    }));
+  const migrationFingerprint = hash(JSON.stringify(canonical));
+  const migrationsVerified =
+    verifyMigrations(expected, migrations) &&
+    ((bootstrap && h.migrationFingerprint === null) ||
+      h.migrationFingerprint === migrationFingerprint);
+  return { migrationsVerified, migrationFingerprint };
+}
+
 export async function observeInstallation(
   m,
   {
@@ -452,39 +493,11 @@ export async function observeInstallation(
   o.jarVerified =
     (bootstrap && h.jarSha256 === null) || h.jarSha256 === jarSha256;
   o.sourceVerified = true;
-  const migrationDir = join(
-    h.sourceCheckout,
-    "src/main/resources/db/migration",
-  );
-  const expected = readdirSync(migrationDir)
-    .filter((n) => /^V.*\.sql$/.test(n))
-    .map((script) => ({
-      version: script.match(/^V([^_]+(?:_[0-9]+)?)__/)[1].replaceAll("_", "."),
-      script,
-      checksum: flywayChecksum(
-        readFileSync(join(migrationDir, script), "utf8"),
-      ),
-    }));
-  const migrations = JSON.parse(
-    sql(
-      m,
-      `SELECT coalesce(json_agg(r ORDER BY version),'[]') FROM (SELECT version,script,checksum,success FROM public.flyway_schema_history WHERE type <> 'BASELINE') r;`,
-      { run },
-    ),
-  );
-  const canonical = [...migrations]
-    .sort((a, c) => a.version.localeCompare(c.version))
-    .map((r) => ({
-      version: r.version,
-      script: r.script,
-      checksum: r.checksum,
-      success: r.success,
-    }));
-  const migrationFingerprint = hash(JSON.stringify(canonical));
-  o.migrationsVerified =
-    verifyMigrations(expected, migrations) &&
-    ((bootstrap && h.migrationFingerprint === null) ||
-      h.migrationFingerprint === migrationFingerprint);
+  const { migrationsVerified, migrationFingerprint } = observeMigrations(m, {
+    run,
+    bootstrap,
+  });
+  o.migrationsVerified = migrationsVerified;
   o.activeMatches = parseCount(
     sql(
       m,

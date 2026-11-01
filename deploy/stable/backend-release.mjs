@@ -55,7 +55,7 @@ export function desiredPair(record, rollbackPlan) {
     return rollbackPlan.previous;
   }
   return {
-    version: record.version,
+    version: `v${record.version}`,
     web: record.repositories.web.commit,
     backend: record.repositories.backend.commit,
   };
