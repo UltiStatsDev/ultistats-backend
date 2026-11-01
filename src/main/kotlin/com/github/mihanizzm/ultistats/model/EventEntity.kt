@@ -63,12 +63,7 @@ data class EventEntity(
      * replacement invalidates the metadata whenever its stored value changes.
      */
     val effectiveOccurredAt: Instant
-        get() {
-            val original = originalOccurredAt?.let { runCatching { Instant.parse(it) }.getOrNull() }
-                ?: return occurredAt
-            val rounded = Instant.ofEpochSecond(original.epochSecond, ((original.nano + 500L) / 1000) * 1000)
-            return if (occurredAt == original || occurredAt == rounded) original else occurredAt
-        }
+        get() = requireNotNull(occurredAt.withOriginalPrecision(originalOccurredAt))
 
     fun toDomain(): Event = when (eventType.category) {
         com.github.mihanizzm.ultistats.model.events.EventCategory.ONE_PLAYER -> {

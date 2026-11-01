@@ -180,7 +180,7 @@ class MatchServiceImpl(
         val match = getForUpdate(matchId)?.hydrate(includeEvents = true) ?: return MatchCommandResult.NotFound
         lifecyclePolicy.validateStart(match, timestamp).toCommandRejection()?.let { return it }
 
-        matchRepository.save(match.copy(startedAt = timestamp))
+        matchRepository.save(match.copy(startedAt = timestamp, originalStartedAt = timestamp.toString()))
         realtimePublisher.matchChanged(matchId)
         return MatchCommandResult.Success(readHydratedForUpdate(matchId))
     }
@@ -202,7 +202,7 @@ class MatchServiceImpl(
             )
         }
 
-        matchRepository.save(match.copy(endedAt = timestamp))
+        matchRepository.save(match.copy(endedAt = timestamp, originalEndedAt = timestamp.toString()))
         val finished = readHydratedForUpdate(matchId)
         realtimePublisher.matchFinished(matchId)
         return MatchCommandResult.Success(finished)

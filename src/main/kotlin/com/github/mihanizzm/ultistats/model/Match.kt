@@ -61,7 +61,23 @@ data class Match(
 
     @Column(name = "deleted_at")
     val deletedAt: Instant? = null,
+
+    @get:JsonIgnore
+    @Column(name = "original_started_at", length = 40)
+    val originalStartedAt: String? = startedAt?.toString(),
+
+    @get:JsonIgnore
+    @Column(name = "original_ended_at", length = 40)
+    val originalEndedAt: String? = endedAt?.toString(),
 ) {
+    @get:JsonIgnore
+    val effectiveStartedAt: Instant?
+        get() = startedAt.withOriginalPrecision(originalStartedAt)
+
+    @get:JsonIgnore
+    val effectiveEndedAt: Instant?
+        get() = endedAt.withOriginalPrecision(originalEndedAt)
+
     init {
         require(playersPerTeam >= MIN_PLAYERS_PER_TEAM) {
             "Players per team must be at least $MIN_PLAYERS_PER_TEAM"

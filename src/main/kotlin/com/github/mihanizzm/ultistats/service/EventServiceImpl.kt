@@ -349,8 +349,8 @@ class EventServiceImpl(
         teamIds = emptyList(),
         events = activeEvents.map { it.toDomain() }.toMutableList(),
         plannedStartTimestamp = plannedStartTimestamp,
-        startedAt = startedAt,
-        endedAt = endedAt,
+        startedAt = effectiveStartedAt,
+        endedAt = effectiveEndedAt,
         deletedAt = deletedAt,
     )
 

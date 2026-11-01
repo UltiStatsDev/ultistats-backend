@@ -28,8 +28,8 @@ class EventPrecisionPostgresMigrationTest {
                 connection.createStatement().use { sql ->
                     sql.execute("SET search_path TO $schema")
                     sql.execute("""
-                        INSERT INTO matches(id,event_log_revision,last_event_log_invalidation_revision)
-                        VALUES ('00000000-0000-0000-0000-000000000071',3,2);
+                        INSERT INTO matches(id,event_log_revision,last_event_log_invalidation_revision,started_at,ended_at)
+                        VALUES ('00000000-0000-0000-0000-000000000071',3,2,'2026-07-28T12:00:00.123457Z','2026-07-28T12:00:01.123457Z');
                         INSERT INTO events(id,match_id,sequence_number,event_type,occurred_at,creation_fingerprint)
                         VALUES ('00000000-0000-0000-0000-000000000072','00000000-0000-0000-0000-000000000071',7,
                         'HALFTIME_START','2026-07-28T12:00:00.123457Z',repeat('a',64));
@@ -49,8 +49,8 @@ class EventPrecisionPostgresMigrationTest {
                 val before = tables.associateWith { snapshot(it) }
                 flyway("10").migrate()
                 tables.forEach { table ->
-                    val actual = if (table == "events") connection.createStatement().use { sql ->
-                        sql.executeQuery("SELECT (to_jsonb(e) - 'original_occurred_at')::text FROM events e ORDER BY id").use { rows ->
+                    val actual = if (table == "events" || table == "matches") connection.createStatement().use { sql ->
+                        sql.executeQuery("SELECT (to_jsonb(e) - 'original_occurred_at' - 'original_started_at' - 'original_ended_at')::text FROM $table e ORDER BY id").use { rows ->
                             rows.next(); rows.getString(1)
                         }
                     } else snapshot(table)
@@ -60,6 +60,9 @@ class EventPrecisionPostgresMigrationTest {
                 }
                 connection.createStatement().use { sql ->
                     sql.executeQuery("SELECT original_occurred_at FROM events").use { rows -> rows.next(); assertNull(rows.getString(1)) }
+                    sql.executeQuery("SELECT original_started_at, original_ended_at FROM matches").use { rows ->
+                        rows.next(); assertNull(rows.getString(1)); assertNull(rows.getString(2))
+                    }
                     // An old binary's INSERT omits the additive column. Its UPDATE keeps occurredAt immutable.
                     sql.execute("""INSERT INTO events(id,match_id,sequence_number,event_type,occurred_at)
                         VALUES ('00000000-0000-0000-0000-000000000076','00000000-0000-0000-0000-000000000071',8,

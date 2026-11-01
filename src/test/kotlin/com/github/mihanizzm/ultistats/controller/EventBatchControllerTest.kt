@@ -178,6 +178,49 @@ open class EventBatchControllerTest {
         assertEquals(original.toString(), snapshot()["events"].last()["occurredAt"].asText())
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(longs = [123456123, 123456500, 123456789, 999999789])
+    fun `start and finish retain exact boundaries through reload and portable round trip`(nanos: Long) {
+        val started = at.plusNanos(nanos)
+        val ended = started.plusSeconds(1)
+        val other = Match(UUID.randomUUID(), match.teamIds)
+        matches.create(other)
+        val root = "/api/v1/matches/${other.id}"
+        fun timestamp(command: String, time: Instant) = mvc.perform(post("$root/$command")
+            .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(mapOf("timestamp" to time.toString()))))
+        timestamp("start", started).andExpect(status().isOk)
+        mvc.perform(get(root)).andExpect(status().isOk).andExpect(jsonPath("$.startedAt").value(started.toString()))
+        val players = matches.getOrThrow(other.id).participantsByTeam.values.first()
+        val who = players[0].participantId
+        fun one(type: String, time: Instant) = mapOf("eventId" to UUID.randomUUID(), "type" to type,
+            "occurredAt" to time.toString(), "participantId" to who)
+        val batchPath = "/api/v2/matches/${other.id}/events/batch"
+        mvc.perform(post(batchPath).contentType(MediaType.APPLICATION_JSON)
+            .content(mapper.writeValueAsBytes(batch(listOf(one("PULL", started.minusNanos(1)))))))
+            .andExpect(status().isConflict).andExpect(jsonPath("$.code").value("EVENT_BEFORE_START"))
+        val goal = mapOf("eventId" to UUID.randomUUID(), "type" to "GOAL", "occurredAt" to ended.toString(),
+            "fromParticipantId" to who, "toParticipantId" to players[1].participantId)
+        mvc.perform(post(batchPath).contentType(MediaType.APPLICATION_JSON)
+            .content(mapper.writeValueAsBytes(batch(listOf(one("PULL", started), one("PICKUP", started), goal)))))
+            .andExpect(status().isCreated)
+        timestamp("end", ended.minusNanos(1)).andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code").value("END_BEFORE_LAST_EVENT"))
+        timestamp("end", ended).andExpect(status().isOk)
+        mvc.perform(get(root)).andExpect(status().isOk).andExpect(jsonPath("$.endedAt").value(ended.toString()))
+        fun portable(id: UUID) = mapper.readTree(mvc.perform(post("/api/v1/matches/export")
+            .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(mapOf("matchIds" to listOf(id)))))
+            .andExpect(status().isOk).andReturn().response.contentAsString)
+        val exported = portable(other.id)
+        assertEquals(started.toString(), exported["matches"][0]["startedAt"].asText())
+        assertEquals(ended.toString(), exported["matches"][0]["endedAt"].asText())
+        val imported = mapper.readTree(mvc.perform(post("/api/v1/matches/import").contentType(MediaType.APPLICATION_JSON)
+            .content(mapper.writeValueAsBytes(exported))).andExpect(status().isOk).andReturn().response.contentAsString)
+        val copy = portable(UUID.fromString(imported["matchIds"][other.id.toString()].asText()))["matches"][0]
+        assertEquals(started.toString(), copy["startedAt"].asText())
+        assertEquals(ended.toString(), copy["endedAt"].asText())
+        assertEquals(listOf(started.toString(), started.toString(), ended.toString()), copy["events"].map { it["occurredAt"].asText() })
+    }
+
     @Test
     fun `stale base returns reconciliation metadata and does not append`() {
         send(batch(listOf(event("PULL"))))
