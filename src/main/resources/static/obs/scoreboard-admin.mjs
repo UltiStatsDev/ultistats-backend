@@ -1,3 +1,4 @@
+import {obsSession} from '../auth/obs-session.mjs';
 import {watchScoreboard} from './scoreboard-client.mjs';
 import {defaultProfile} from './scoreboard-model.mjs';
 import {teamAccent,imageAccent} from './colors.mjs';
@@ -59,7 +60,7 @@ $('scoreboard-form').addEventListener('submit',async event=>{
  event.preventDefault();if(!draft||saving)return;
  const selected=generation,id=matchId,value=structuredClone(draft);saving=true;$('scoreboard-fields').disabled=true;
  try {
-  const response=await fetch(`/api/v1/obs/scoreboard/${encodeURIComponent(id)}/profile`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(value),signal:AbortSignal.timeout(5000)});
+  const response=await obsSession.protectedFetch(`/api/v1/obs/scoreboard/${encodeURIComponent(id)}/profile`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(value),signal:AbortSignal.timeout(5000)});
   if(!response.ok){const problem=await response.json();throw Error(problem.detail??`HTTP ${response.status}`);}
   const saved=await response.json();if(selected!==generation)return;
   draft=saved;dirty=false;fieldsKey=null;message('Профиль сохранён для всех источников этого матча.');postDraft();
