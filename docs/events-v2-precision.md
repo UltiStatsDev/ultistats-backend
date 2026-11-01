@@ -24,7 +24,7 @@ For an actual HTTP/SSE check on an owned synthetic API, run `python3 src/test/py
 
 `src/test/python/batch71_runtime_compat.py` provides the three phases for a binary rollback/restart check. Run `seed` on the new binary, `old` on the previous binary against the same V10 database, then `new` after restarting the new binary, passing the same owned API URL and owned JSON proof path each time. This creates only synthetic fixtures. Retain the database/schema during the binary rollback.
 
-The same V10 migration preserves `matches.original_started_at` and `matches.original_ended_at`. This keeps start/end constraints and portable match boundaries in the same precision as events: an event exactly at a persisted start is allowed, one nanosecond before is rejected, and finishing exactly at the last event remains exportable after reload. Raw timestamp fields remain JPA storage values; policies, DTO mappings and transfer use their guarded effective values. Start/end commands explicitly update the corresponding original value. These columns also stay NULL for legacy rows and old-binary lifecycle writes.
+The same V10 migration preserves nullable `(original_started_at_second, original_started_at_nano)` and `(original_ended_at_second, original_ended_at_nano)` pairs on `matches`. This keeps start/end constraints and portable match boundaries in the same precision as events: an event exactly at a persisted start is allowed, one nanosecond before is rejected, and finishing exactly at the last event remains exportable after reload. Raw timestamp fields remain JPA storage values; policies, DTO mappings and transfer use their guarded effective values. Start/end commands explicitly update the corresponding original value. These columns also stay NULL for legacy rows and old-binary lifecycle writes.
 
 Rollback is a compatibility mode with the previous binary's precision semantics. It cannot record nanoseconds it does not persist. In particular, an old binary finishing a match with new-binary exact events may leave an end known only to microsecond precision; no historical end nanoseconds can be inferred from those events. Original metadata remains available when switching forward again, while NULL values retain their honest stored precision. Do not claim arbitrary mixed-writer history has exact original lifecycle boundaries.
 
@@ -37,8 +37,10 @@ A conservative read-only preflight counts matches with **any** retained original
 ```sql
 SELECT count(*) AS matches_with_original_metadata
 FROM matches m
-WHERE m.original_started_at IS NOT NULL
-   OR m.original_ended_at IS NOT NULL
+WHERE m.original_started_at_second IS NOT NULL
+   OR m.original_started_at_nano IS NOT NULL
+   OR m.original_ended_at_second IS NOT NULL
+   OR m.original_ended_at_nano IS NOT NULL
    OR EXISTS (
        SELECT 1 FROM events e
        WHERE e.match_id = m.id AND e.original_occurred_at IS NOT NULL
@@ -50,3 +52,6 @@ If this count is nonzero, require maintenance/no-write access for the previous b
 Matches without retained submicrosecond originals continue to use the previous precision semantics. New-binary writes, validation, restart and new-to-new portable transfer preserve exact known values. Never drop metadata or infer a replacement end time to make a damaged mixed-writer history pass validation.
 
 Observed limit: a new event at `.123456123Z` followed by an old-binary finish at either `.123456123Z` or `.123456122Z` produces the same physical end `.123456Z` with NULL original end. Forward reads preserve the known exact event and known stored end; export rejects the inconsistent boundary. The two requested ends cannot be distinguished from that stored state. Old export succeeds only because it also rounds the event. This is why unrestricted old-binary mutation is outside the supported downgrade boundary.
+
+
+SQL pagination uses the same guarded effective start/end values **before** `LIMIT/OFFSET`. The exact key is numeric epoch seconds plus non-negative nanoseconds divided by `1000000000.0`, without floating point. Metadata is trusted only if both parts exist, nanos are in `0..999999999`, and `epochSecond + round(nano / 1000000000.0, 6)` equals the physical timestamp epoch. This rounds the positive fraction before carrying; rounding a signed whole epoch instead would disagree with JDBC at pre-epoch half-microseconds. Missing, partial, out-of-range or stale pairs sort using the physical timestamp, consistently with the DTO fallback. Existing NULL ordering and signed UUID tie-break stay unchanged.

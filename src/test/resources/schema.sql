@@ -107,8 +107,10 @@ CREATE TABLE events (
 
 CREATE INDEX idx_matches_started_at ON matches(started_at);
 
-ALTER TABLE matches ADD COLUMN original_started_at VARCHAR(40);
-ALTER TABLE matches ADD COLUMN original_ended_at VARCHAR(40);
+ALTER TABLE matches ADD COLUMN original_started_at_second BIGINT;
+ALTER TABLE matches ADD COLUMN original_started_at_nano INTEGER;
+ALTER TABLE matches ADD COLUMN original_ended_at_second BIGINT;
+ALTER TABLE matches ADD COLUMN original_ended_at_nano INTEGER;
 
 ALTER TABLE matches ADD COLUMN event_log_revision BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE matches ADD COLUMN last_event_log_invalidation_revision BIGINT NOT NULL DEFAULT 0;

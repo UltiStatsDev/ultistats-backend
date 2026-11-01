@@ -50,7 +50,7 @@ class EventPrecisionPostgresMigrationTest {
                 flyway("10").migrate()
                 tables.forEach { table ->
                     val actual = if (table == "events" || table == "matches") connection.createStatement().use { sql ->
-                        sql.executeQuery("SELECT (to_jsonb(e) - 'original_occurred_at' - 'original_started_at' - 'original_ended_at')::text FROM $table e ORDER BY id").use { rows ->
+                        sql.executeQuery("SELECT (to_jsonb(e) - 'original_occurred_at' - 'original_started_at_second' - 'original_started_at_nano' - 'original_ended_at_second' - 'original_ended_at_nano')::text FROM $table e ORDER BY id").use { rows ->
                             rows.next(); rows.getString(1)
                         }
                     } else snapshot(table)
@@ -60,8 +60,8 @@ class EventPrecisionPostgresMigrationTest {
                 }
                 connection.createStatement().use { sql ->
                     sql.executeQuery("SELECT original_occurred_at FROM events").use { rows -> rows.next(); assertNull(rows.getString(1)) }
-                    sql.executeQuery("SELECT original_started_at, original_ended_at FROM matches").use { rows ->
-                        rows.next(); assertNull(rows.getString(1)); assertNull(rows.getString(2))
+                    sql.executeQuery("SELECT original_started_at_second, original_started_at_nano, original_ended_at_second, original_ended_at_nano FROM matches").use { rows ->
+                        rows.next(); (1..4).forEach { assertNull(rows.getString(it)) }
                     }
                     // An old binary's INSERT omits the additive column. Its UPDATE keeps occurredAt immutable.
                     sql.execute("""INSERT INTO events(id,match_id,sequence_number,event_type,occurred_at)
@@ -77,6 +77,7 @@ class EventPrecisionPostgresMigrationTest {
                     "2026-07-28T12:00:00.123456500Z" to "2026-07-28T12:00:00.123457Z",
                     "2026-07-28T12:00:00.999999789Z" to "2026-07-28T12:00:01Z",
                     "1960-01-01T12:00:00.123456500Z" to "1960-01-01T12:00:00.123457Z",
+                    "1969-12-31T23:59:59.999999500Z" to "1970-01-01T00:00:00Z",
                 ).forEach { (original, expectedStored) ->
                     connection.prepareStatement("SELECT ?::timestamptz").use { sql ->
                         sql.setTimestamp(1, Timestamp.from(Instant.parse(original)))

@@ -221,6 +221,47 @@ open class EventBatchControllerTest {
         assertEquals(listOf(started.toString(), started.toString(), ended.toString()), copy["events"].map { it["occurredAt"].asText() })
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = ["2026-07-28T12:00:00Z", "1969-12-31T23:59:49Z"])
+    fun `SQL pagination orders effective start and end precision before limit with legacy and stale fallback`(origin: String) {
+        val teamIds = List(2) { com.github.mihanizzm.ultistats.model.Team(UUID.randomUUID(), "Precision list") }
+            .onEach { teams.create(it) }.map { it.id }
+        val base = Instant.parse(origin)
+        val suffix = UUID.randomUUID().leastSignificantBits
+        val a = Match(UUID(0L, suffix), teamIds, startedAt = base.plusNanos(123456123), endedAt = base.plusSeconds(10).plusNanos(123456123))
+        val tie = a.copy(id = UUID(Long.MIN_VALUE, suffix)) // signed UUID tie-break stays ascending in either direction
+        val b = Match(UUID.randomUUID(), teamIds, startedAt = base.plusNanos(123456124), endedAt = base.plusSeconds(10).plusNanos(123456124))
+        val legacy = Match(UUID.randomUUID(), teamIds, startedAt = base.plusNanos(123456000), endedAt = base.plusSeconds(10).plusNanos(123456000),
+            originalStartedAtSecond = null, originalStartedAtNano = null, originalEndedAtSecond = null, originalEndedAtNano = null)
+        val stale = Match(UUID.randomUUID(), teamIds, startedAt = base.plusNanos(123457000), endedAt = base.plusSeconds(10).plusNanos(123457000),
+            originalStartedAtSecond = base.epochSecond + 5, originalStartedAtNano = 0,
+            originalEndedAtSecond = base.epochSecond + 15, originalEndedAtNano = 0)
+        val invalid = Match(UUID.randomUUID(), teamIds, startedAt = base.plusNanos(123458000), endedAt = base.plusSeconds(10).plusNanos(123458000),
+            originalStartedAtNano = 1000000000, originalEndedAtNano = -1)
+        val partial = Match(UUID.randomUUID(), teamIds, startedAt = base.plusNanos(123459000), endedAt = base.plusSeconds(10).plusNanos(123459000),
+            originalStartedAtSecond = null, originalEndedAtNano = null)
+        val halfCarry = Match(UUID.randomUUID(), teamIds, startedAt = base.plusNanos(999999500), endedAt = base.plusSeconds(10).plusNanos(999999500))
+        val carry = Match(UUID.randomUUID(), teamIds, startedAt = base.plusNanos(999999789), endedAt = base.plusSeconds(10).plusNanos(999999789))
+        val next = Match(UUID.randomUUID(), teamIds, startedAt = base.plusSeconds(1), endedAt = base.plusSeconds(11))
+        val planned = Match(UUID.randomUUID(), teamIds)
+        listOf(a, tie, b, legacy, stale, invalid, partial, halfCarry, carry, next, planned).forEach { matches.create(it) }
+        val ascending = listOf(legacy, tie, a, b, stale, invalid, partial, halfCarry, carry, next, planned)
+        val descending = listOf(planned, next, carry, halfCarry, partial, invalid, stale, b, tie, a, legacy)
+        for (field in listOf("startedAt", "endedAt")) {
+            for ((direction, expected) in listOf("asc" to ascending, "desc" to descending)) {
+                expected.forEachIndexed { page, match ->
+                    val result = mapper.readTree(mvc.perform(get("/api/v1/matches")
+                        .param("teamId", teamIds[0].toString()).param("sort", "$field:$direction")
+                        .param("size", "1").param("page", page.toString())).andReturn().response.contentAsString)
+                    assertEquals(11, result["totalElements"].asInt())
+                    assertEquals(match.id.toString(), result["content"][0]["id"].asText(), "$field:$direction page$page")
+                    val time = if (field == "startedAt") match.effectiveStartedAt else match.effectiveEndedAt
+                    assertEquals(time?.toString(), result["content"][0][field]?.takeUnless { it.isNull }?.asText())
+                }
+            }
+        }
+    }
+
     @Test
     fun `stale base returns reconciliation metadata and does not append`() {
         send(batch(listOf(event("PULL"))))
