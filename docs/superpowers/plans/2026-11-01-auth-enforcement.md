@@ -178,3 +178,30 @@ proved by current policy unit tests.
 Source prerequisites imported:152 f8f548cd7e5017236ba25a1fe60b9598c1b5c091
 (cherry-pickf09f8d3),154 origin SPI926b3eb (cherry-pick856cae7). Wire hash verified
 by lead and mutualfreeze recorded; no further wire hold.
+
+## Final authority design replacing the earlier correction
+
+Independent reviewer rejected the separate coordination connection because its
+death releases the fence while a different domain transaction could still commit.
+152 now owns ordered advisors: actual transaction advice outerorder0, auth guard
+innerorder1, matching both Spring/Jakarta via actual TransactionAttributeSource.
+Inside the SAME existing domain transaction/thread-bound physical connection,
+acquire PostgreSQL shared transaction advisory fence and revalidate current
+authority/capture AFTER grant. Security management takes exclusive samekey first
+in its own transaction before singleton/account/session rows. No outer HTTP
+transaction, no independent fence connection, no upgrades, no GET/SSE locks.
+152 owns narrow missing Team/Player CRUD, TeamPlayer.add/remove and Match.delete
+transaction annotations;153 does not duplicate those edits.
+
+Photo facade upload/delete methods already have Spring@Transactional, so advisor
+must guard those before filesystem effects. An initial audit overlooked the
+outer facade annotation; that incorrect callback-commit assumption was corrected
+with152/reviewer immediately. File cleanup commit-failure behavior is separately
+verified/dispositioned, never silently changed by a broad transaction wrapper.
+
+Additional reviewer gates: supplied expected IDs reject before CSRF materialization
+with zero Set-Cookie, including missing CSRF cookie. Bootstrap CSRF/login remain
+usable with expired/revoked cookies per152 endpoint-specific policy.153 HTTP
+harness checks each UUID mismatch on every protected unsafe inventory row with
+malformed body/missingCSRFcookie, plus domain fingerprints and receipt invariance.
+Actual run pending integrated chain/owned PG; syntax validation is not execution.
