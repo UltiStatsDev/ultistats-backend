@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.controller
 
+import org.springframework.context.annotation.Import
+import com.github.mihanizzm.ultistats.fixture.LegacyDomainHttpSecurity
+
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterAll
@@ -19,6 +22,7 @@ import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
 
+@Import(LegacyDomainHttpSecurity::class)
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = [

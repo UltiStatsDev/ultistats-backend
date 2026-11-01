@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.controller
 
+import org.springframework.context.annotation.Import
+import com.github.mihanizzm.ultistats.fixture.LegacyDomainHttpSecurity
+
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.github.mihanizzm.ultistats.model.Player
 import com.github.mihanizzm.ultistats.model.Team
@@ -18,6 +21,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
 import java.util.UUID
 
+@Import(LegacyDomainHttpSecurity::class)
 @SpringBootTest
 @AutoConfigureMockMvc
 class PlayerControllerTest {
