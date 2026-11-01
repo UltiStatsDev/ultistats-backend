@@ -35,7 +35,7 @@ Files: `deploy/stand/sql-roles.mjs`, `sql-role-policy-v1.json`, `tests/sql-roles
 - [x] Write validation and real permission tests first; run RED with missing implementation.
 - [x] Implement identity/file validation, sanitized psql transport, transactional provision/reconcile/revoke.
 - [x] Run GREEN for CRUD, denied DDL/admin/foreign/security/sequence privileges, idempotence, migration drift, revoke and identity collisions.
-- [ ] Commit code, policy and tests.
+- [x] Commit code, policy and tests.
 
 ## Task 2: reproducible evidence and handoff
 
@@ -44,3 +44,7 @@ Files: `deploy/stand/tests/run-sql-roles.sh`, `deploy/stand/sql-roles.md`.
 - [x] Run owned PostgreSQL tests under bounded Docker locks; remove only owned completed container.
 - [x] Run complete backend build under JVM lock and existing JS/deploy checks.
 - [ ] Push own branch, open PR against candidate/private-stand-v1 using Refs #169/#168, obtain exact-head CI and independent review, fix findings and hand off. Product issue stays open for shared QA/PO and actual delivery.
+
+## Review fix evidence
+
+Independent review found retained non-public sensitive catalog grants and lost service PUBLIC table/column access. Both were reproduced RED on real PostgreSQL and fixed; final role suite: 10 passed, 0 skipped. System metadata stays available through builtin initial ACL comparison and explicit standard information-schema read/usage; unexpected access rejects reconciliation before mutation. Service rights are preserved without widening column-only access. Disposable fixtures use verified tmpfs PGDATA and exact-container cleanup. Reviewed private-candidate CI was integrated normally; no master/auth/stable substitution.

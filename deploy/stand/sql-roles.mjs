@@ -95,7 +95,7 @@ BEGIN
            AND shobj_description(oid,'pg_database')=${quote(`ultistats-stand:${i.installationId}`)})
     THEN RAISE EXCEPTION 'Installation identity mismatch'; END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname=${quote(i.serviceRole)}) THEN RAISE EXCEPTION 'Service owner missing'; END IF;
-    IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname NOT IN ('public','information_schema') AND nspname NOT LIKE 'pg\\_%' ESCAPE '\\')
+    IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname NOT IN ('public','information_schema','pg_catalog','pg_toast') AND nspname !~ '^pg_(toast_)?temp_[0-9]+$')
     THEN RAISE EXCEPTION 'Unsupported application schema'; END IF;
     SELECT oid INTO existing FROM pg_roles WHERE rolname=${literalRole};
     IF existing IS NOT NULL THEN
@@ -114,6 +114,60 @@ BEGIN
         d.defaclrole NOT IN (SELECT oid FROM pg_roles WHERE rolname IN (${quote(i.migrationRole)},${quote(i.serviceRole)})) AND
         d.defaclobjtype IN ('r','S','f'))
     THEN RAISE EXCEPTION 'Unmanaged default privilege grant'; END IF;
+    -- Builtin metadata remains available, but explicit ACL drift must never
+    -- turn sensitive catalogs/functions into application data. pg_init_privs
+    -- records builtin catalog ACLs, including deliberate EXECUTE revokes.
+    -- Information-schema builtin SELECT/USAGE is explicit: initdb does not
+    -- record those later-created standard views in pg_init_privs.
+    IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname IN ('pg_catalog','information_schema') AND c.oid>=16384) OR
+       EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+        WHERE n.nspname IN ('pg_catalog','information_schema') AND p.oid>=16384)
+    THEN RAISE EXCEPTION 'Unexpected object in system schema'; END IF;
+    IF EXISTS (
+        SELECT 1 FROM pg_namespace n CROSS JOIN LATERAL aclexplode(COALESCE(n.nspacl,acldefault('n',n.nspowner))) a
+        WHERE n.nspname<>'public' AND a.grantee IN (0,COALESCE(existing,0))
+        AND (a.is_grantable OR NOT EXISTS (
+            SELECT 1 FROM aclexplode(COALESCE((SELECT initprivs FROM pg_init_privs WHERE classoid='pg_namespace'::regclass
+                AND objoid=n.oid AND objsubid=0 AND privtype='i'),acldefault('n',n.nspowner))) initial
+            WHERE initial.grantee=0 AND initial.privilege_type=a.privilege_type
+            UNION ALL SELECT 1 WHERE n.nspname='information_schema' AND a.privilege_type='USAGE'))) OR
+       EXISTS (
+        SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        CROSS JOIN LATERAL aclexplode(COALESCE(c.relacl,acldefault(CASE WHEN c.relkind='S' THEN 'S'::"char" ELSE 'r'::"char" END,c.relowner))) a
+        WHERE n.nspname<>'public' AND a.grantee IN (0,COALESCE(existing,0))
+        AND (a.is_grantable OR NOT EXISTS (
+            SELECT 1 FROM aclexplode(COALESCE((SELECT initprivs FROM pg_init_privs WHERE classoid='pg_class'::regclass
+                AND objoid=c.oid AND objsubid=0 AND privtype='i'),acldefault(CASE WHEN c.relkind='S' THEN 'S'::"char" ELSE 'r'::"char" END,c.relowner))) initial
+            WHERE initial.grantee=0 AND initial.privilege_type=a.privilege_type
+            UNION ALL SELECT 1 WHERE n.nspname='information_schema' AND c.oid<16384 AND a.privilege_type='SELECT'))) OR
+       EXISTS (
+        SELECT 1 FROM pg_attribute att JOIN pg_class c ON c.oid=att.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+        CROSS JOIN LATERAL aclexplode(att.attacl) a
+        WHERE n.nspname<>'public' AND a.grantee IN (0,COALESCE(existing,0))
+        AND (a.is_grantable OR NOT EXISTS (
+            SELECT 1 FROM pg_init_privs ip CROSS JOIN LATERAL aclexplode(ip.initprivs) initial
+            WHERE ip.classoid='pg_class'::regclass AND ip.objoid=c.oid AND ip.objsubid IN (0,att.attnum)
+                AND ip.privtype='i' AND initial.grantee=0 AND initial.privilege_type=a.privilege_type
+            UNION ALL SELECT 1 WHERE n.nspname='information_schema' AND c.oid<16384 AND a.privilege_type='SELECT'))) OR
+       EXISTS (
+        SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+        CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a
+        WHERE n.nspname<>'public' AND a.grantee IN (0,COALESCE(existing,0))
+        AND (a.is_grantable OR NOT EXISTS (
+            SELECT 1 FROM aclexplode(COALESCE((SELECT initprivs FROM pg_init_privs WHERE classoid='pg_proc'::regclass
+                AND objoid=p.oid AND objsubid=0 AND privtype='i'),acldefault('f',p.proowner))) initial
+            WHERE initial.grantee=0 AND initial.privilege_type=a.privilege_type)))
+    THEN RAISE EXCEPTION 'Unexpected non-policy catalog or function access'; END IF;
+    IF EXISTS (SELECT 1 FROM pg_parameter_acl CROSS JOIN LATERAL aclexplode(paracl) a
+        WHERE a.grantee IN (0,COALESCE(existing,0))) OR
+       EXISTS (SELECT 1 FROM pg_largeobject_metadata CROSS JOIN LATERAL aclexplode(lomacl) a
+        WHERE a.grantee IN (0,COALESCE(existing,0))) OR
+       EXISTS (SELECT 1 FROM pg_foreign_server CROSS JOIN LATERAL aclexplode(srvacl) a
+        WHERE a.grantee IN (0,COALESCE(existing,0))) OR
+       EXISTS (SELECT 1 FROM pg_foreign_data_wrapper CROSS JOIN LATERAL aclexplode(fdwacl) a
+        WHERE a.grantee IN (0,COALESCE(existing,0)))
+    THEN RAISE EXCEPTION 'Unexpected administrative or foreign object access'; END IF;
     IF existing IS NULL THEN
         CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
         COMMENT ON ROLE ${role} IS ${quote(marker)};
@@ -125,6 +179,41 @@ REVOKE ALL ON DATABASE ${db} FROM PUBLIC, ${role};
 GRANT CONNECT,TEMP ON DATABASE ${db} TO ${migration},${service};
 REVOKE ALL ON SCHEMA public FROM PUBLIC,${role};
 GRANT USAGE ON SCHEMA public TO ${migration},${service};
+-- Preserve only table/column/sequence privileges already effective for the
+-- service or migration account; never turn a column-only read into table SELECT.
+DO $service_data$
+DECLARE item record; column_item record; account text; privilege text;
+BEGIN
+    FOR item IN SELECT c.oid,c.relname,c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','f','S')
+    LOOP
+        FOREACH account IN ARRAY ARRAY[${quote(i.migrationRole)},${quote(i.serviceRole)}]
+        LOOP
+            IF item.relkind='S' THEN
+                FOREACH privilege IN ARRAY ARRAY['USAGE','SELECT','UPDATE'] LOOP
+                    IF has_sequence_privilege(account,item.oid,privilege) THEN
+                        EXECUTE format('GRANT %s ON SEQUENCE public.%I TO %I',privilege,item.relname,account);
+                    END IF;
+                END LOOP;
+            ELSE
+                FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] LOOP
+                    IF has_table_privilege(account,item.oid,privilege) THEN
+                        EXECUTE format('GRANT %s ON TABLE public.%I TO %I',privilege,item.relname,account);
+                    END IF;
+                END LOOP;
+                FOR column_item IN SELECT attname,attnum FROM pg_attribute WHERE attrelid=item.oid
+                    AND attnum>0 AND NOT attisdropped AND attacl IS NOT NULL
+                LOOP
+                    FOREACH privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','REFERENCES'] LOOP
+                        IF NOT has_table_privilege(account,item.oid,privilege) AND has_column_privilege(account,item.oid,column_item.attnum,privilege) THEN
+                            EXECUTE format('GRANT %s (%I) ON TABLE public.%I TO %I',privilege,column_item.attname,item.relname,account);
+                        END IF;
+                    END LOOP;
+                END LOOP;
+            END IF;
+        END LOOP;
+    END LOOP;
+END $service_data$;
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC,${role};
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC,${role};
 -- Preserve access already held by migration/service accounts before removing

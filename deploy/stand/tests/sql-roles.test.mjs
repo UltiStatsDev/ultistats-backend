@@ -91,6 +91,42 @@ test('real PostgreSQL restricts DML, repairs drift, rejects collisions and revok
         assert.equal(await sql('SELECT payload FROM obs_config WHERE id=1', client), '{}');
         await sql('SELECT * FROM undo_command_receipts; SELECT * FROM event_batch_receipts;', client);
     });
+    await t.test('rejects direct, PUBLIC and column catalog secret grants and unsafe system functions', async () => {
+        for (const grantee of ['us_fixture_sql','PUBLIC']) {
+            for (const access of ['SELECT','SELECT(rolpassword)']) {
+                await sql(`GRANT ${access} ON pg_catalog.pg_authid TO ${grantee}`);
+                try { await assert.rejects(roles.reconcileSqlRole(options), /rejected/); }
+                finally { await sql(`REVOKE ${access} ON pg_catalog.pg_authid FROM ${grantee}`); }
+            }
+            await sql(`GRANT CREATE ON SCHEMA pg_catalog TO ${grantee}`);
+            try { await assert.rejects(roles.reconcileSqlRole(options), /rejected/); }
+            finally { await sql(`REVOKE CREATE ON SCHEMA pg_catalog FROM ${grantee}`); }
+            await sql(`GRANT EXECUTE ON FUNCTION pg_catalog.pg_read_file(text) TO ${grantee}`);
+            try { await assert.rejects(roles.reconcileSqlRole(options), /rejected/); }
+            finally { await sql(`REVOKE EXECUTE ON FUNCTION pg_catalog.pg_read_file(text) FROM ${grantee}`); }
+        }
+        await sql('CREATE TABLE information_schema.unsafe_system169(secret text)');
+        try { await assert.rejects(roles.reconcileSqlRole(options), /rejected/); }
+        finally { await sql('DROP TABLE information_schema.unsafe_system169'); }
+        await roles.reconcileSqlRole(options);
+        // Ordinary metadata and safe builtins must still work for real SQL clients.
+        assert.equal(await sql("SELECT count(*)>0 FROM pg_catalog.pg_class",client),'t');
+        assert.equal(await sql("SELECT count(*)>0 FROM information_schema.tables",client),'t');
+        assert.equal(await sql('SELECT length(current_database())>0',client),'t');
+    });
+    await t.test('preserves existing service table and column PUBLIC rights without broadening denied columns', async () => {
+        await sql('REVOKE SELECT ON public.teams FROM service169; GRANT SELECT ON public.teams TO PUBLIC');
+        assert.equal(await sql("SELECT has_table_privilege('service169','public.teams','SELECT')"),'t');
+        await roles.reconcileSqlRole(options);
+        assert.equal(await sql("SELECT has_table_privilege('service169','public.teams','SELECT')"),'t');
+        await sql('REVOKE SELECT ON public.teams FROM service169; GRANT SELECT(name) ON public.teams TO PUBLIC');
+        assert.equal(await sql("SELECT has_column_privilege('service169','public.teams','name','SELECT')"),'t');
+        assert.equal(await sql("SELECT has_column_privilege('service169','public.teams','id','SELECT')"),'f');
+        await roles.reconcileSqlRole(options);
+        assert.equal(await sql("SELECT has_column_privilege('service169','public.teams','name','SELECT')"),'t');
+        assert.equal(await sql("SELECT has_column_privilege('service169','public.teams','id','SELECT')"),'f');
+        await sql('GRANT SELECT ON public.teams TO service169');
+    });
     const forbidden = [
         'CREATE TABLE illegal169(id integer)', 'CREATE TEMP TABLE illegal169(id integer)',
         'CREATE SCHEMA illegal169', 'ALTER TABLE teams ADD COLUMN bad integer', 'TRUNCATE teams',
