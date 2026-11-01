@@ -30,8 +30,7 @@ class AuthStore(private val jdbc: JdbcTemplate, private val transactions: Transa
     fun installationId(): UUID = jdbc.queryForObject("SELECT installation_id FROM auth_installation WHERE singleton=1", UUID::class.java)!!
 
     /** Management always takes exclusive mode first; callers must never upgrade a shared fence. */
-    fun <T : Any> withAuthorityLock(block: () -> T): T = fenced(false, block)
-    private fun <T : Any> fenced(shared: Boolean, block: () -> T): T = transactions.execute {
+    fun <T : Any> withAuthorityLock(block: () -> T): T = transactions.execute {
         AuthTransactionFence(jdbc).acquire(true)
         jdbc.queryForObject("SELECT singleton FROM auth_installation WHERE singleton=1 FOR UPDATE", Int::class.java)
         block()
