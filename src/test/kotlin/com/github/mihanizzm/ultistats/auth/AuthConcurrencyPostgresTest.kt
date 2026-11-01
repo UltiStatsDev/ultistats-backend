@@ -79,7 +79,8 @@ class AuthConcurrencyPostgresTest {
         token=mapper.readTree(csrf.body())["token"].asText()
     }
     private fun uri(path:String)=URI("http://127.0.0.1:$port$path")
-    private fun post(path:String,body:Any):HttpResponse<String> = client.send(HttpRequest.newBuilder(uri(path))
+    private fun post(path:String,body:Any,origin:String?=null):HttpResponse<String> = client.send(HttpRequest.newBuilder(uri(path))
+        .apply { origin?.let { header("Origin",it) } }
         .header("Content-Type","application/json").header("X-CSRF-TOKEN",token)
         .header("X-UltiStats-Installation-Id",login.context.installationId.toString())
         .header("X-UltiStats-Account-Id",login.context.account!!.id.toString())
@@ -89,6 +90,36 @@ class AuthConcurrencyPostgresTest {
     private fun waitFor(predicate:()->Boolean) {
         val end=System.nanoTime()+TimeUnit.SECONDS.toNanos(10)
         while(!predicate()) { check(System.nanoTime()<end) { "Timed out waiting for owned PostgreSQL fence" };Thread.sleep(10) }
+    }
+
+    @Test fun `wrong origin on actual private HTTP returns frozen problem before CORS plaintext fallback`() {
+        val response=post("/api/v1/teams",mapOf("name" to "must-not-exist"),"https://unapproved.invalid")
+        assertEquals(403,response.statusCode())
+        assertEquals("CSRF_INVALID",mapper.readTree(response.body())["code"]?.asText())
+        assertTrue(mapper.readTree(response.body())["requestRejectedBeforeExecution"].asBoolean())
+        assertTrue(response.headers().allValues("Set-Cookie").isEmpty())
+    }
+
+    @Test fun `wrong captured identity with no CSRF cookie produces zero cookie refresh on actual HTTP`() {
+        val raw=HttpClient.newHttpClient()
+        val response=raw.send(HttpRequest.newBuilder(uri("/api/v1/auth/csrf"))
+            .header("Cookie","ULTISTATS_LOOPBACK_SESSION=${login.credential}")
+            .header("X-UltiStats-Installation-Id",login.context.installationId.toString())
+            .header("X-UltiStats-Account-Id",UUID.randomUUID().toString())
+            .header("X-UltiStats-Session-Id",login.context.sessionId.toString()).GET().build(),HttpResponse.BodyHandlers.ofString())
+        assertEquals(403,response.statusCode())
+        assertEquals("AUTH_IDENTITY_MISMATCH",mapper.readTree(response.body())["code"].asText())
+        assertTrue(response.headers().allValues("Set-Cookie").isEmpty())
+    }
+
+    @Test fun `password rotation preserves logical identity but old bearer cannot logout replacement`() {
+        val response=post("/api/v1/auth/password",mapOf("currentPassword" to password,"newPassword" to password))
+        assertEquals(200,response.statusCode())
+        assertEquals(login.context.sessionId.toString(),mapper.readTree(response.body())["sessionId"].asText())
+        assertAuthProblem("AUTH_SESSION_REVOKED") { auth.logout(login.credential,login.context.sessionId!!) }
+        val session=client.send(HttpRequest.newBuilder(uri("/api/v1/auth/session")).GET().build(),HttpResponse.BodyHandlers.ofString())
+        assertEquals(200,session.statusCode())
+        assertEquals(login.context.sessionId.toString(),mapper.readTree(session.body())["sessionId"].asText())
     }
 
     @Test fun `concurrent administrators cannot both remove their last active admin role`() {
