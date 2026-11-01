@@ -26,14 +26,20 @@ Private durable journal records exact identity/phases; concurrent calls are excl
 
 ## Task 1: contract and bootstrap boundary
 
-- [ ] Freeze exact producer/consumer input, ownership labels, HBA and phase receipt fields.
-- [ ] Write validation/new-cluster/collision/idempotence tests, observe RED.
-- [ ] Implement private Docker/psql transport, new-cluster guard, phase journal and prepare/finalize.
-- [ ] Run real owned PostgreSQL GREEN for permissions, collisions, HBA and recovery boundaries.
+- [x] Freeze exact producer/consumer input, ownership labels, HBA and phase receipt fields.
+- [x] Write validation/new-cluster/collision/idempotence tests, observe RED.
+- [x] Implement private Docker/psql transport, new-cluster guard, phase journal and prepare/finalize.
+- [x] Run real owned PostgreSQL GREEN for permissions, collisions, HBA and recovery boundaries.
 
 ## Task 2: actual247 and review handoff
 
-- [ ] Obtain immutable247 source artifact only from its owner; use own new isolated runtime/DB namespace.
-- [ ] Run actual247 migrations as migrationRole and service pool as serviceRole; verify actual read/write and frontend restricted login, plus negative controls.
+- [x] Obtain immutable247 source artifact only from its owner; use own new isolated runtime/DB namespace.
+- [x] Run actual247 migrations as migrationRole and service pool as serviceRole; verify actual read/write and frontend restricted login, plus negative controls.
 - [ ] Verify meaningful source suites/current CI and required backend checks, publish own PR with Refs #169/#168 and independent exact-head review.
 - [ ] Cleanup exact owned completed runtime resources after consumer END; retain immutable evidence and source handoff. Product issues stay OPEN pending shared QA/PO/actual delivery.
+
+## Execution evidence
+
+Initial real NEW-PG run failed because provider was missing; source/permission runner then passed. HBA-ready replay and privileged service-role replay were each reproduced RED and fixed. Final focused integration currently10/10 without skips, with both independently supplied247 artifact and default raw247 source build path. Raw247 build performed once per coherent runner; no auth/current-control substitution. Root authorized necessary bootstrap-only candidate CI job/config regression in this PR; original roles/fence/CD/promotion remain unchanged. Installer/provider interface ACK remains tracked separately from source execution; no host install or actual delivery claim.
+
+Final identity regression: privileged frontend replay was observed RED, then exact frontend role OID/marker/nonadmin/membership/ownership verification made the final real suite10/10 GREEN. Installer125 field/label/phase ACK read directly from its owned versioned contract, provider170 transport and field ACK received; actual coupled installation remains gated on reviewed immutable source.

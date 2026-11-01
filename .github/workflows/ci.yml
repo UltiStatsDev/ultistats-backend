@@ -193,3 +193,39 @@ jobs:
           flock -w 120 -x /tmp/ultistats-web-heavy-check.lock \
             flock -w 120 -x /tmp/ultistats-browser-network.lock \
             node --test deploy/stand/tests/sql-proxy.integration.test.mjs
+
+  private-stand-bootstrap-pg:
+    name: Private stand bootstrap actual247 PostgreSQL
+    if: github.base_ref == 'candidate/private-stand-v1' || github.ref == 'refs/heads/candidate/private-stand-v1' || github.ref == 'refs/heads/agent/chore/168-stand-ci'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Require actual247 bootstrap runner when module is present
+        id: bootstrap
+        run: |
+          if [[ -f deploy/stand/sql-bootstrap.mjs ]]; then
+            test -f deploy/stand/tests/run-sql-bootstrap.sh
+            git cat-file -e 24704e11143a0bf919559a41324603f936ae03cf^{commit}
+            echo 'present=true' >> "$GITHUB_OUTPUT"
+          else
+            echo '::notice::Bootstrap module absent; no NEW-cluster or actual247 SQL bootstrap proof is claimed.'
+          fi
+      - name: Test NEW PostgreSQL bootstrap and actual247 owner/service configuration
+        if: steps.bootstrap.outputs.present == 'true'
+        run: bash deploy/stand/tests/run-sql-bootstrap.sh

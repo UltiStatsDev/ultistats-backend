@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "contract": "ultistats-new-stand-sql-bootstrap",
+  "operations": ["prepareSqlCluster", "bindSqlSources", "finalizeSqlCluster"],
+  "logicalInstallationId": "ultistats_private",
+  "runtimeInstanceId": "separate lowercase 12-hex namespace, never an API UUID",
+  "input": [
+    "schemaVersion",
+    "installationId",
+    "runtimeInstanceId",
+    "databaseContainerId",
+    "databaseImageId",
+    "databaseVolume",
+    "databaseNetwork",
+    "creationReceiptPath",
+    "bootstrapReceiptPath",
+    "adminCredentialsPath",
+    "migrationCredentialsPath",
+    "serviceCredentialsPath",
+    "loginCredentialsPath"
+  ],
+  "derived": {
+    "database": "ultistats_private",
+    "migrationRole": "us_ultistats_private_migration",
+    "serviceRole": "us_ultistats_private_service",
+    "loginRole": "us_ultistats_private_sql",
+    "databaseComment": "ultistats-stand:ultistats_private"
+  },
+  "ownershipLabels": {
+    "org.ultistats.installation-id": "ultistats_private",
+    "org.ultistats.runtime-instance-id": "input.runtimeInstanceId",
+    "org.ultistats.resource-kind": "postgres | postgres-data | network | proxy | writer"
+  },
+  "creationReceipt": [
+    "schemaVersion",
+    "installationId",
+    "runtimeInstanceId",
+    "databaseContainerId",
+    "databaseImageId",
+    "databaseVolume",
+    "databaseNetwork",
+    "containerCreatedAt",
+    "volumeCreatedAt",
+    "networkId",
+    "networkCreatedAt",
+    "systemIdentifier",
+    "emptyVolumeBeforeStart",
+    "volumeDriver",
+    "networkDriver"
+  ],
+  "phases": [
+    "NEW_CLUSTER_VERIFIED",
+    "BOOTSTRAP_PREREQUISITES_APPLIED",
+    "SQL_SOURCES_BOUND",
+    "BACKEND247_MIGRATED_AS_MIGRATION_OWNER",
+    "SERVICE_DML_VERIFIED",
+    "ROLE169_RECONCILED",
+    "SQL_INGRESS_READY_FOR170"
+  ],
+  "sourceBinding": {
+    "backendProductCommit": "24704e11143a0bf919559a41324603f936ae03cf",
+    "rolePolicy": "bundled reviewed sql-role-policy-v1.json SHA256",
+    "bootstrap": "current module and contract SHA256, independently pinned by installer"
+  },
+  "hba": {
+    "initial": "local postgres peer; local named installation roles SCRAM; reject all TCP",
+    "bound": "login from exact owned proxy IP/32; migration/service from exact observed owned writer IP/32; no other TCP grants",
+    "configuration": "written only inside exact owned PGDATA volume; no extra PostgreSQL mounts or exported socket",
+    "adminTransport": "trusted Docker exec --user postgres and local peer; never secret argv"
+  },
+  "invariants": [
+    "Only newly created dedicated owned resources with private creation receipt; never adopt a foreign or unknown cluster.",
+    "Exact container/image/volume/network identities, ownership labels, no PG host publication and PG16 metadata checked before writes.",
+    "Migration owner, service DML account and frontend restricted login stay distinct.",
+    "Prepare before actual247 migration; explicit SPRING_FLYWAY_USER/PASSWORD and DATABASE_USERNAME/PASSWORD are verified on actual artifact.",
+    "Service defaults may grant application DML; frontend receives only existing explicit169 policy, never wildcard future security grants.",
+    "Private owner-only durable phase receipt excludes credentials/verifiers; ambiguous partial state remains blocked with ingress closed.",
+    "No host installation, existing runtime reuse, API UUID invention, migration/product edits, automatic foreign cleanup or fencing-readiness claim."
+  ],
+  "bindRequest": ["proxyContainerId", "proxyImageId", "writerContainerIds"],
+  "writerBindings": "one explicit {containerId,imageId,address,role} per allowed migration/service role; serviceSources remains {role,address}",
+  "finalizeRequest": [
+    "proxyContainerId",
+    "proxyImageId",
+    "writerContainerIds",
+    "application:{containerId,sourceCommit,jarSha256,jarPath:/app/app.jar}"
+  ],
+  "storage": "new local volume without driver options; dedicated internal bridge network; no adoption/bind-driver indirection"
+}
