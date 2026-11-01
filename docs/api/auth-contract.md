@@ -172,17 +172,21 @@ request/response bodies are excluded from logs, analytics, exports and evidence.
 | POST `/api/v1/auth/logout` | `{expectedSessionId:UUID}` + all expected headers + CSRF | 200 LogoutResult |
 | POST `/api/v1/auth/password` | `{currentPassword,newPassword}` + all headers + CSRF | 200 AuthContext; other sessions revoked, current retained |
 | POST `/api/v1/auth/reauth` | `{password}` + all headers + CSRF | 200 `{reauthenticatedUntil:Instant}` |
-| GET `/api/v1/accounts?page=0&size=20` | ADMIN, normal existing page convention | 200 page<AccountView> |
+| GET `/api/v1/accounts?page=0&size=20&search=...` | ADMIN, bounded literal search | 200 PageResponse<AccountView> |
 | POST `/api/v1/accounts` | ADMIN+step-up, `{login,displayName,role}` | 201 `{account:AccountView,temporaryPassword:string}` once |
 | PATCH `/api/v1/accounts/{id}` | ADMIN+step-up, any of `{login,displayName,role,status}` | 200 AccountView |
 | POST `/api/v1/accounts/{id}/password-reset` | ADMIN+step-up, `{}` | 200 `{account:AccountView,temporaryPassword:string}` once |
 
 Renew is triggered only by observed user interaction or active protected work,
-not polling, SSE, timers alone or background retry. Use server time and monotonic
-activity updates; concurrent requests cannot move activity backwards. Web
-coalesces to at most one renewal per minute while interaction is pending; normal
-authorized mutations also count as activity. A true 14-day idle session cannot
-renew itself back to life. No short absolute active-game cutoff is introduced.
+not polling, SSE, timers alone or background retry. Successful login initializes
+activity; ONLY explicit POST renew advances it thereafter. Ordinary sports/admin/
+password/reauth writes do NOT implicitly advance inactivity: they may be delayed
+queue retries and their mere arrival proves no current user interaction. Web
+observes genuine user input/navigation, marks activity pending and coalesces renew
+to at most once per minute, including during active match input. Use server time
+and monotonic updates; concurrent renewals cannot move activity backwards. Check
+true14-day expiry BEFORE renew and every protected write; an expired session
+cannot revive itself. No short absolute active-game cutoff is introduced.
 
 LogoutResult = `{sessionId:UUID, status:'REVOKED'|'ALREADY_INACTIVE'}` only when
 the original cookie proves that exact logical session (including a retained
@@ -198,6 +202,15 @@ way to revoke an arbitrary supplied UUID. A pending logout intent contains only
 original installation/account/session IDs, no credential. Web drains it before
 new login when the original cookie is still available, and never sends it as
 logout of whichever session happens to be current later.
+
+Account list: page0-based, size default20/range1..100; stable normalized-login ASC
+then UUID ASC. Optional `search` trims whitespace, max120 Unicode code points;
+empty means no filter, otherwise case-insensitive literal substring of login or
+displayName (`%`, `_` and backslash are literals, not patterns). No extra sort
+parameter in1.0.0. Required PageResponse<T> fields match existing list consumers:
+`content:T[], number:number, size:number, totalElements:number, totalPages:number,
+numberOfElements:number, first:boolean, last:boolean, empty:boolean`; existing
+pageable/sort metadata may also appear and consumers ignore it.
 
 Reauth freshness is **300 seconds**, server time. Login/own-password verification
 may establish it; it never bypasses temporary-password restrictions. Admin create,
