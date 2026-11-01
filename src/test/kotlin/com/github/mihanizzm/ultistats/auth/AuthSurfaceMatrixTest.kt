@@ -41,6 +41,7 @@ class AuthSurfaceMatrixTest {
         @Bean fun fixture() = AuthTestFixture()
         @Bean fun service(f: AuthTestFixture) = f.service
         @Bean fun store(f: AuthTestFixture) = f.store
+        @Bean fun fence(f: AuthTestFixture) = com.github.mihanizzm.ultistats.auth.repository.AuthTransactionFence(f.jdbc)
         @Bean fun clock(f: AuthTestFixture): java.time.Clock = f.clock
         @Bean fun mapper(): ObjectMapper = jacksonObjectMapper().findAndRegisterModules()
         @Bean fun mode() = Mode()
