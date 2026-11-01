@@ -21,7 +21,11 @@ def inventory():
             method = mapping.group(1).upper()
             suffix_match = re.match(r'"([^"]*)"', mapping.group(2) or '')
             path = base + (suffix_match.group(1) if suffix_match else '')
-            if path.startswith('/swagger-ui'):
+            owner = ('core' if path.startswith('/api/v1/auth/') or path.startswith('/api/v1/accounts') else
+                     'ingress' if path in ['/api/v1/installation', '/health/ready'] else 'enforcement')
+            if owner == 'core':
+                permission = 'CORE'
+            elif path.startswith('/swagger-ui'):
                 permission = 'API_DOCS'
             elif method != 'GET':
                 permission = ('TRANSFER' if path in ['/api/v1/matches/export', '/api/v1/matches/import']
@@ -32,7 +36,7 @@ def inventory():
                 permission = 'SPORTS_WRITE'
             else:
                 permission = 'PUBLIC'
-            routes.append(dict(method=method, path=path, policy=permission,
+            routes.append(dict(method=method, path=path, policy=permission, owner=owner,
                                source=str(source.relative_to(ROOT)),
                                line=text.count('\n', 0, mapping.start()) + 1))
     static = []

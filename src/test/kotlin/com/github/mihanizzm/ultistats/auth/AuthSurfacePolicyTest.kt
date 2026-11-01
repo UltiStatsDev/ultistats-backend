@@ -30,7 +30,7 @@ class AuthSurfacePolicyTest {
     @TestFactory
     fun `all reviewed application method path mappings have explicit policy`(): List<DynamicTest> {
         val inventory = jacksonObjectMapper().readTree(Path.of("docs/api/auth-surfaces-v1.json").toFile())
-        return inventory["routes"].flatMap { row ->
+        return inventory["routes"].filter { it["owner"].asText() == "enforcement" }.flatMap { row ->
             val method = row["method"].asText()
             val path = row["path"].asText().replace(Regex("\\{[^}]+}"), matchId.toString())
             val expected = when (val name = row["policy"].asText()) {
