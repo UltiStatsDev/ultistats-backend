@@ -142,7 +142,13 @@ X-CSRF-TOKEN: <current in-memory CSRF token>
 Backend checks all three IDs against the authenticated current session BEFORE
 any controller/domain mutation. Missing => 403 AUTH_CONTEXT_REQUIRED; any mismatch
 => 403 AUTH_IDENTITY_MISMATCH, never domain409 and no guessed identity adoption.
-Private reads should carry the same capture; supplied mismatches fail closed.
+Private reads, session/context, CSRF, renew, reauth and logout validate the same
+complete capture WHEN any expected identity header is supplied: all three must
+be present and match, otherwise 403; no private payload/cookie refresh on mismatch.
+GET session without expected headers is the explicit initial-bootstrap path.
+No cookie plus expected identity is AUTH_REQUIRED, not a successful anonymous
+replacement. A client with an existing/local-ended identity does not silently
+use bootstrap to adopt another cookie identity.
 Public reads remain public and must not reveal authenticated private additions.
 Login requires the expected installation header, but no pre-existing account.
 
