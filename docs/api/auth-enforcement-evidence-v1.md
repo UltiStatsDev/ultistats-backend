@@ -49,3 +49,47 @@ Rejected authority designs: outer HTTP transaction (breaks existing rollback/com
 ## Resources
 
 Only own API21153/PG22153/uploads/synthetic identities. Exact host PID/start ticks/JAR/container/network/volume inventory and cleanup receipt: /tmp/ultistats-auth153. No human/default247/shared19584/foreign DB/uploads/queue/trust/DNS/CD changes. No external diagnostic-target lease issued. After own END remove only owned processes/container/network; retain volume/source/JAR/evidence.
+
+
+## Shared Web coordinator consumer integration
+
+This source replaces the historical independent staff adapter above with a thin
+reexport from the frozen same-origin `/staff-auth-v1.mjs` Web route. Web owns
+credential locking, IndexedDB expectations/logout intent/renewal, invalidation,
+activity and masked-CSRF lifetime. Backend adds no auth storage or second actor.
+OBS binds the initial page ticket, disables stale controls through subscriptions,
+checks before mutations and after private body reads, and preserves drafts.
+Swagger UI 5.21 wraps its existing `fn.fetch` transport with an actual `userFetch`
+network callback through the shared protected fetch. Swagger retains its query,
+JSON and multipart serializers; CSRF never enters its Redux request metadata.
+Auth/account operations have neither Try it out nor network execution here.
+
+Consumer component artifact: Web source
+`59588dab2e2f836db04d70da6949b0a2a9f15ddc`, 55,655 bytes, SHA256
+`e34333b8794ab124626a5a331d3765a4fc756bbad4ca957de0f5fdd61fc09d7a`.
+The fixture checks the manifest against the bytes it actually serves and reports
+that provenance. Canonical Web-root build uses Node24.22.1/Vite8.3.5 and pnpm lock
+SHA256 `d4db84914d8f8bc2f9f3bc490d214308241849f69489f651eeae74e7505ae808`.
+An earlier build from Backend cwd differs only in Vite source-path comments;
+both artifacts and provenance remain under `/tmp/ultistats-auth153`.
+This consumer artifact is not a final release freeze.
+
+Focused JVM HTML/navigation (5), auth matrix (2) and actual mapping inventory (1)
+PASS with zero skips; log `/tmp/ultistats-auth153/shared-helper-jvm.log`.
+
+Current verification supersedes the historical 15 independent adapter tests:
+54 Node cases PASS, including four shared transport boundary tests. Actual pinned
+Swagger/Chromium plus exact Web bundle passes ten synthetic HTTP component checks:
+OBS global/profile captured writes; changed actor blocks save/preserves draft;
+Swagger POST and multipart file upload with network-only CSRF/secret-free Redux;
+auth/accounts Try it out blocked; real BroadcastChannel invalidation disables old
+Swagger controls/preserves input; real IndexedDB pending logout prevents cold
+Swagger bootstrap; trusted renewal coalesces across tabs while passive bootstrap
+and SSE do not renew; public links/previews and fresh public sources remain valid.
+Logs: `/tmp/ultistats-auth153/js-shared-helper.log` and
+`/tmp/ultistats-auth153/browser-component-shared-helper.log`.
+
+This is component proof with synthetic HTTP responses, not new real PG/backend,
+TLS, native OBS or canonical gateway deployment evidence. No leased live target
+was changed. Combined source, final release artifact, CI/review and canonical
+runtime/shared QA remain integration gates.

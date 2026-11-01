@@ -1,12 +1,13 @@
-import {obsSession,obsSources} from '../auth/obs-session.mjs';
-import {mountScoreboardAdmin,setScoreboardSourceUrl} from './scoreboard-admin.mjs';
+import {obsSession,obsSources,bindObsPage,obsPageCurrent,assertObsPage} from '../auth/obs-session.mjs';
+import {mountScoreboardAdmin,setScoreboardSourceUrl,bindScoreboardSession} from './scoreboard-admin.mjs';
 import {readJson,watchConfig} from './client.mjs';
 import {teamAccent,imageAccent} from './colors.mjs';
 const $=id=>document.getElementById(id),uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 let config=null,draftColors={},teams=[],auto={},page=0,dirty=false,installationId=null;
 const message=text=>$('save-status').textContent=text;
-try {const context=await obsSession.bootstrap('OBS_ADMIN');installationId=context.installationId;$('auth-status').textContent='Организатор: защищённая сессия проверена.';}
+try {const context=await obsSession.bootstrap('OBS_ADMIN');installationId=context.principal.owner.installationId;bindObsPage();bindScoreboardSession();$('auth-status').textContent='Организатор: защищённая сессия проверена.';}
 catch(error){$('auth-status').textContent=error.message;message('Изменения не отправляются. Войдите и откройте страницу заново.');throw error;}
+obsSession.subscribe(()=>{if(!obsPageCurrent()){$('save').disabled=true;$('auth-status').textContent='Сессия изменилась. Откройте страницу заново; несохранённые изменения сохранены на странице.';}});
 function renderTeams() {
  $('teams').replaceChildren();
  const ids=new Set([...teams.map(t=>t.teamId),...Object.keys(draftColors)]);
@@ -21,7 +22,7 @@ function renderTeams() {
  }
 }
 const stop=watchConfig(value=>{
- config=value;$('save').disabled=false;
+ config=value;$('save').disabled=!obsPageCurrent();
  if(dirty){message('Настройки изменились. Сохранение заменит общие настройки вашим вариантом.');return;}
  for(const name of ['maxRows','ttlSeconds','corner','backgroundColor','textColor'])$(name).value=value[name];
  document.querySelectorAll('[name=category]').forEach(input=>input.checked=value.categories.includes(input.value));
@@ -35,10 +36,11 @@ $('settings').addEventListener('submit',async event=>{
  backgroundColor:$('backgroundColor').value,textColor:$('textColor').value,teamColors:draftColors};
  $('save').disabled=true;
  try {
+  assertObsPage();
   const response=await obsSession.protectedFetch('/api/v1/obs/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});
   if(!response.ok){const error=await response.json();throw Error(error.detail??`HTTP ${response.status}`);}
-  config=await response.json();dirty=false;message('Сохранено для всех OBS-источников.');
- }catch(error){message(error.message);}finally{$('save').disabled=false;}
+  const saved=await response.json();assertObsPage();config=saved;dirty=false;message('Сохранено для всех OBS-источников.');
+ }catch(error){message(error.message);}finally{$('save').disabled=!obsPageCurrent();}
 });
 $('add-team').onclick=()=>{const id=$('team-id').value.trim().toLowerCase();if(!uuid.test(id)){message('Введите UUID команды');return;}
  draftColors[id]=teamAccent(id,draftColors,auto,config?.backgroundColor);dirty=true;renderTeams();};
