@@ -107,3 +107,58 @@ test("local Git replace refs cannot disguise changed product source as baseline"
     /SOURCE_NOT_CLEAN|PRODUCT_PARITY_MISMATCH/,
   );
 });
+test("readonly source verification cannot execute configured clean filter or fsmonitor hook", async (t) => {
+  const { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync } =
+    await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join, resolve } = await import("node:path");
+  const { execFileSync } = await import("node:child_process");
+  const root = mkdtempSync(join(tmpdir(), "backend161-filter-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const repo = join(root, "repo"),
+    marker = join(root, "FILTER_RAN");
+  const git = (...args) =>
+    execFileSync("git", args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  const baseline = "24704e11143a0bf919559a41324603f936ae03cf";
+  git("clone", "--shared", "--no-checkout", resolve("."), repo);
+  git("-C", repo, "checkout", "--detach", baseline);
+  writeFileSync(
+    join(repo, ".git/info/attributes"),
+    "src/main/resources/application.yaml filter=spy\n",
+  );
+  git("-C", repo, "config", "filter.spy.clean", `touch '${marker}'; cat`);
+  git("-C", repo, "config", "core.fsmonitor", `touch '${marker}'`);
+  writeFileSync(
+    join(repo, "src/main/resources/application.yaml"),
+    readFileSync(join(repo, "src/main/resources/application.yaml")) + "\n",
+  );
+  const manifest = {
+    instanceId: "abc123456789",
+    backend: {
+      revision: baseline,
+      imageId: `sha256:${"1".repeat(64)}`,
+      helper: { sourceCheckout: repo },
+    },
+  };
+  const run = (program, args) =>
+    program === "git"
+      ? git(...args)
+      : JSON.stringify([
+          {
+            Id: manifest.backend.imageId,
+            Config: {
+              Labels: {
+                "org.opencontainers.image.revision": baseline,
+                "io.ultistats.instance": manifest.instanceId,
+              },
+            },
+          },
+        ]);
+  assert.throws(() => api.verifySourceIdentity(manifest, { run }), {
+    message: "SOURCE_NOT_CLEAN",
+  });
+  assert.equal(existsSync(marker), false);
+});

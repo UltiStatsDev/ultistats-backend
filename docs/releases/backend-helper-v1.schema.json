@@ -93,7 +93,15 @@
             }
           },
           "then": {
-            "required": ["fencePath"]
+            "required": [
+              "fencePath"
+            ],
+            "properties": {
+              "fencePath": {
+                "type": "string",
+                "pattern": "^/"
+              }
+            }
           }
         },
         {
@@ -110,7 +118,15 @@
             }
           },
           "then": {
-            "required": ["backupPath"]
+            "required": [
+              "backupPath"
+            ],
+            "properties": {
+              "backupPath": {
+                "type": "string",
+                "pattern": "^/"
+              }
+            }
           }
         },
         {
@@ -122,17 +138,36 @@
             }
           },
           "then": {
-            "required": ["previousManifestPath"]
+            "required": [
+              "previousManifestPath"
+            ],
+            "properties": {
+              "previousManifestPath": {
+                "type": "string",
+                "pattern": "^/"
+              }
+            }
           }
         },
         {
           "if": {
-            "required": ["rollbackPlanPath"]
+            "required": [
+              "rollbackPlanPath"
+            ],
+            "properties": {
+              "rollbackPlanPath": {
+                "type": "string",
+                "pattern": "^/"
+              }
+            }
           },
           "then": {
             "properties": {
               "operation": {
-                "enum": ["postflight", "fence-release"]
+                "enum": [
+                  "postflight",
+                  "fence-release"
+                ]
               }
             }
           }
@@ -161,7 +196,11 @@
           "pattern": "^[A-Za-z0-9-]{8,80}$"
         },
         "disposition": {
-          "enum": ["ok", "blocked", "maintenance_required"]
+          "enum": [
+            "ok",
+            "blocked",
+            "maintenance_required"
+          ]
         },
         "reason": {
           "type": "string",
@@ -187,7 +226,33 @@
         "reason",
         "evidence"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "disposition": {
+                "const": "ok"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "evidence": {
+                "$ref": "#/$defs/evidence"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "evidence": {
+                "type": "object",
+                "maxProperties": 0
+              }
+            }
+          }
+        }
+      ]
     },
     "pair": {
       "type": "object",
@@ -204,7 +269,11 @@
           "pattern": "^[a-f0-9]{40}$"
         }
       },
-      "required": ["version", "web", "backend"],
+      "required": [
+        "version",
+        "web",
+        "backend"
+      ],
       "additionalProperties": false
     },
     "identity": {
@@ -270,7 +339,11 @@
               "pattern": "^[a-f0-9]{64}$"
             }
           },
-          "required": ["verified", "productBaseline", "migrationFingerprint"],
+          "required": [
+            "verified",
+            "productBaseline",
+            "migrationFingerprint"
+          ],
           "additionalProperties": false
         },
         "runtime": {
@@ -289,7 +362,11 @@
               "pattern": "^[a-f0-9]{40}$"
             }
           },
-          "required": ["imageId", "jarSha256", "sourceSha"],
+          "required": [
+            "imageId",
+            "jarSha256",
+            "sourceSha"
+          ],
           "additionalProperties": false
         },
         "ready": {
@@ -491,7 +568,13 @@
     },
     "installation": {
       "type": "object",
-      "required": ["schemaVersion", "mode", "instanceId", "backend", "release"],
+      "required": [
+        "schemaVersion",
+        "mode",
+        "instanceId",
+        "backend",
+        "release"
+      ],
       "properties": {
         "schemaVersion": {
           "const": 1
@@ -563,7 +646,11 @@
               "pattern": "^[a-f0-9]{40}$"
             }
           },
-          "required": ["version", "webSource", "backendSource"],
+          "required": [
+            "version",
+            "webSource",
+            "backendSource"
+          ],
           "additionalProperties": false
         }
       }

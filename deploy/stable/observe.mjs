@@ -150,13 +150,44 @@ export function verifySourceIdentity(m, { run = command } = {}) {
   const git = (...args) =>
     run("git", [
       "--no-replace-objects",
+      "-c",
+      "core.fsmonitor=false",
       "-C",
       h.sourceCheckout,
       ...args,
     ]).trim();
+  let filterKeys;
+  try {
+    filterKeys = git(
+      "config",
+      "--null",
+      "--name-only",
+      "--get-regexp",
+      "^filter\\.",
+    );
+  } catch (error) {
+    if (error.status !== 1) throw error;
+    filterKeys = "";
+  }
+  const filters = new Set(
+    filterKeys
+      .split("\0")
+      .map(
+        (key) =>
+          /^filter\.(.+)\.(clean|smudge|process|required)$/.exec(key)?.[1],
+      )
+      .filter(Boolean),
+  );
+  const overrides = [...filters].flatMap((name) =>
+    ["clean", "smudge", "process", "required"].flatMap((field) => [
+      "-c",
+      `filter.${name}.${field}=${field === "required" ? "false" : ""}`,
+    ]),
+  );
   check(
     git("rev-parse", "HEAD") === b.revision &&
-      git("status", "--porcelain=v1", "--untracked-files=all") === "",
+      git(...overrides, "status", "--porcelain=v1", "--untracked-files=all") ===
+        "",
     "SOURCE_NOT_CLEAN",
   );
   for (const p of [
