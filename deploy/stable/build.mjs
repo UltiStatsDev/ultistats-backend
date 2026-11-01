@@ -9,12 +9,22 @@ const PARITY_PATHS = ['src/main', 'src/test', 'build.gradle.kts', 'settings.grad
 const gitArgs = args => ['--no-replace-objects', '-c', 'core.fsmonitor=false', ...args];
 const git = (cwd, ...args) => execFileSync('git', gitArgs(args), { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000 }).trim();
 
+function readonlyStatus(sourceDir) {
+  let keys;
+  try { keys = git(sourceDir, 'config', '--null', '--name-only', '--get-regexp', '^filter\\.'); }
+  catch (error) { if (error.status !== 1) throw error; keys = ''; }
+  const names = new Set(keys.split('\0').map(key => /^filter\.(.+)\.(clean|smudge|process|required)$/.exec(key)?.[1]).filter(Boolean));
+  const overrides = [...names].flatMap(name => ['clean', 'smudge', 'process', 'required'].flatMap(field =>
+    ['-c', `filter.${name}.${field}=${field === 'required' ? 'false' : ''}`]));
+  return git(sourceDir, ...overrides, 'status', '--porcelain=v1', '--untracked-files=all', '--ignored=matching');
+}
+
 export async function inspectSource(sourceDir, expectedSha) {
   if (!/^[a-f0-9]{40}$/.test(expectedSha ?? '')) throw new Error('INVALID_SOURCE_SHA');
   if (realpathSync(sourceDir) !== realpathSync(git(sourceDir, 'rev-parse', '--show-toplevel'))) throw new Error('SOURCE_ROOT_MISMATCH');
   const sourceSha = git(sourceDir, 'rev-parse', 'HEAD');
   if (sourceSha !== expectedSha) throw new Error('SOURCE_SHA_MISMATCH');
-  if (git(sourceDir, 'status', '--porcelain=v1', '--untracked-files=all', '--ignored=matching')) throw new Error('SOURCE_NOT_CLEAN');
+  if (readonlyStatus(sourceDir)) throw new Error('SOURCE_NOT_CLEAN');
   const productTrees = {};
   for (const path of PARITY_PATHS) {
     const actual = git(sourceDir, 'rev-parse', `${sourceSha}:${path}`);

@@ -208,3 +208,20 @@ test('snapshot ignores local smudge filters and contains exact committed product
     return docker(args);
   } });
 });
+
+test('readonly source preflight does not execute configured clean filter programs', async t => {
+  const f = await fixture(t);
+  const target = 'src/main/resources/static/obs/obs.css';
+  const marker = join(f.root, 'clean-filter-executed');
+  const attr = join(f.source, '.gitattributes');
+  writeFileSync(attr, readFileSync(attr, 'utf8') + `\n${target} filter=syntheticclean\n`);
+  git(f.source, 'config', 'filter.syntheticclean.clean', `touch '${marker}'; cat`);
+  git(f.source, 'config', 'filter.syntheticclean.smudge', 'cat');
+  git(f.source, 'add', '.gitattributes');
+  git(f.source, 'commit', '--quiet', '-m', 'fixture clean filter');
+  rmSync(marker, { force: true });
+  // Force Git to rehash an unchanged tracked file rather than trust index stat data.
+  writeFileSync(join(f.source, target), readFileSync(join(f.source, target)));
+  await f.inspectSource(f.source, git(f.source, 'rev-parse', 'HEAD'));
+  assert.throws(() => readFileSync(marker), { code: 'ENOENT' });
+});
