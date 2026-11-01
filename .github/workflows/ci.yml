@@ -50,6 +50,7 @@ jobs:
           bash deploy/tests/validate-compose.sh
           bash deploy/tests/deploy_test.sh
           bash deploy/tests/validate-workflow.sh
+          bash deploy/tests/resolve-release_test.sh
 
       - name: Build and test
         run: ./gradlew build
