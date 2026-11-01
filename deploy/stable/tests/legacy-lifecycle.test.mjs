@@ -179,7 +179,7 @@ function legacy(t) {
         !options.input.includes("tablename<>")
       )
         return '["flyway_schema_history","matches","undo_command_receipts"]';
-      if (state.killDuringDump && args.some((v) => v.includes("exec pg_dump")))
+      if (state.killDuringDump && args.some((v) => v.includes(" pg_dump ")))
         state.child.emit("exit", 1, null);
     }
     return f.run(program, args, options);

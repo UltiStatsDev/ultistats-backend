@@ -48,7 +48,7 @@ export async function acquireLegacyLease(
       h.databaseContainerId,
       "sh",
       "-c",
-      'export PGPASSWORD="$POSTGRES_PASSWORD"; export PGAPPNAME="$3"; exec psql -X -qAt --no-password --set=ON_ERROR_STOP=1 -U "$1" -d "$2"',
+      'exec /usr/bin/env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin PGPASSWORD="$POSTGRES_PASSWORD" PGAPPNAME="$3" psql -h 127.0.0.1 -p 5432 -X -qAt --no-password --set=ON_ERROR_STOP=1 -U "$1" -d "$2"',
       "sh",
       h.databaseUser,
       h.databaseName,

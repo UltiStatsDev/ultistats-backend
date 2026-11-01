@@ -102,7 +102,7 @@ export async function createBackup({
       h.databaseContainerId,
       "sh",
       "-c",
-      'export PGPASSWORD="$POSTGRES_PASSWORD"; exec pg_dump --format=custom --no-owner --no-acl --no-password -U "$1" -d "$2"',
+      'exec /usr/bin/env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin PGPASSWORD="$POSTGRES_PASSWORD" PGAPPNAME=ultistats-stable-backup pg_dump -h 127.0.0.1 -p 5432 --format=custom --no-owner --no-acl --no-password -U "$1" -d "$2"',
       "sh",
       h.databaseUser,
       h.databaseName,

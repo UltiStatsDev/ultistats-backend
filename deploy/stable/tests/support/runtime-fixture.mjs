@@ -290,7 +290,7 @@ export function fixture(t, options = {}) {
     }
     if (args.includes("cat")) return readFileSync(config, "utf8");
     if (args.includes("wget")) return '{"content":[]}';
-    if (args.some((v) => v.includes("exec pg_dump"))) {
+    if (args.some((v) => v.includes(" pg_dump "))) {
       state.dumpCount++;
       if (state.throwDump) throw new Error("SECRET_NEVER_LOG");
       return Buffer.from("PGDMPsynthetic");

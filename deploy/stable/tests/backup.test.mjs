@@ -89,7 +89,7 @@ test("new writer on final quietpoint prevents successful backup manifest", async
         run: (program, args, options = {}) => {
           if (options.input?.includes("pg_database_size")) return "1024";
           if (args[0] === "cp" && args[2] === "-") return Buffer.alloc(1024);
-          if (args.some((v) => v.includes("exec pg_dump")))
+          if (args.some((v) => v.includes(" pg_dump ")))
             return Buffer.from("PGDMPfixture");
           if (args.includes("pg_restore")) return "valid TOC";
           if (args[0] === "cp") {
