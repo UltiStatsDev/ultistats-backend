@@ -89,6 +89,23 @@ interface AuthEntryClassifier { fun classify(request: HttpServletRequest): AuthE
 The code plan defines exact session/account/CLI classes, service signatures and
 transactional persistence/crypto/cookie strategy; no consumer guesses these.
 
+Published152/153 SPI: `auth.model` owns AuthEntryMode/AuthPermission/AuthPrincipal;
+`auth.security` owns AuthEntryClassifier/AuthRequestAccess and
+`AuthRequirement { PublicRead, Core, Deny, Permission(permission) }` plus
+`AuthSurfacePolicy.requirement(HttpServletRequest): AuthRequirement`. Classify
+once before cookie/CSRF handling; public-read skips credential loading, anonymous
+private denial happens first, and protected mutation authority is rechecked under
+the correctly ordered transaction fence. Principal request attribute is
+`AuthPrincipal::class.java.name`. Core `AuthService.installationId(): UUID` is the
+read-only154 accessor; `AuthProblem(status: Int, code: String)` supplies153 errors.
+153 owns policy/WebConfig-CORS,154 owns connector/classifier implementation and
+metadata/readiness HTTP,152 owns common types/security chain/CSRF/session store.
+Read fences for domain mutation and exclusive security changes must select lock
+mode before acquisition, installation first; no shared→exclusive upgrade or
+long-running GET/SSE lock. Heavy password verification needs version recheck
+without holding a global write fence for untrusted work.
+
+
 - [ ] Freeze1.0.0 wire with Web first; independent security reviewer reads the
   contract and core plan. Resolve ordinary technical findings directly.
 - [ ] RED tests: `AuthSessionLifecycleTest` idle boundary/poll/explicit activity/
