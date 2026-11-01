@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.controller
 
+import org.springframework.context.annotation.Import
+import com.github.mihanizzm.ultistats.fixture.LegacyDomainHttpSecurity
+
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.model.Player
@@ -25,6 +28,7 @@ import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
 
+@Import(LegacyDomainHttpSecurity::class)
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional

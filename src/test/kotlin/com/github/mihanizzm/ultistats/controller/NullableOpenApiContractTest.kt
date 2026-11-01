@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.controller
 
+import org.springframework.context.annotation.Import
+import com.github.mihanizzm.ultistats.fixture.LegacyDomainHttpSecurity
+
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
@@ -25,6 +28,7 @@ import java.nio.file.Path
 import java.time.Instant
 import java.util.UUID
 
+@Import(LegacyDomainHttpSecurity::class)
 @SpringBootTest
 @AutoConfigureMockMvc
 class NullableOpenApiContractTest {

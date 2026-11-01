@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.controller
 
+import org.springframework.context.annotation.Import
+import com.github.mihanizzm.ultistats.fixture.LegacyDomainHttpSecurity
+
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.github.mihanizzm.ultistats.model.Player
 import com.github.mihanizzm.ultistats.model.Team
@@ -22,7 +25,6 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Import
 import org.springframework.mock.web.MockMultipartFile
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -47,7 +49,7 @@ import java.util.concurrent.TimeUnit
 @Suppress("NonAsciiCharacters")
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import(PhotoResourceTestConfiguration::class)
+@Import(LegacyDomainHttpSecurity::class, PhotoResourceTestConfiguration::class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class PhotoResourceIntegrationTest {
     @Autowired

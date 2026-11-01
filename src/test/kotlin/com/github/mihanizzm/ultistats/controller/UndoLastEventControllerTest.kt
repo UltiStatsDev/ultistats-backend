@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.controller
 
+import org.springframework.context.annotation.Import
+import com.github.mihanizzm.ultistats.fixture.LegacyDomainHttpSecurity
+
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.github.mihanizzm.ultistats.MatchAbstractTest
 import com.github.mihanizzm.ultistats.model.Match
@@ -33,6 +36,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+@Import(LegacyDomainHttpSecurity::class)
 @AutoConfigureMockMvc
 class UndoLastEventControllerTest : MatchAbstractTest() {
     @Autowired lateinit var mockMvc: MockMvc

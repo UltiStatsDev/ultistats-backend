@@ -1,5 +1,8 @@
 package com.github.mihanizzm.ultistats.controller
 
+import org.springframework.context.annotation.Import
+import com.github.mihanizzm.ultistats.fixture.LegacyDomainHttpSecurity
+
 import com.github.mihanizzm.ultistats.model.Player
 import com.github.mihanizzm.ultistats.model.Team
 import com.github.mihanizzm.ultistats.model.TeamPlayer
@@ -18,7 +21,6 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Import
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
@@ -31,7 +33,7 @@ import kotlin.test.assertIs
 @Suppress("NonAsciiCharacters")
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import(DeletionTransactionTestConfiguration::class)
+@Import(LegacyDomainHttpSecurity::class, DeletionTransactionTestConfiguration::class)
 class DeletionTransactionIntegrationTest {
     @Autowired
     lateinit var mockMvc: MockMvc
