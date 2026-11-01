@@ -1,7 +1,14 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, readdirSync, mkdtempSync, rmSync } from "node:fs";
+import {
+  readFileSync,
+  readdirSync,
+  mkdtempSync,
+  rmSync,
+  lstatSync,
+  realpathSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import {
   BASELINE,
   check,
@@ -187,12 +194,104 @@ export function verifySourceIdentity(m, { run = command } = {}) {
       `filter.${name}.${field}=${field === "required" ? "false" : ""}`,
     ]),
   );
+  check(git("rev-parse", "HEAD") === b.revision, "SOURCE_NOT_CLEAN");
+  const status = git(
+    ...overrides,
+    "status",
+    "--porcelain=v1",
+    "--untracked-files=all",
+    "-z",
+  );
   check(
-    git("rev-parse", "HEAD") === b.revision &&
-      git(...overrides, "status", "--porcelain=v1", "--untracked-files=all") ===
-        "",
+    !status.split("\0").some((row) => row.startsWith("??")),
     "SOURCE_NOT_CLEAN",
   );
+  check(
+    realpathSync(h.sourceCheckout) === h.sourceCheckout &&
+      git("rev-parse", "--show-toplevel") === h.sourceCheckout,
+    "SOURCE_ROOT_MISMATCH",
+  );
+  const entries = git("ls-tree", "-rz", "--full-tree", b.revision)
+    .split("\0")
+    .filter(Boolean)
+    .map((line) => {
+      const match = /^(100644|100755) blob ([a-f0-9]{40})\t(.+)$/.exec(line);
+      check(
+        match &&
+          /^[A-Za-z0-9._/-]+$/.test(match[3]) &&
+          !match[3].split("/").some((p) => [".", "..", ".git"].includes(p)),
+        "UNSUPPORTED_SOURCE_ENTRY",
+      );
+      const path = resolve(h.sourceCheckout, match[3]);
+      const stat = lstatSync(path);
+      check(
+        path.startsWith(h.sourceCheckout + sep) &&
+          realpathSync(path) === path &&
+          stat.isFile() &&
+          !stat.isSymbolicLink() &&
+          ((stat.mode & 0o111) !== 0) === (match[1] === "100755"),
+        "SOURCE_BYTES_MISMATCH",
+      );
+      return { path: match[3], oid: match[2], mode: match[1] };
+    });
+  const index = git("ls-files", "--stage", "-z")
+    .split("\0")
+    .filter(Boolean)
+    .map((row) => {
+      const match = /^(100644|100755) ([a-f0-9]{40}) 0\t(.+)$/.exec(row);
+      check(match, "SOURCE_NOT_CLEAN");
+      return { path: match[3], oid: match[2], mode: match[1] };
+    });
+  check(
+    index.length === entries.length &&
+      index.every((i) =>
+        entries.some(
+          (e) => e.path === i.path && e.oid === i.oid && e.mode === i.mode,
+        ),
+      ),
+    "SOURCE_NOT_CLEAN",
+  );
+  check(
+    entries.length > 0 && entries.length <= 4096,
+    "UNSUPPORTED_SOURCE_ENTRY",
+  );
+  const eolDelta = [];
+  for (let start = 0; start < entries.length; start += 32) {
+    const group = entries.slice(start, start + 32);
+    const actual = git(
+      "hash-object",
+      "--no-filters",
+      "--",
+      ...group.map((e) => e.path),
+    ).split("\n");
+    check(actual.length === group.length, "SOURCE_BYTES_MISMATCH");
+    group.forEach((entry, index) => {
+      if (actual[index] === entry.oid) return;
+      check(
+        b.revision === BASELINE &&
+          entry.path === "gradlew.bat" &&
+          entry.oid === "db3a6ac207e507b0bc1635a9f2c18d3b174e682e",
+        "SOURCE_BYTES_MISMATCH",
+      );
+      const bytes = readFileSync(join(h.sourceCheckout, entry.path));
+      const text = bytes.toString("utf8");
+      const normalized = text.replaceAll("\r\n", "\n");
+      const rawSha256 =
+        "94102713eb8fb22d032397924c0f38ab2da783ba60d07054339f1190a0c4e2cd";
+      check(
+        !normalized.includes("\r") &&
+          text === normalized.replaceAll("\n", "\r\n") &&
+          hash(Buffer.from(normalized)) === rawSha256,
+        "SOURCE_BYTES_MISMATCH",
+      );
+      eolDelta.push({
+        path: entry.path,
+        rawSha256,
+        actualSha256: hash(bytes),
+        reason: "tracked-attribute-CRLF",
+      });
+    });
+  }
   for (const p of [
     "src/main",
     "build.gradle.kts",
@@ -213,6 +312,12 @@ export function verifySourceIdentity(m, { run = command } = {}) {
       image.Config.Labels?.["io.ultistats.instance"] === m.instanceId,
     "RUNTIME_UNPROVEN",
   );
+  return {
+    sourceSha: b.revision,
+    trackedFileCount: entries.length,
+    byteIdentical: eolDelta.length === 0,
+    eolDelta,
+  };
 }
 
 export async function observeInstallation(
@@ -222,6 +327,7 @@ export async function observeInstallation(
     transactionId,
     bootstrap = false,
     allowDev = false,
+    allowActiveMatches = false,
     run = command,
     fetcher = fetch,
   } = {},
@@ -334,7 +440,7 @@ export async function observeInstallation(
       Object.keys(ingress.HostConfig.PortBindings).length === 1,
     "INGRESS_NOT_FENCED",
   );
-  verifySourceIdentity(m, { run });
+  const sourceProof = verifySourceIdentity(m, { run });
   const directory = mkdtempSync(join(tmpdir(), "ultistats-helper-jar-"));
   let jarSha256;
   try {
@@ -428,7 +534,7 @@ export async function observeInstallation(
       response.headers.get("x-ultistats-maintenance") === transactionId;
     await response.body?.cancel();
   }
-  verifyIdentity(expectedIdentity(m), o);
+  verifyIdentity(expectedIdentity(m), o, { allowActiveMatches });
   if (phase === "quiet") verifyQuietPoint(expectedIdentity(m), o);
   if (phase === "target") {
     check(
@@ -445,7 +551,7 @@ export async function observeInstallation(
       o.writers.every((w) => w.running === true) && o.otherClients === 0,
       "RUNTIME_UNPROVEN",
     );
-  return { ...o, migrationFingerprint, jarSha256 };
+  return { ...o, migrationFingerprint, jarSha256, sourceProof };
 }
 export async function observeRuntimeIdentity({ installation, ...options }) {
   const o = await observeInstallation(installation, {
@@ -453,10 +559,12 @@ export async function observeRuntimeIdentity({ installation, ...options }) {
     phase: "inspect",
     bootstrap: true,
     allowDev: true,
+    allowActiveMatches: true,
   });
   return {
     migrationFingerprint: o.migrationFingerprint,
     jarSha256: o.jarSha256,
+    sourceProof: o.sourceProof,
   };
 }
 export function databaseContent(m, { run = command } = {}) {

@@ -19,11 +19,39 @@ import { maintenanceConfig } from "../observe.mjs";
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), "backend161-lifecycle-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const source = resolve("."),
+  const parentSource = resolve("."),
+    source = join(root, "source"),
     sha = execFileSync("git", ["rev-parse", "HEAD"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     }).trim();
+  const gitOptions = { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] };
+  execFileSync(
+    "git",
+    ["clone", "--shared", "--no-checkout", parentSource, source],
+    gitOptions,
+  );
+  execFileSync(
+    "git",
+    [
+      "-C",
+      source,
+      "-c",
+      "core.hooksPath=/dev/null",
+      "checkout",
+      "--detach",
+      sha,
+    ],
+    gitOptions,
+  );
+  writeFileSync(
+    join(source, "gradlew.bat"),
+    execFileSync(
+      "git",
+      ["-C", source, "--no-replace-objects", "show", `${sha}:gradlew.bat`],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    ),
+  );
   const ids = {
       db: "1".repeat(64),
       api: "2".repeat(64),
@@ -205,7 +233,8 @@ function fixture(t) {
   };
   const run = (program, args, options = {}) => {
     if (program === "git") {
-      if (args.includes("status")) return state.dirty ? " M src/main/file" : "";
+      if (args.includes("status"))
+        return state.dirty ? "?? synthetic-untracked" : "";
       return execFileSync(program, args, {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
@@ -244,6 +273,7 @@ function fixture(t) {
         },
       ]);
     if (args[0] === "cp") {
+      if (args[2] === "-") return Buffer.alloc(1024);
       if (args[1].endsWith("/app.jar")) writeFileSync(args[2], "synthetic-jar");
       else if (args[1].endsWith("/uploads/.")) {
         mkdirSync(args[2], { recursive: true });
@@ -259,6 +289,7 @@ function fixture(t) {
       return Buffer.from("PGDMPsynthetic");
     }
     if (args.includes("pg_restore")) return "synthetic TOC";
+    if (options.input?.includes("pg_database_size")) return "1024";
     if (options.input?.includes("flyway_schema_history WHERE"))
       return JSON.stringify(rows);
     if (options.input?.includes("FROM public.matches WHERE"))
@@ -430,4 +461,23 @@ test("forged compatible rollback receipt cannot substitute an unlisted previous 
       }),
     { message: "ROLLBACK_UNPROVEN" },
   );
+});
+test("normal readonly startup identity accepts an ongoing match while updater guards still reject it", async (t) => {
+  const f = fixture(t);
+  f.state.activeMatches = 1;
+  const { observeRuntimeIdentity } = await import("../observe.mjs");
+  const result = await observeRuntimeIdentity({
+    installation: f.m,
+    run: f.run,
+    fetcher: f.fetcher,
+  });
+  assert.match(result.migrationFingerprint, /^[a-f0-9]{64}$/);
+  await assert.rejects(() => f.call("inspect"), {
+    message: "MATCH_IN_PROGRESS",
+  });
+  f.api.State.Running = false;
+  await assert.rejects(() => f.call("fence-acquire"), {
+    message: "MATCH_IN_PROGRESS",
+  });
+  assert.equal(f.state.dumpCount, 0);
 });

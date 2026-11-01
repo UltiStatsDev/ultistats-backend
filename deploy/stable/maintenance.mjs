@@ -3,7 +3,11 @@ export function requireProof(condition, reason) {
 }
 
 // This checks a fresh observation. A stored maintenance receipt is never a fence.
-export function verifyIdentity(expected, observed) {
+export function verifyIdentity(
+  expected,
+  observed,
+  { allowActiveMatches = false } = {},
+) {
   const e = expected,
     o = observed;
   for (const c of [o.database, o.ingress, ...o.writers]) {
@@ -61,7 +65,10 @@ export function verifyIdentity(expected, observed) {
       o.otherClients >= 0,
     "DATABASE_UNREADY",
   );
-  requireProof(o.activeMatches === 0, "MATCH_IN_PROGRESS");
+  requireProof(
+    allowActiveMatches || o.activeMatches === 0,
+    "MATCH_IN_PROGRESS",
+  );
   requireProof(o.migrationsVerified === true, "MIGRATION_UNPROVEN");
   requireProof(
     o.sourceVerified === true && o.jarVerified === true,

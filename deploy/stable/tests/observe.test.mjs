@@ -157,9 +157,10 @@ test("readonly source verification cannot execute configured clean filter or fsm
             },
           },
         ]);
-  assert.throws(() => api.verifySourceIdentity(manifest, { run }), {
-    message: "SOURCE_NOT_CLEAN",
-  });
+  assert.throws(
+    () => api.verifySourceIdentity(manifest, { run }),
+    /SOURCE_NOT_CLEAN|SOURCE_BYTES_MISMATCH/,
+  );
   assert.equal(existsSync(marker), false);
 });
 test("source observation neither refreshes index nor runs post-index-change hook", async (t) => {
@@ -224,4 +225,65 @@ test("source observation neither refreshes index nor runs post-index-change hook
   api.verifySourceIdentity(manifest, { run });
   assert.equal(existsSync(marker), false);
   assert.equal(digest(), before);
+});
+test("new tooling source rejects CRLF checkout bytes even when Git reports clean", async (t) => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join, resolve } = await import("node:path");
+  const { execFileSync } = await import("node:child_process");
+  const root = mkdtempSync(join(tmpdir(), "backend161-raw-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const repo = join(root, "repo");
+  const git = (...args) =>
+    execFileSync("git", args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  git("clone", "--shared", "--no-checkout", resolve("."), repo);
+  git(
+    "-C",
+    repo,
+    "checkout",
+    "--detach",
+    "24704e11143a0bf919559a41324603f936ae03cf",
+  );
+  git(
+    "-C",
+    repo,
+    "-c",
+    "user.name=Test",
+    "-c",
+    "user.email=test@example.invalid",
+    "commit",
+    "--allow-empty",
+    "-qm",
+    "new tooling candidate",
+  );
+  const sha = git("-C", repo, "rev-parse", "HEAD");
+  assert.equal(git("-C", repo, "status", "--porcelain=v1"), "");
+  const m = {
+    instanceId: "abc123456789",
+    backend: {
+      revision: sha,
+      imageId: `sha256:${"1".repeat(64)}`,
+      helper: { sourceCheckout: repo },
+    },
+  };
+  const run = (program, args) =>
+    program === "git"
+      ? git(...args)
+      : JSON.stringify([
+          {
+            Id: m.backend.imageId,
+            Config: {
+              Labels: {
+                "org.opencontainers.image.revision": sha,
+                "io.ultistats.instance": m.instanceId,
+              },
+            },
+          },
+        ]);
+  assert.throws(() => api.verifySourceIdentity(m, { run }), {
+    message: "SOURCE_BYTES_MISMATCH",
+  });
 });

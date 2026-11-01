@@ -19,6 +19,7 @@ import {
   readPrivateJson,
 } from "./helper-contract.mjs";
 import { command, databaseContent } from "./observe.mjs";
+import { inspectBackupCapacity } from "./capacity.mjs";
 
 export function treeFingerprint(root) {
   const entries = [];
@@ -85,6 +86,7 @@ export async function createBackup({
 }) {
   privateDirectory(dirname(backupPath));
   await recheck();
+  const capacity = inspectBackupCapacity(manifest, backupPath, { run });
   mkdirSync(backupPath, { mode: 0o700 }); // exclusive, never reuse partial/foreign output
   writePrivateJson(join(backupPath, "incomplete.json"), {
     protocolVersion: 1,
@@ -157,6 +159,7 @@ export async function createBackup({
     protocolVersion: 1,
     transactionId: receipt.transactionId,
     complete: true,
+    capacity,
     fence: receipt,
     databaseSha256: hash(dump),
     databaseContentSha256: beforeContent,

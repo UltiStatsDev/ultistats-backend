@@ -27,6 +27,7 @@ import {
   settingsFingerprint,
 } from "./backup.mjs";
 import { rollbackCompatible } from "./maintenance.mjs";
+import { inspectBackupCapacity } from "./capacity.mjs";
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 export function verifyFence(
   f,
@@ -109,6 +110,7 @@ function evidence(m, record, o) {
       productBaseline: BASELINE,
       migrationFingerprint: o.migrationFingerprint,
     },
+    sourceProof: o.sourceProof,
   };
 }
 function runtime(m, o) {
@@ -202,6 +204,11 @@ export async function executeRequest(
     await response.body?.cancel();
     return success({
       ...evidence(m, record, o),
+      capacity: inspectBackupCapacity(
+        m,
+        r.backupPath ?? join(r.evidenceDirectory, "backup"),
+        { run },
+      ),
       runtime: runtime(m, o),
       ready: true,
     });
@@ -236,7 +243,7 @@ export async function executeRequest(
         fenceSha256: hash(readFileSync(r.fencePath)),
         quiet: true,
       });
-    await createBackup({
+    const completedBackup = await createBackup({
       backupPath: r.backupPath,
       manifest: m,
       receipt: fence,
@@ -258,6 +265,7 @@ export async function executeRequest(
       manifestPath,
       manifestSha256: hash(readFileSync(manifestPath)),
       complete: true,
+      capacity: completedBackup.capacity,
     });
   }
   const { backup, fence, backupHash } = boundBackup(r, m, manifestHash, {

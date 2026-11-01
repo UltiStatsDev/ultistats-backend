@@ -49,8 +49,10 @@ test("failed dump retains incomplete private evidence without completion or DB r
       receipt: { transactionId: "transaction-001" },
       recheck: async () => {},
       content: () => "a".repeat(64),
-      run: (program, args) => {
+      run: (program, args, options = {}) => {
         calls.push([program, args]);
+        if (options.input?.includes("pg_database_size")) return "1024";
+        if (args[0] === "cp" && args[2] === "-") return Buffer.alloc(1024);
         throw new Error("PASSWORD_PRIVATE");
       },
     }),
@@ -84,7 +86,9 @@ test("new writer on final quietpoint prevents successful backup manifest", async
         recheck: async () => {
           if (++rechecks === 2) throw new Error("WRITER_RUNNING");
         },
-        run: (program, args) => {
+        run: (program, args, options = {}) => {
+          if (options.input?.includes("pg_database_size")) return "1024";
+          if (args[0] === "cp" && args[2] === "-") return Buffer.alloc(1024);
           if (args.some((v) => v.includes("exec pg_dump")))
             return Buffer.from("PGDMPfixture");
           if (args.includes("pg_restore")) return "valid TOC";
