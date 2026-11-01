@@ -1,8 +1,12 @@
-name: Deploy production
+name: Promote production release
 
 on:
-  push:
-    branches: [master]
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: 'Full lowercase 40-character commit SHA on master; QA/PO release gates required'
+        required: true
+        type: string
 
 concurrency:
   group: production
@@ -12,8 +16,33 @@ env:
   IMAGE_NAME: ghcr.io/ultistatsdev/ultistats-backend
 
 jobs:
+  resolve-release:
+    name: Validate explicit release selection
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      release_sha: ${{ steps.release.outputs.release_sha }}
+    steps:
+      - name: Check out promotion controls
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve release commit on master
+        id: release
+        shell: bash
+        env:
+          REQUESTED_RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          release_sha="$(bash deploy/resolve-release.sh "$REQUESTED_RELEASE_SHA")"
+          printf 'release_sha=%s\n' "$release_sha" >> "$GITHUB_OUTPUT"
+
   build-and-publish:
     name: Build, test, and publish image
+    needs: resolve-release
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -21,6 +50,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-release.outputs.release_sha }}
+          persist-credentials: false
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -37,6 +69,7 @@ jobs:
           bash deploy/tests/validate-compose.sh
           bash deploy/tests/deploy_test.sh
           bash deploy/tests/validate-workflow.sh
+          bash deploy/tests/resolve-release_test.sh
 
       - name: Build and test
         run: ./gradlew build --no-daemon
@@ -58,14 +91,13 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: |
-            ghcr.io/ultistatsdev/ultistats-backend:${{ github.sha }}
-            ghcr.io/ultistatsdev/ultistats-backend:latest
+            ghcr.io/ultistatsdev/ultistats-backend:${{ needs.resolve-release.outputs.release_sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   deploy:
     name: Deploy immutable image
-    needs: build-and-publish
+    needs: [resolve-release, build-and-publish]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
@@ -74,10 +106,14 @@ jobs:
     env:
       PROD_HOST: ${{ secrets.PROD_HOST }}
       PROD_USER: ${{ secrets.PROD_USER }}
-      IMAGE: ghcr.io/ultistatsdev/ultistats-backend:${{ github.sha }}
+      RELEASE_SHA: ${{ needs.resolve-release.outputs.release_sha }}
+      IMAGE: ghcr.io/ultistatsdev/ultistats-backend:${{ needs.resolve-release.outputs.release_sha }}
     steps:
       - name: Check out deployment files
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-release.outputs.release_sha }}
+          persist-credentials: false
 
       - name: Configure verified SSH access
         shell: bash
@@ -102,7 +138,7 @@ jobs:
       - name: Install deployment files and deploy
         shell: bash
         run: |
-          staging_directory="/opt/ultistats/incoming-${GITHUB_SHA}"
+          staging_directory="/opt/ultistats/incoming-${RELEASE_SHA}"
           ssh production "mkdir -p '$staging_directory'"
           scp deploy/compose.prod.yml deploy/deploy.sh "production:$staging_directory/"
           ssh production \
@@ -110,4 +146,4 @@ jobs:
              install -m 0755 '$staging_directory/deploy.sh' /opt/ultistats/deploy.sh && \
              rm -f '$staging_directory/compose.prod.yml' '$staging_directory/deploy.sh' && \
              rmdir '$staging_directory' && \
-             /opt/ultistats/deploy.sh '$IMAGE' '$GITHUB_SHA'"
+             /opt/ultistats/deploy.sh '$IMAGE' '$RELEASE_SHA'"
