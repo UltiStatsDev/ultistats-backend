@@ -7,7 +7,7 @@ let config=null,draftColors={},teams=[],auto={},page=0,dirty=false,installationI
 const message=text=>$('save-status').textContent=text;
 try {const context=await obsSession.bootstrap('OBS_ADMIN');installationId=context.principal.owner.installationId;bindObsPage();bindScoreboardSession();$('auth-status').textContent='Организатор: защищённая сессия проверена.';}
 catch(error){$('auth-status').textContent=error.message;message('Изменения не отправляются. Войдите и откройте страницу заново.');throw error;}
-obsSession.subscribe(()=>{if(!obsPageCurrent()){$('save').disabled=true;$('auth-status').textContent='Сессия изменилась. Откройте страницу заново; несохранённые изменения сохранены на странице.';}});
+obsSession.subscribe(()=>{if(!obsPageCurrent()){$('save').disabled=true;$('auth-status').textContent='Сессия изменилась. Откройте страницу заново; введённые данные остаются на странице.';}});
 function renderTeams() {
  $('teams').replaceChildren();
  const ids=new Set([...teams.map(t=>t.teamId),...Object.keys(draftColors)]);

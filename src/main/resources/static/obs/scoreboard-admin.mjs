@@ -7,7 +7,7 @@ let dispose=()=>{},generation=0,matchId=null,snapshot=null,draft=null,dirty=fals
 let auto={};
 const message=text=>{$('scoreboard-status').textContent=text;};
 const postDraft=()=>{if(draft)$('scoreboard-preview').contentWindow?.postMessage({type:'scoreboard-draft',profile:draft},location.origin);};
-export function bindScoreboardSession(){obsSession.subscribe(()=>{if(!obsPageCurrent()){$('scoreboard-fields').disabled=true;message('Сессия изменилась. Откройте страницу заново; несохранённые изменения остаются на странице.');}});}
+export function bindScoreboardSession(){obsSession.subscribe(()=>{if(!obsPageCurrent()){$('scoreboard-fields').disabled=true;message('Сессия изменилась. Откройте страницу заново; введённые данные остаются на странице.');}});}
 function fields() {
  if(!snapshot||!draft)return;
  $('scoreboard-fields').disabled=saving||!obsPageCurrent();
@@ -52,7 +52,7 @@ export function mountScoreboardAdmin(id) {
     if(input&&!draft.teamColors[team.teamId])input.value=teamAccent(team.teamId,draft.teamColors,auto);
    });
   }
- },text=>{if(selected===generation)message(dirty?`${text} · Есть несохранённые изменения`:text);});
+ },text=>{if(selected===generation)message(dirty?`${text} · Черновик остаётся на странице`:text);});
 }
 export function setScoreboardSourceUrl(id,url) {
  if(id!==matchId)return;
@@ -70,7 +70,7 @@ $('scoreboard-form').addEventListener('submit',async event=>{
   if(!response.ok){const problem=await response.json();throw Error(problem.detail??`HTTP ${response.status}`);}
   const saved=await response.json();assertObsPage();if(selected!==generation)return;
   draft=saved;dirty=false;fieldsKey=null;message('Профиль сохранён для всех источников этого матча.');postDraft();
- }catch(error){if(selected===generation)message(`Не сохранено: ${error.message}`);}
+ }catch(error){if(selected===generation)message(`Результат сохранения не подтверждён: ${error.message} Черновик остаётся на странице. Проверьте актуальный профиль перед повтором.`);}
  finally{if(selected===generation){saving=false;fields();}}
 });
 $('scoreboard-copy').onclick=async()=>{
@@ -80,6 +80,6 @@ $('scoreboard-copy').onclick=async()=>{
 };
 addEventListener('message',event=>{
  if(event.origin===location.origin&&event.source===$('scoreboard-preview').contentWindow&&event.data?.type==='scoreboard-status')
-  message(dirty?`${event.data.message} · Есть несохранённые изменения`:event.data.message);
+  message(dirty?`${event.data.message} · Черновик остаётся на странице`:event.data.message);
 });
 addEventListener('pagehide',()=>{generation++;dispose();},{once:true});

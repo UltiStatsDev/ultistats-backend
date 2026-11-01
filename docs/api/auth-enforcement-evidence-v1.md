@@ -93,3 +93,26 @@ This is component proof with synthetic HTTP responses, not new real PG/backend,
 TLS, native OBS or canonical gateway deployment evidence. No leased live target
 was changed. Combined source, final release artifact, CI/review and canonical
 runtime/shared QA remain integration gates.
+
+
+### Unconfirmed profile completion after session invalidation
+
+Independent review reproduced a transient false outcome: server profile commit,
+withheld successful response, session change/BroadcastChannel invalidation, then
+response release caused the catch to announce “Не сохранено”. That message did
+not describe server state. The catch now reports an unconfirmed result, retains
+the draft and asks the operator to check the current profile before repeating.
+Adjacent session/draft messages describe only data remaining on this page.
+Capture fencing, disabled stale controls and no automatic replay are unchanged.
+
+The component regression records every status text assignment, witnesses the
+server's committed profile before invalidation, then releases the response. Its
+old-message assertion failed RED before the fix. Final run passes all11 browser
+checks with exactly one profile mutation for this scenario, retained draft and
+disabled controls;54Node tests also pass. Logs:
+`/tmp/ultistats-auth153/browser-component-uncertain-red.log`,
+`/tmp/ultistats-auth153/browser-component-uncertain-green.log`, and
+`/tmp/ultistats-auth153/js-uncertain-green.log`.
+A first GREEN attempt instead timed out because an older pre-dispatch test still
+waited for the removed wording; that test oracle was corrected before the final
+successful run. This is synthetic component proof, not new backend/PG proof.
