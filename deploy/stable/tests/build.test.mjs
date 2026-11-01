@@ -66,3 +66,100 @@ test('abbreviated source identity is refused', async t => {
   const f = await fixture(t);
   await assert.rejects(() => f.inspectSource(f.source, f.sha.slice(0, 7)), /INVALID_SOURCE_SHA/);
 });
+
+function request(f) {
+  return { schemaVersion: 1, sourceDir: f.source, expectedSourceSha: f.sha,
+    stageDir: join(f.root, 'stage'), imageTag: `ultistats-stable-000000000162-backend:${f.sha}`,
+    ownership: { instanceId: '000000000162', mode: 'stable', project: 'ultistats-stable-000000000162' } };
+}
+function dockerFixture(f, failure) {
+  return (args) => {
+    if (args[0] === 'image' && args[1] === 'ls') return '';
+    if (args[0] === 'image' && args[1] === 'inspect') {
+      if (args[2].startsWith('gradle:')) return JSON.stringify([{ Id: `sha256:${'1'.repeat(64)}`, RepoDigests: [`gradle@sha256:${'a'.repeat(64)}`] }]);
+      if (args[2].startsWith('eclipse-temurin:')) return JSON.stringify([{ Id: `sha256:${'2'.repeat(64)}`, RepoDigests: [`eclipse-temurin@sha256:${'b'.repeat(64)}`] }]);
+      return JSON.stringify([{ Id: `sha256:${'3'.repeat(64)}`, Config: { Labels: {
+        'io.ultistats.instance': '000000000162', 'org.opencontainers.image.revision': failure === 'label' ? 'unknown' : f.sha } } }]);
+    }
+    if (args[0] === 'build') {
+      if (failure === 'build') throw new Error('upstream build failed with private details');
+      return '';
+    }
+    if (args[0] === 'create') return '4'.repeat(64);
+    if (args[0] === 'cp') {
+      if (failure === 'jar') throw new Error('jar unavailable');
+      writeFileSync(args[2], 'synthetic-jar-content'); return '';
+    }
+    if (args[0] === 'rm') return '';
+    throw new Error(`unexpected Docker operation ${args[0]}`);
+  };
+}
+
+test('build stages exact source and returns verified immutable image and JAR evidence', async t => {
+  const f = await fixture(t);
+  const { buildSource } = await import('../build.mjs');
+  const result = await buildSource(request(f), { docker: dockerFixture(f) });
+  assert.equal(result.sourceSha, f.sha);
+  assert.equal(result.imageId, `sha256:${'3'.repeat(64)}`);
+  assert.match(result.jarSha256, /^[a-f0-9]{64}$/);
+  assert.equal(result.productTree, '5c81f8910e958d1b28f1a096b59fcb700875b9f8');
+  assert.equal(readFileSync(join(f.root, 'stage/source/Dockerfile'), 'utf8'), git(f.source, 'show', 'HEAD:Dockerfile') + '\n');
+  assert.equal(git(f.source, 'status', '--porcelain'), '');
+  assert.equal(readFileSync(f.installed, 'utf8'), 'original-installation');
+});
+for (const failure of ['build', 'label', 'jar']) {
+  test(`${failure} failure leaves installed data and source untouched`, async t => {
+    const f = await fixture(t);
+    const { buildSource } = await import('../build.mjs');
+    await assert.rejects(() => buildSource(request(f), { docker: dockerFixture(f, failure) }));
+    assert.equal(git(f.source, 'status', '--porcelain'), '');
+    assert.equal(readFileSync(f.installed, 'utf8'), 'original-installation');
+  });
+}
+
+test('stage path inside source refuses before writing or calling Docker', async t => {
+  const f = await fixture(t);
+  const { buildSource } = await import('../build.mjs');
+  await assert.rejects(() => buildSource({ ...request(f), stageDir: join(f.source, 'stage') }, {
+    docker: () => assert.fail('Docker must not run')
+  }), /INVALID_STAGE_DIR/);
+  assert.equal(git(f.source, 'status', '--porcelain'), '');
+});
+
+test('unowned image tag refuses before calling Docker', async t => {
+  const f = await fixture(t);
+  const { buildSource } = await import('../build.mjs');
+  await assert.rejects(() => buildSource({ ...request(f), imageTag: 'foreign:latest' }, {
+    docker: () => assert.fail('Docker must not run')
+  }), /INVALID_OWNERSHIP/);
+});
+
+test('existing image tag refuses without replacing an installed image', async t => {
+  const f = await fixture(t);
+  const { buildSource } = await import('../build.mjs');
+  await assert.rejects(() => buildSource(request(f), { docker: args => {
+    if (args[0] === 'image' && args[1] === 'ls') return `sha256:${'9'.repeat(64)}`;
+    assert.fail('Existing image must not be mutated');
+  } }), /IMAGE_TAG_EXISTS/);
+});
+
+test('failed toolchain acquisition preserves source and installed data', async t => {
+  const f = await fixture(t);
+  const { buildSource } = await import('../build.mjs');
+  await assert.rejects(() => buildSource(request(f), { docker: args => {
+    if (args[0] === 'image' && args[1] === 'ls') return '';
+    throw new Error('private registry diagnostic');
+  } }));
+  assert.equal(readFileSync(f.installed, 'utf8'), 'original-installation');
+  assert.equal(git(f.source, 'status', '--porcelain'), '');
+});
+
+test('CLI refuses a public result directory without creating a result there', async t => {
+  const f = await fixture(t);
+  const input = join(f.root, 'request.json');
+  writeFileSync(input, JSON.stringify(request(f)), { mode: 0o600 });
+  const publicResult = join(tmpdir(), `stable162-unsafe-${process.pid}.json`);
+  t.after(() => rmSync(publicResult, { force: true }));
+  assert.throws(() => execFileSync(process.execPath, [join(repository, 'deploy/stable/build.mjs'), '--request', input, '--result', publicResult], { stdio: 'pipe' }));
+  assert.throws(() => readFileSync(publicResult), { code: 'ENOENT' });
+});
