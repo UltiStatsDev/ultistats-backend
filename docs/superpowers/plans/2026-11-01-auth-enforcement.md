@@ -219,3 +219,22 @@ policy/mapping/HTML regressionGREEN. Combined64Node testsGREEN. Actual Chromium
 component confirms both links use configured HTTPpublicOrigin while both previews
 stay same-origin, save/header/draft/Swagger/public-source regressions stillPASS.
 No additional backend stack; native OBS/TLS remains combinedQA/154 evidence.
+
+
+### Consume the published complete Web coordinator
+
+Replace independent staff implementation with the fixed same-origin Web module
+reexport. OBS uses its AuthSnapshot and original page capture/subscription;
+private response bodies cannot overwrite a different actor's draft. Swagger's
+actual network callback uses the same coordinator, keeping built-in query/form/
+multipart serializers and keeping CSRF out of Redux. Disable auth/account
+execution and Try it out. Do not hot-swap any leased runtime.
+
+Observed RED missing transport export, then four transport boundary tests GREEN.
+Actual pinned Swagger selector exposed a Redux-state-first signature mistake;
+corrected and actual browser now proves ordinary operations enabled while auth/
+accounts disabled. Exact59588/e343 helper artifact plus Chromium synthetic HTTP
+passes ten checks including multipart, BC invalidation, durable pending logout,
+shared trusted activity coalescing, no passive renewal and public-source isolation.
+Historical independent adapter tests replaced, current54Node cases GREEN.
+Final deployment/source/review/CI and shared QA stay separate gates.

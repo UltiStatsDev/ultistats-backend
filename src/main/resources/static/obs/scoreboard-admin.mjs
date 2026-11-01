@@ -1,4 +1,4 @@
-import {obsSession} from '../auth/obs-session.mjs';
+import {obsSession,obsPageCurrent,assertObsPage} from '../auth/obs-session.mjs';
 import {watchScoreboard} from './scoreboard-client.mjs';
 import {defaultProfile} from './scoreboard-model.mjs';
 import {teamAccent,imageAccent} from './colors.mjs';
@@ -7,9 +7,10 @@ let dispose=()=>{},generation=0,matchId=null,snapshot=null,draft=null,dirty=fals
 let auto={};
 const message=text=>{$('scoreboard-status').textContent=text;};
 const postDraft=()=>{if(draft)$('scoreboard-preview').contentWindow?.postMessage({type:'scoreboard-draft',profile:draft},location.origin);};
+export function bindScoreboardSession(){obsSession.subscribe(()=>{if(!obsPageCurrent()){$('scoreboard-fields').disabled=true;message('Сессия изменилась. Откройте страницу заново; несохранённые изменения остаются на странице.');}});}
 function fields() {
  if(!snapshot||!draft)return;
- $('scoreboard-fields').disabled=saving;
+ $('scoreboard-fields').disabled=saving||!obsPageCurrent();
  const key=JSON.stringify([snapshot.teams.map(t=>[t.teamId,t.teamName]),draft]);
  if(key===fieldsKey)return;fieldsKey=key;
  $('scoreboard-teams').replaceChildren();
@@ -64,9 +65,10 @@ $('scoreboard-form').addEventListener('submit',async event=>{
  event.preventDefault();if(!draft||saving)return;
  const selected=generation,id=matchId,value=structuredClone(draft);saving=true;$('scoreboard-fields').disabled=true;
  try {
+  assertObsPage();
   const response=await obsSession.protectedFetch(`/api/v1/obs/scoreboard/${encodeURIComponent(id)}/profile`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(value),signal:AbortSignal.timeout(5000)});
   if(!response.ok){const problem=await response.json();throw Error(problem.detail??`HTTP ${response.status}`);}
-  const saved=await response.json();if(selected!==generation)return;
+  const saved=await response.json();assertObsPage();if(selected!==generation)return;
   draft=saved;dirty=false;fieldsKey=null;message('Профиль сохранён для всех источников этого матча.');postDraft();
  }catch(error){if(selected===generation)message(`Не сохранено: ${error.message}`);}
  finally{if(selected===generation){saving=false;fields();}}
