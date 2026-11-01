@@ -238,3 +238,15 @@ passes ten checks including multipart, BC invalidation, durable pending logout,
 shared trusted activity coalescing, no passive renewal and public-source isolation.
 Historical independent adapter tests replaced, current54Node cases GREEN.
 Final deployment/source/review/CI and shared QA stay separate gates.
+
+
+### Review correction: uncertain profile outcome
+
+Never infer absent effects from a rejected/stale response after dispatch. Replace
+the unconditional “Не сохранено” catch with neutral unconfirmed-result wording;
+retain the original draft, capture fencing, disabled controls and no replay.
+Adjacent draft notices describe only page contents. Real Chromium synthetic
+commit→withhold→session BC invalidation→response release regression observes the
+entire text history: RED false-absence claim before fix, GREEN11 component checks
+and54Node after fix. Server profile is applied exactly once while its stale
+response never marks the page draft saved. Actual leased targets stay untouched.

@@ -19,6 +19,7 @@ const teamIds=['40000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-0
 const teams=teamIds.map((teamId,index)=>({teamId,teamName:`Synthetic ${index}`,photoUrl:null,score:0,participants:[]}));
 const match={id,teams,status:'PLANNED',startedAt:null,endedAt:null};
 const context={serverNow:new Date().toISOString(),lastActivityAt:new Date().toISOString(),idleExpiresAt:'2026-11-15T00:00:00Z',reauthenticatedUntil:null,replacedSessionId:null,contractVersion:'1.0.0',installationId:id,state:'AUTHENTICATED',sessionId:session,account:{id:account,login:'organizer',displayName:'Organizer',role:'ORGANIZER',status:'ACTIVE',mustChangePassword:false,createdAt:'2026-11-01T00:00:00Z',updatedAt:'2026-11-01T00:00:00Z'},permissions:['SPORTS_WRITE','STATISTICS_READ_ALL','TRANSFER','OBS_ADMIN','API_DOCS']};
+let deferredProfile=null;
 let profile={shortNames:{},teamColors:{},swapped:false},config={...defaults},writes=[],requests=[];
 const server=createServer(async(request,response)=>{
  try{
@@ -32,7 +33,7 @@ const server=createServer(async(request,response)=>{
    writes.push({path:url.pathname,body,headers:request.headers});
    assert.equal(request.headers['x-ultistats-installation-id'],id);assert.equal(request.headers['x-ultistats-account-id'],account);assert.equal(request.headers['x-ultistats-session-id'],session);assert.equal(request.headers['x-csrf-token'],'component-masked-token');
    if(url.pathname==='/api/v1/obs/config'){config=JSON.parse(body);return json(config);}
-   if(url.pathname.endsWith('/profile')){profile=JSON.parse(body);return json(profile);}
+   if(url.pathname.endsWith('/profile')){profile=JSON.parse(body);if(deferredProfile){deferredProfile.committed.resolve();await deferredProfile.release.promise;}return json(profile);}
    return json({saved:true});
   }
   if(url.pathname==='/api/v1/installation')return json({contractVersion:'1.0.0',installationId:id,entryMode:'LOOPBACK',publicOrigin:'http://localhost:8080',secureOrigin:origin});
@@ -82,7 +83,7 @@ try{
  assert.equal(writes.length,2);assert.equal(JSON.parse(writes[1].body).shortNames[teamIds[0]],'Draft');
  context.sessionId='30000000-0000-0000-0000-000000000002';
  await name.fill('Unsaved original owner');await page.locator('#scoreboard-save').click();
- await page.waitForFunction(()=>document.getElementById('scoreboard-status').textContent.includes('Не сохранено')||document.getElementById('scoreboard-status').textContent.includes('Сессия изменилась'));
+ await page.waitForFunction(()=>document.getElementById('scoreboard-status').textContent.includes('Результат сохранения не подтверждён')||document.getElementById('scoreboard-status').textContent.includes('Сессия изменилась'));
  assert.equal(writes.length,2);assert.equal(await name.inputValue(),'Unsaved original owner');
  context.sessionId=session;
  const docs=await staff.newPage();docs.on('pageerror',error=>errors.push(error.message));await docs.goto(origin+'/swagger-ui/index.html');
@@ -128,11 +129,35 @@ try{
  await docs.reload();await docs.waitForFunction(()=>document.getElementById('auth-status').textContent.includes('Войдите'));
  assert.equal(await docs.locator('.opblock').count(),0,'Durable pending logout blocks cold Swagger bootstrap');
  assert.equal(writes.length,4);
- await staff.close();requests=[];
+ await staff.close();
+ const lateContext=await browser.newContext();lateContext.setDefaultTimeout(10000);
+ const late=await lateContext.newPage();late.on('pageerror',error=>errors.push(error.message));
+ await late.goto(origin+'/obs-admin.html');await late.waitForFunction(()=>!document.getElementById('save').disabled);
+ await late.locator('#match-id').fill(id);await late.locator('#open-match').click();
+ const lateName=late.locator('[data-scoreboard-name]').first();await lateName.waitFor();await lateName.fill('Committed before invalidation');
+ await late.evaluate(()=>{
+  const element=document.getElementById('scoreboard-status'),descriptor=Object.getOwnPropertyDescriptor(Node.prototype,'textContent');
+  globalThis.statusWrites=[];Object.defineProperty(element,'textContent',{get(){return descriptor.get.call(this);},set(value){globalThis.statusWrites.push(value);descriptor.set.call(this,value);}});
+ });
+ const beforeLateWrite=writes.length;
+ deferredProfile={committed:Promise.withResolvers(),release:Promise.withResolvers()};
+ await late.locator('#scoreboard-save').click();await deferredProfile.committed.promise;
+ assert.equal(profile.shortNames[teamIds[0]],'Committed before invalidation','Server has committed before response is released');
+ context.sessionId='30000000-0000-0000-0000-000000000002';
+ await late.evaluate(async()=>{const {BROWSER_AUTH_PROTOCOL:p}=await import('/staff-auth-v1.mjs');const channel=new BroadcastChannel(p.noticeChannel);channel.postMessage({type:p.noticeType});channel.close();});
+ await late.waitForFunction(()=>document.getElementById('auth-status').textContent.includes('Сессия изменилась'));
+ deferredProfile.release.resolve();
+ await late.waitForFunction(()=>globalThis.statusWrites.some(value=>/Результат сохранения не подтверждён|Не сохранено/.test(value)));
+ const statusHistory=await late.evaluate(()=>globalThis.statusWrites);
+ assert.equal(statusHistory.some(value=>value.startsWith('Не сохранено')),false,'A stale completion cannot claim that an already committed profile was not saved');
+ assert.equal(statusHistory.some(value=>value.startsWith('Результат сохранения не подтверждён')),true);
+ assert.equal(await lateName.inputValue(),'Committed before invalidation');assert.equal(await lateName.isDisabled(),true);
+ assert.equal(writes.length,beforeLateWrite+1,'Uncertain completion is never retried');
+ deferredProfile=null;context.sessionId=session;await lateContext.close();requests=[];
  const native=await browser.newContext();const source=await native.newPage();source.on('pageerror',error=>errors.push(error.message));
  await source.goto(origin+`/obs-scoreboard.html?matchId=${id}`);await source.locator('.scoreboard-score').first().waitFor();
  assert.equal(requests.some(request=>request.path.startsWith('/api/v1/auth/')||request.path.startsWith('/auth/')),false,'Public source must not import staff adapter or fetch auth context');
  assert.equal(requests.some(request=>request.headers.cookie||request.headers.authorization),false,'Fresh public source has no staff credential');
  assert.deepEqual(errors,[]);await native.close();
- console.log(JSON.stringify({status:'PASS',helper,scope:'Chromium component with synthetic HTTP responses; no real backend authorization/PG/native OBS claim',checks:['global save captured headers','scoreboard save captured headers','changed owner stops save and preserves draft','actual Swagger5.21 shared network transport, secret-free Redux, auth/accounts Try it out blocked','real BroadcastChannel invalidation blocks old Swagger actor and retains draft','durable pending logout prevents cold Swagger bootstrap','actual Swagger multipart file serialization and shared CSRF network transport','trusted activity coalesced across tabs, passive bootstrap/SSE does not renew','configured public source URLs with secure same-origin previews','fresh public source without staff imports/auth requests/credentials'],writes:writes.length,errors:0}));
+ console.log(JSON.stringify({status:'PASS',helper,scope:'Chromium component with synthetic HTTP responses; no real backend authorization/PG/native OBS claim',checks:['global save captured headers','scoreboard save captured headers','changed owner stops save and preserves draft','actual Swagger5.21 shared network transport, secret-free Redux, auth/accounts Try it out blocked','real BroadcastChannel invalidation blocks old Swagger actor and retains draft','durable pending logout prevents cold Swagger bootstrap','committed profile with stale withheld response reports unconfirmed outcome, retains draft and disabled controls, no retry','actual Swagger multipart file serialization and shared CSRF network transport','trusted activity coalesced across tabs, passive bootstrap/SSE does not renew','configured public source URLs with secure same-origin previews','fresh public source without staff imports/auth requests/credentials'],writes:writes.length,errors:0}));
 }finally{await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
