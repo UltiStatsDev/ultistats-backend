@@ -29,3 +29,8 @@ test('CI discovers nested build/helper boundary tests as well as promotion tests
   assert.match(ci, /find deploy\/stable -name '\*\.test\.mjs' -type f -print0/);
   assert.match(ci, /xargs -0 node --test/);
 });
+test('stable parity checks receive canonical baseline objects from complete history', () => {
+  const stableJob = ci.split('\n  stable-promotion:\n')[1];
+  assert.ok(stableJob, 'Stable promotion job exists');
+  assert.match(stableJob, /uses: actions\/checkout@v4\n        with:\n          fetch-depth: 0/);
+});
