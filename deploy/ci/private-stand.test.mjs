@@ -52,3 +52,29 @@ test('fence module requires actual PostgreSQL proxy integration with owned Docke
   assert.match(proxy, /flock -w 120 -x \/tmp\/ultistats-web-heavy-check.lock \\[\s\S]*?flock -w 120 -x \/tmp\/ultistats-browser-network.lock/);
   assert.ok(!/H2|h2database|gradlew/.test(proxy));
 });
+
+test("bootstrap module must run actual247 PostgreSQL integration with JDK21 and no nested heavy lock", () => {
+  const bootstrap = job("private-stand-bootstrap-pg");
+  assert.match(bootstrap, /fetch-depth: 0/);
+  assert.match(bootstrap, /node-version: '22'/);
+  assert.match(bootstrap, /java-version: '21'/);
+  assert.match(bootstrap, /\[\[ -f deploy\/stand\/sql-bootstrap.mjs \]\]/);
+  assert.match(bootstrap, /test -f deploy\/stand\/tests\/run-sql-bootstrap.sh/);
+  assert.match(bootstrap, /steps.bootstrap.outputs.present == 'true'/);
+  assert.match(
+    bootstrap,
+    /run: bash deploy\/stand\/tests\/run-sql-bootstrap.sh/,
+  );
+  assert.ok(
+    !bootstrap.includes("flock"),
+    "runner owns heavy/JVM/network locks",
+  );
+  assert.ok(
+    !bootstrap.includes("BOOTSTRAP_APPLICATION_IMAGE"),
+    "CI must build raw actual247, not substitute an unproven artifact",
+  );
+  assert.match(
+    bootstrap,
+    /if:.*github.base_ref == 'candidate\/private-stand-v1'/,
+  );
+});
