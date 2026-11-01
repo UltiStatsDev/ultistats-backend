@@ -8,7 +8,7 @@
 
 **Tech Stack:** Spring Boot 3.5.7 embedded Tomcat, Kotlin/JPA/PostgreSQL/Flyway, Caddy, Docker Compose, JUnit5, Python standard-library HTTP harness.
 
-**Spec:** approved Web merge `50bd486f3a2001b50b3e3f63d2ae4bbcf6f4c3a8`, `docs/superpowers/specs/2026-11-01-users-auth-design.md`; authoritative backend `docs/api/auth-contract.md` candidate1.0.0 at lead snapshot `c48eef30bff9e5e89e34da545b0aaad643e3c993`.
+**Spec:** approved Web merge `50bd486f3a2001b50b3e3f63d2ae4bbcf6f4c3a8`, `docs/superpowers/specs/2026-11-01-users-auth-design.md`; authoritative backend `docs/api/auth-contract.md` frozen1.0.0 at mutually acknowledged lead snapshot `c48eef30bff9e5e89e34da545b0aaad643e3c993`.
 
 ## Global constraints
 
@@ -36,7 +36,7 @@
 |154 tests | `src/test/kotlin/com/github/mihanizzm/ultistats/auth/ingress/{AuthIngressPropertiesTest,AuthEntrypointTest,ReadinessControllerTest}.kt`, `src/test/python/auth154_http.py` | Real ports/headers/origins/readiness/TLS evidence. |
 |Web103 | Web startup/Vite/proxy/deploy and old-origin browser preflight | Loopback-only proxy, printed URLs, secure/public Web routing, actual profile queue synchronization checks. |
 
-Consumes core exact `enum class AuthEntryMode { ANONYMOUS, SECURE, LOOPBACK }` and `interface AuthEntryClassifier { fun classify(request: HttpServletRequest): AuthEntryMode }`.152 must publish canonical package and a read-only installation UUID accessor signature before Task1 code.154 proposes `InstallationIdentityReader.installationId(): UUID`; do not implement a second persistence owner if core chooses another accessor. No auth cookie/CSRF implementation in154.
+Consumes core exact `enum class AuthEntryMode { ANONYMOUS, SECURE, LOOPBACK }` and `interface AuthEntryClassifier { fun classify(request: HttpServletRequest): AuthEntryMode }`.Core152 plan93d5fa9 publishes canonical imports `auth.model.AuthEntryMode`, `auth.security.AuthEntryClassifier` and accessor `auth.service.AuthService.installationId(): UUID`.154 consumes this accessor and never duplicates installation persistence. Wire freeze c48 SHA256 `d9f83750f91758d95803ee8b06c85072c936eaa95bd4fe5867799e9ce873d5bf` confirmed by lead; no wire approval hold remains. No auth cookie/CSRF implementation in154.
 
 Produces classifier bean implementing the core interface; `GET /api/v1/installation` contract1.0.0 response; `GET /health/ready`200 `{"status":"UP"}` /503 `{"status":"DOWN"}`. Proposed properties prefix `app.auth.ingress`: mode, bind address/port pairs and configured publicOrigin/secureOrigin; accept only HTTP anonymous, HTTPS secure (or explicit loopback HTTP), canonical origin without credentials/path/query/fragment. Final names and constructors are pinned in this plan after152 acknowledgment, before code.
 
@@ -84,8 +84,17 @@ Produces classifier bean implementing the core interface; `GET /api/v1/installat
 
 ## Self-review and current gate
 
-Scope covers backend Task154 and relevant approved joint Task5. Security session/admin behavior belongs152, exhaustive permissions153, browser startup/old-profile checksWeb103. Candidate freeze and canonical152 accessor remain external prerequisites, not guessed product interfaces. No product tests have been executed; prepared QA matrix is NOT_RUN. Current plan is reviewable inventory and ordered test decisions; dependent Task1 code begins only after prerequisites are concrete.
+Scope covers backend Task154 and relevant approved joint Task5. Security session/admin behavior belongs152, exhaustive permissions153, browser startup/old-profile checksWeb103. Wire freeze and canonical152 accessor are published; actual core integration remains sequential with152 source availability. No product tests have been executed; prepared QA matrix is NOT_RUN. Current plan is reviewable inventory and ordered test decisions; dependent Task1 code begins only after prerequisites are concrete.
 
 ## Coordination acknowledgment
 
 151 callback confirms PR155 head `14e4f33e7c6d58a8715d6ef9aa936993885b43a2` does not edit `deploy/deploy.sh` or `deploy/tests/deploy_test.sh`;154 owns those changes. Preserve the full lowercase40SHA image/revision interface.151 review/CI/merge and frozen wire/core availability are not implied by this file-ownership acknowledgment.
+
+## Concrete connector/config decisions (frozen wire, core interfaces available)
+
+- `auth.ingress.AuthOriginConfiguration` SPI committed926b3eb; properties `AuthIngressProperties(publicOrigin:String="http://localhost:8080", secureOrigin:String="https://localhost:8443", loopbackMode:Boolean=false, anonymousAddress:String="127.0.0.1", privatePort:Int=8081)` implements it. Prefix `app.auth.ingress`. Primary port stays standard `server.port`; privatePort0 allows isolated test allocation. Numeric bind choices only, no DNS resolution. Configured origins permit HTTP(S) authority only, no path/query/fragment/userinfo; private HTTPS mandatory except explicit loopback HTTP.
+- `ListenerAuthEntryClassifier(properties:AuthIngressProperties)` stores actual Tomcat connector references registered by `AuthConnectorConfiguration`. It compares servlet localPort/localAddr with actual bound connector, never Host/XFP/Origin/credentials. Unrecognized socket returns ANONYMOUS. LOOPBACK main connector is loopback-only; otherwise main is ANONYMOUS and private additional connector binds127.0.0.1. No forwarded header processing/RemoteIpValve allowed. Private connector reports secure scheme to framework but capability comes from connector identity.
+- `AuthConnectorConfiguration` enables properties, supplies classifier and Tomcat customizer after standard server properties. Checks conflicting primary/private fixed ports, enforces bind, disables server-header forwarding, and rejects unsafe forwarding config.152/153 consume shared types/SPI; no duplicate security chain.
+- Docker opt-in Caddy uses `network_mode: service:app`; private loopback remains within that namespace. App publishes only Caddy80/443, not backend primary/private/PG. Caddy public listener always proxies anonymous socket; staff TLS proxies private socket. Backend loopback mode has no exposed network staff option and must pair with loopback-only Web proxy.
+- Readiness implementation will use DataSource live query with bounded timeout, plus successful Flyway/validation startup (fail startup on invalid migrations); metadata controller consumes actual core AuthService only after its implementation is available.
+- Lead newer callback requires151merge/rebase before committing deploy.sh/deploy_test.sh changes. Existing local RED→GREEN changes remain uncommitted until that gate; config/test work continues.
