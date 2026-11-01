@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "sourceSha": "ad7553bcb67eff4db6df81d804d8ae04f0e0b6db",
+  "imageTag": "ultistats-stable-000000000162-backend:ad7553bcb67eff4db6df81d804d8ae04f0e0b6db",
+  "imageId": "sha256:9db201c403f0d4ddefc4b556e31cfc0fa13e8f62b9cafc83d6dc2d75f0a4957c",
+  "jarSha256": "25cc0a38f5e3f49e7b02a21b7f7cf05afe86f686ee2a6187ad2275441fef9f8e",
+  "productTree": "5c81f8910e958d1b28f1a096b59fcb700875b9f8",
+  "DockerfileSha256": "2bdac2cb64708050d9efdabcdf79a2897b82000d272c7800f9e1ab37c047f64e",
+  "toolchain": {
+    "builderRef": "gradle:8.14-jdk21",
+    "builderImageId": "sha256:aa72246029828dd4b4ddb5d4aba31f72ee070cafe52dc85ad5cc3296007ace6f",
+    "builderDigest": "gradle@sha256:aa72246029828dd4b4ddb5d4aba31f72ee070cafe52dc85ad5cc3296007ace6f",
+    "runtimeRef": "eclipse-temurin:21-jre-alpine",
+    "runtimeImageId": "sha256:82cf3d9ccbe1ed46252008d51b2f2329e6b9e8a2f4394c4bebefc3ea7f4b1372",
+    "runtimeDigest": "eclipse-temurin@sha256:82cf3d9ccbe1ed46252008d51b2f2329e6b9e8a2f4394c4bebefc3ea7f4b1372"
+  },
+  "generatedDockerfileSha256": "0956ce0a41befc0516ad391c762784e25348e7d99470b9ff56bf39b0ecce46d5",
+  "baselineSha": "24704e11143a0bf919559a41324603f936ae03cf",
+  "productTrees": {
+    "src/main": "5c81f8910e958d1b28f1a096b59fcb700875b9f8",
+    "src/test": "404a8fa3faa99b1eb43627329dc76e3cae18529a",
+    "build.gradle.kts": "846e10d293b236db9241b3a07358799f4da9b9da",
+    "settings.gradle.kts": "2e1a5d4e771e7111139113699fc5b0644c6b5923",
+    "gradle": "4ce72237e22e29d0267b5cbe52a3a823c2be45ef",
+    "gradlew": "23d15a9367071145e9c79bb4ddf879d1fbe78b5d",
+    "Dockerfile": "bd01eaf4cda96923e4ba084ca34c208faeaba5b9"
+  },
+  "producers": {
+    "backend161": "1122cffbb25f1022a94483e8a706ff1fca6aca87",
+    "backend162": "3055055c872fb1b62df720f4b653def4b0933620"
+  },
+  "execution": {
+    "platform": "Linux",
+    "node": "v24.22.1",
+    "dockerServer": "29.9.2",
+    "scope": "coherent private engineering source build; not final release candidate",
+    "runtimeRehearsal": "NOT_RUN",
+    "temporaryContainersRemaining": 0,
+    "hostPorts": [],
+    "volumesCreated": [],
+    "networksCreated": []
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "sourceSha": "ad7553bcb67eff4db6df81d804d8ae04f0e0b6db",
+  "containerImageMatchesBuild": true,
+  "path": "java",
+  "args": [
+    "-jar",
+    "app.jar"
+  ],
+  "running": false,
+  "mounts": 0,
+  "toolchain": [
+    {
+      "id": "sha256:aa72246029828dd4b4ddb5d4aba31f72ee070cafe52dc85ad5cc3296007ace6f",
+      "os": "linux",
+      "architecture": "amd64",
+      "versions": [
+        "JAVA_VERSION=jdk-21.0.13+9",
+        "GRADLE_VERSION=8.14.6"
+      ]
+    },
+    {
+      "id": "sha256:82cf3d9ccbe1ed46252008d51b2f2329e6b9e8a2f4394c4bebefc3ea7f4b1372",
+      "os": "linux",
+      "architecture": "amd64",
+      "versions": [
+        "JAVA_VERSION=jdk-21.0.13+9"
+      ]
+    }
+  ],
+  "cleanup": "exact owned stopped container removed by trap"
+}
