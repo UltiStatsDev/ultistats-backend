@@ -18,7 +18,7 @@
 - Guest statistics/CSV ZIP FINISHED only; sports/reference/photo/events/live/OBS sources all statuses public. Receipts private SPORTS_WRITE. Transfer POST export remains a guarded mutation.
 - Every protected mutation validates three captured UUIDs and CSRF before execution. Auth401/403 never becomes domain409 or modifies receipts; unknown prior outcome stays unknown.
 - Anonymous transport denies private auth/context/CSRF/accounts/docs/writes before credentials/body. Actual connector classification belongs154, no trusted arbitrary forwarding headers.
--14-day idle: reads/SSE and ordinary writes do not renew. Core152 owns persistence/expiry/revocation and admin step-up300seconds.
+- 14-day idle: reads/SSE and ordinary writes do not renew. Core152 owns persistence/expiry/revocation and admin step-up300seconds.
 - V1–V10 immutable; V11/core types/build dependencies/session configuration owned152. WebConfig CORS owner requires explicit coordination with152/154 via lead.
 - CD remains disabled;151 promotion prerequisite before product merges. No human/shared fixtures, runtime updates, trust/DNS changes or deployments.
 - JVM commands use flock /tmp/ultistats-backend-gradle.lock, JAVA_HOME=/tmp/ultistats-backend-jdk21, GRADLE_USER_HOME=/tmp/ultistats-backend-gradle-cache, --no-daemon --max-workers=2.
@@ -58,7 +58,7 @@ auth/account routes;153 must not intercept them with competing sports defaults.
 
 - [x] Verify clean assigned base and read actual controllers, static clients, SSE, ZIP and transfer bodies.
 - [x] Write versioned inventory and plan; self-review against approved scope.
-- [ ] Commit inventory/plan and publish interface needs to lead.
+- [x] Commit inventory/plan and publish interface needs to lead (270e709, pushed assigned branch).
 - [ ] Receive frozen contract +152 plan/interfaces; record SHAs and exact binding here.
 
 ### Task1: complete policy and method coverage
@@ -116,3 +116,45 @@ created. No auth capability claimed. Review focus mapped to Tasks1–3; real
 connector coverage coordinated with154 rather than a MockMvc spoof substitute.
 The only deliberate unbound implementation detail is152's not-yet-published
 chain hook; it is a hard pre-edit dependency, surfaced to lead rather than guessed.
+
+## Integration decision received after initial plan commit
+
+Core152 plan93d5fa9 publishes packages/auth types. Worker coordination selected
+the following **core-owned** extension;153 consumes it after frozen publication:
+
+```kotlin
+// com.github.mihanizzm.ultistats.auth.security
+sealed interface AuthRequirement {
+    data object PublicRead : AuthRequirement
+    data object Core : AuthRequirement
+    data object Deny : AuthRequirement
+    data class Permission(val permission: AuthPermission) : AuthRequirement
+}
+interface AuthSurfacePolicy {
+    fun requirement(request: HttpServletRequest): AuthRequirement
+}
+```
+
+153 implementation `AuthSurfacePolicyImpl` replaces the proposed classify/adapter
+split above: core owns chain/filter/transaction/denial rendering. Core handles its
+auth/account/installation/health routes before extension dispatch; extension
+unknown routes Deny. One requirement is saved under
+`AuthRequirement::class.java.name` request attribute, avoiding duplicate match
+status lookups. Transport requirement is evaluated before CSRF/cookie parsing;
+public reads ignore cookie entirely. After CSRF, unsafe permission chain runs
+inside core authority singleton lock and shared transaction manager, refreshing
+DB authority and expected identity **after** lock acquisition, never trusting a
+stale principal attribute. GET/SSE do not take mutation lock or renew activity.
+
+Statistics UUID resolves via existing MatchService.get; only existing FINISHED
+returns PublicRead. All other states/missing/deleted/malformed require
+STATISTICS_READ_ALL; authorized requests retain controller404/validation400.
+No missing-match public grant. Core default policy is Deny when153 absent.
+No competing chain, AuthSurfaceAuthorization class or core configuration is
+needed in153. Exact implemented type commit and wire freeze still pending.
+
+Detailed expected test oracles are now versioned at
+`docs/api/auth-enforcement-test-matrix-v1.md`:57 application cases,24resource
+groups,25negative/effect cases. Every row is PREPARED/NOT_RUN. Independent source
+annotation count and unique method/path pairs match57; multiline legacy team
+uploadPhoto is explicitly checked.

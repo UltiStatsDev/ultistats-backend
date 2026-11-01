@@ -106,3 +106,5 @@ reconciliation. Unknown receipt404 remains unknown, not rejection or replay proo
 
 QA's separate24-row acceptance matrix remains PREPARED/NOT_RUN. Worker tests map
 to it and do not substitute for combined Backend/Web/native OBS acceptance.
+
+Detailed per-method expected oracles: `auth-enforcement-test-matrix-v1.md` (all NOT_RUN).
