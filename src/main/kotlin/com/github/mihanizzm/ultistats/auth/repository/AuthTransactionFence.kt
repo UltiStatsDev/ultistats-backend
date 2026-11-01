@@ -21,9 +21,19 @@ class AuthTransactionFence(private val jdbc:JdbcTemplate) {
                 check(previous!=false || !exclusive) { "Authority fence cannot upgrade shared to exclusive" }
                 connection.createStatement().use { sql ->
                     sql.queryTimeout=12
-                    sql.execute("SET LOCAL lock_timeout = '10s'")
+                    val prior=sql.executeQuery("SHOW lock_timeout").use { rows -> rows.next();rows.getString(1) }
+                    val priorMillis=sql.executeQuery("SELECT setting::bigint FROM pg_settings WHERE name='lock_timeout'").use { rows -> rows.next();rows.getLong(1) }
+                    val bound=if(priorMillis>0) priorMillis.coerceAtMost(10000) else 10000
+                    connection.prepareStatement("SELECT set_config('lock_timeout',?,true)").use { setting ->
+                        setting.setString(1,"${bound}ms");setting.execute()
+                    }
                     val function=if(exclusive) "pg_advisory_xact_lock" else "pg_advisory_xact_lock_shared"
                     sql.execute("SELECT $function(1598115923,152)")
+                    // Only acquisition is bounded here; preserve the caller's domain SQL policy.
+                    // A failed query aborts the original transaction, whose rollback restores SET LOCAL.
+                    connection.prepareStatement("SELECT set_config('lock_timeout',?,true)").use { setting ->
+                        setting.setString(1,prior);setting.execute()
+                    }
                 }
                 // Transaction synchronization unbinds only our marker; PG releases the actual xact lock.
                 if(previous==null) {
