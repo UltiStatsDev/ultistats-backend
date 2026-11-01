@@ -27,3 +27,12 @@ RED then GREEN: `node --test deploy/stable/promotion.test.mjs deploy/stable/work
 
 - Preflight: assigned branch clean at exact247. Baseline CI only pull_request/master; baseline CD only push/master. Shared interfaces are Web112 record ->160 verifier and lead candidate topology ->160 CI; both need exact freeze before dependent implementation.
 - Existing permanent reviewer performs independent review; existing authorized merge operator integrates. No new reviewer agent or plan/start approval.
+
+### Frozen record/producer interface (W112 + leads)
+
+Authoritative Web `scripts/release/record.mjs`: sync `validateRecord(record)`, `verifyRecord(record,{webRepo,backendRepo})` return record or throw; `discoverLatest({webRepo,backendRepo,metadataRef='refs/remotes/origin/release'})` record|null. Backend does NOT duplicate these schema/finalization/discovery functions. Record fields: schemaVersion1,status finalized,version without v,repositories.web/backend{repository,commit,tag},backendPin,compatibility{fromSchema9,toSchema9,appRollbacktrue,supportedSourcePairs:[{web,backend}]},prerequisites{git,node,docker,compose},evidence{qa,po},notes/update/rollback text. Initial supportedSourcePairs is exactly Web39/Backend247, unknown V9 rejected.
+
+Backend exports readonly `verifyBackend(record,{backendRepo})` -> `{commit,tag,compatibility}` or throw for its producer subset (not a full record validation claim), `verifyPairSources(record,{webRepo,backendRepo})` adds Web application lightweight tag and exact app pin. CLI `node deploy/stable/promotion.mjs verify --record <json> --web-repo <local-path> --backend-repo <local-path>` -> stdout `{ok:true,version,backend:{commit,tag,compatibility}}` exit0 or `{ok:false,reason}` exit1. No arbitrary JS execution from the provided repositories, fetch, ref mutations or publication. W112 full record validation and metadata visibility remain mandatory in its consumer.
+
+- RED evidence: seven temporary-Git boundary tests failed ERR_MODULE_NOT_FOUND (implementation absent), using preinstalled Node with `--test-isolation=none` because default subprocess reporter suppresses failures in this sandbox. GREEN: seven passed after minimum readonly ref/source implementation. No runtime/Docker.
+- Push ca9efbc blocked by automatic approval review (insufficient trusted export authorization for plan payload to existing repository); exact rejection reported privately to lead. No alternate transport/actor used.
