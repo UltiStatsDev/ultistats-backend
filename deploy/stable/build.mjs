@@ -9,14 +9,35 @@ const PARITY_PATHS = ['src/main', 'src/test', 'build.gradle.kts', 'settings.grad
 const gitArgs = args => ['--no-replace-objects', '--no-optional-locks', '-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', ...args];
 const git = (cwd, ...args) => execFileSync('git', gitArgs(args), { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000 }).trim();
 
-function readonlyStatus(sourceDir) {
-  let keys;
-  try { keys = git(sourceDir, 'config', '--null', '--name-only', '--get-regexp', '^filter\\.'); }
-  catch (error) { if (error.status !== 1) throw error; keys = ''; }
-  const names = new Set(keys.split('\0').map(key => /^filter\.(.+)\.(clean|smudge|process|required)$/.exec(key)?.[1]).filter(Boolean));
-  const overrides = [...names].flatMap(name => ['clean', 'smudge', 'process', 'required'].flatMap(field =>
-    ['-c', `filter.${name}.${field}=${field === 'required' ? 'false' : ''}`]));
-  return git(sourceDir, ...overrides, 'status', '--porcelain=v1', '--untracked-files=all', '--ignored=matching');
+function dirtyIndexOrExtraFiles(sourceDir, sourceSha) {
+  // Index-only comparison and name enumeration never run conversion programs or
+  // refresh stat information. Working bytes are independently checked below.
+  return git(sourceDir, 'diff-index', '--cached', '--no-ext-diff', '--name-only', sourceSha, '--') ||
+    git(sourceDir, 'ls-files', '-z', '--others', '--exclude-standard') ||
+    git(sourceDir, 'ls-files', '-z', '--others', '--ignored', '--exclude-standard');
+}
+
+function rawTree(source, sourceSha) {
+  const entries = git(source, 'ls-tree', '-rz', '--full-tree', sourceSha).split('\0').filter(Boolean).map(entry => {
+    const match = /^(100644|100755) blob ([a-f0-9]{40})\t(.+)$/s.exec(entry);
+    if (!match || isAbsolute(match[3]) || match[3].split('/').some(p => ['.', '..', '.git'].includes(p))) throw new Error('UNSUPPORTED_SOURCE_ENTRY');
+    return { mode: match[1], oid: match[2], path: match[3] };
+  });
+  const objects = execFileSync('git', gitArgs(['cat-file', '--batch']), { cwd: source,
+    input: entries.map(e => e.oid + '\n').join(''), timeout: 30000, maxBuffer: 256 * 1024 * 1024 });
+  let offset = 0;
+  for (const entry of entries) {
+    const end = objects.indexOf(10, offset);
+    const header = objects.subarray(offset, end).toString('ascii').split(' ');
+    const size = Number(header[2]);
+    if (end < offset || header[0] !== entry.oid || header[1] !== 'blob' || !Number.isSafeInteger(size) || size < 0 || end + size + 1 >= objects.length) throw new Error('SOURCE_OBJECT_INVALID');
+    entry.bytes = objects.subarray(end + 1, end + 1 + size);
+    const digest = createHash('sha1').update(`blob ${size}\0`).update(entry.bytes).digest('hex');
+    if (digest !== entry.oid || objects[end + 1 + size] !== 10) throw new Error('SOURCE_OBJECT_INVALID');
+    offset = end + size + 2;
+  }
+  if (offset !== objects.length) throw new Error('SOURCE_OBJECT_INVALID');
+  return entries;
 }
 
 export async function inspectSource(sourceDir, expectedSha) {
@@ -24,12 +45,17 @@ export async function inspectSource(sourceDir, expectedSha) {
   if (realpathSync(sourceDir) !== realpathSync(git(sourceDir, 'rev-parse', '--show-toplevel'))) throw new Error('SOURCE_ROOT_MISMATCH');
   const sourceSha = git(sourceDir, 'rev-parse', 'HEAD');
   if (sourceSha !== expectedSha) throw new Error('SOURCE_SHA_MISMATCH');
-  if (readonlyStatus(sourceDir)) throw new Error('SOURCE_NOT_CLEAN');
+  if (dirtyIndexOrExtraFiles(sourceDir, sourceSha)) throw new Error('SOURCE_NOT_CLEAN');
   const productTrees = {};
   for (const path of PARITY_PATHS) {
     const actual = git(sourceDir, 'rev-parse', `${sourceSha}:${path}`);
     if (actual !== git(sourceDir, 'rev-parse', `${BASELINE}:${path}`)) throw new Error('BASELINE_PARITY_MISMATCH');
     productTrees[path] = actual;
+  }
+  for (const entry of rawTree(sourceDir, sourceSha)) {
+    const file = join(sourceDir, entry.path);
+    const stat = lstatSync(file);
+    if (!stat.isFile() || ((stat.mode & 0o100) !== 0) !== (entry.mode === '100755') || !readFileSync(file).equals(entry.bytes)) throw new Error('RAW_SOURCE_MISMATCH');
   }
   return { sourceSha, baselineSha: BASELINE, productTrees };
 }
@@ -56,28 +82,12 @@ export async function buildSource(request, { docker = dockerCommand } = {}) {
   mkdirSync(snapshot, { mode: 0o700 });
   // Raw object reads never run checkout/smudge/export transformations. In particular,
   // local replace refs cannot redefine the accepted baseline or the build context.
-  const entries = git(source, 'ls-tree', '-rz', '--full-tree', identity.sourceSha).split('\0').filter(Boolean).map(entry => {
-    const match = /^(100644|100755) blob ([a-f0-9]{40})\t(.+)$/s.exec(entry);
-    if (!match || !inside(resolve(snapshot, match[3]), snapshot) || match[3].split('/').some(p => ['.', '..', '.git'].includes(p))) throw new Error('UNSUPPORTED_SOURCE_ENTRY');
-    return { mode: match[1], oid: match[2], path: match[3] };
-  });
-  const objects = execFileSync('git', gitArgs(['cat-file', '--batch']), { cwd: source,
-    input: entries.map(e => e.oid + '\n').join(''), timeout: 30000, maxBuffer: 256 * 1024 * 1024 });
-  let offset = 0;
-  for (const entry of entries) {
-    const end = objects.indexOf(10, offset);
-    const header = objects.subarray(offset, end).toString('ascii').split(' ');
-    const size = Number(header[2]);
-    if (end < offset || header[0] !== entry.oid || header[1] !== 'blob' || !Number.isSafeInteger(size) || size < 0 || end + size + 1 >= objects.length) throw new Error('SOURCE_OBJECT_INVALID');
-    const bytes = objects.subarray(end + 1, end + 1 + size);
-    const digest = createHash('sha1').update(`blob ${size}\0`).update(bytes).digest('hex');
-    if (digest !== entry.oid || objects[end + 1 + size] !== 10) throw new Error('SOURCE_OBJECT_INVALID');
+  for (const entry of rawTree(source, identity.sourceSha)) {
     const destination = resolve(snapshot, entry.path);
+    if (!inside(destination, snapshot)) throw new Error('UNSUPPORTED_SOURCE_ENTRY');
     mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
-    writeFileSync(destination, bytes, { mode: entry.mode === '100755' ? 0o700 : 0o600, flag: 'wx' });
-    offset = end + size + 2;
+    writeFileSync(destination, entry.bytes, { mode: entry.mode === '100755' ? 0o700 : 0o600, flag: 'wx' });
   }
-  if (offset !== objects.length) throw new Error('SOURCE_OBJECT_INVALID');
   const dockerfile = readFileSync(join(snapshot, 'Dockerfile'), 'utf8');
   const toolchain = {};
   let generated = dockerfile;

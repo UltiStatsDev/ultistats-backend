@@ -12,6 +12,9 @@ async function fixture(t) {
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const source = join(root, 'source');
   git(root, 'clone', '--quiet', '--shared', '--no-hardlinks', repository, source);
+  // A NEW managed checkout is materialized from canonical blobs, not EOL filters.
+  writeFileSync(join(source, 'gradlew.bat'), execFileSync('git', ['--no-replace-objects', 'show', 'HEAD:gradlew.bat'], { cwd: source }));
+  git(source, '-c', 'core.hooksPath=/dev/null', 'add', '--renormalize', '--', 'gradlew.bat');
   git(source, 'config', 'user.email', 'fixture@example.invalid');
   git(source, 'config', 'user.name', 'Synthetic Fixture');
   const installed = join(root, 'installed-sentinel');
@@ -47,7 +50,7 @@ for (const name of ['tracked modification', 'untracked file', 'ignored file']) {
       writeFileSync(join(f.source, 'ignored-local'), 'private-local-data');
       f.sha = git(f.source, 'rev-parse', 'HEAD');
     }
-    await assert.rejects(() => f.inspectSource(f.source, f.sha), /SOURCE_NOT_CLEAN/);
+    await assert.rejects(() => f.inspectSource(f.source, f.sha), name === 'tracked modification' ? /RAW_SOURCE_MISMATCH/ : /SOURCE_NOT_CLEAN/);
     assert.equal(readFileSync(f.installed, 'utf8'), 'original-installation');
     assert.equal(readFileSync(join(f.source, name === 'ignored file' ? 'ignored-local' : file), 'utf8'), name === 'ignored file' ? 'private-local-data' : 'local-data');
   });
@@ -241,4 +244,14 @@ test('readonly preflight does not refresh the index or execute Git index hooks',
   await f.inspectSource(f.source, git(f.source, 'rev-parse', 'HEAD'));
   assert.throws(() => readFileSync(marker), { code: 'ENOENT' });
   assert.deepEqual(readFileSync(index), before);
+});
+
+test('new source input rejects CRLF checkout transforms even when Git considers it clean', async t => {
+  const f = await fixture(t);
+  const file=join(f.source,'gradlew.bat');
+  rmSync(file);
+  git(f.source,'-c','core.hooksPath=/dev/null','checkout-index','--force','--index','--','gradlew.bat');
+  assert.ok(readFileSync(file).includes(Buffer.from('\r\n')));
+  assert.equal(git(f.source,'status','--porcelain'), '');
+  await assert.rejects(()=>f.inspectSource(f.source,f.sha), /RAW_SOURCE_MISMATCH/);
 });
