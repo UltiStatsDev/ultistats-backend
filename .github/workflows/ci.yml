@@ -95,4 +95,16 @@ jobs:
         with:
           node-version: '22'
       - name: Test immutable source refs and publication isolation
-        run: find deploy/stable -name '*.test.mjs' -type f -print0 | sort -z | xargs -0 node --test
+        run: |
+          node_tools="$(mktemp -d)"
+          trap 'rm -rf -- "$node_tools"' EXIT
+          node_source="$(node -p 'require("node:fs").realpathSync(process.execPath)')"
+          stat -c 'Original Node uid=%u gid=%g mode=%a' "$node_source"
+          cp -- "$node_source" "$node_tools/node"
+          chmod 700 "$node_tools/node"
+          test "$(sha256sum "$node_source" | cut -d' ' -f1)" = "$(sha256sum "$node_tools/node" | cut -d' ' -f1)"
+          sha256sum "$node_tools/node"
+          "$node_tools/node" --version
+          export PATH="$node_tools:$PATH"
+          test "$(node -p 'require("node:fs").realpathSync(process.execPath)')" = "$node_tools/node"
+          find deploy/stable -name '*.test.mjs' -type f -print0 | sort -z | xargs -0 node --test

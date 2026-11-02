@@ -388,5 +388,6 @@ export function fixture(t, options = {}) {
     edge,
     source,
     transactionId,
+    rows,
   };
 }
