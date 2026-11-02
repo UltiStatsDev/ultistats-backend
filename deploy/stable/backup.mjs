@@ -83,10 +83,12 @@ export async function createBackup({
   recheck,
   run = command,
   content = databaseContent,
+  assertBoundInputs = () => {},
 }) {
   privateDirectory(dirname(backupPath));
   await recheck();
   const capacity = inspectBackupCapacity(manifest, backupPath, { run });
+  assertBoundInputs();
   mkdirSync(backupPath, { mode: 0o700 }); // exclusive, never reuse partial/foreign output
   writePrivateJson(join(backupPath, "incomplete.json"), {
     protocolVersion: receipt.protocolVersion === 2 ? 2 : 1,
@@ -168,6 +170,7 @@ export async function createBackup({
     uploadsSha256,
     settings,
   };
+  assertBoundInputs();
   writePrivateJson(join(backupPath, "manifest.json"), complete);
   return complete;
 }

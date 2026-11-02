@@ -2,8 +2,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync, existsSync, realpathSync, symlinkSync } from "node:fs";
-import { join, resolve } from "node:path";
+import {
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  realpathSync,
+  symlinkSync,
+  copyFileSync,
+  chmodSync,
+} from "node:fs";
+import { join, resolve, dirname } from "node:path";
 import { fixture } from "./support/runtime-fixture.mjs";
 import { buildSource } from "../build.mjs";
 import { hash, readPrivateJson } from "../helper-contract.mjs";
@@ -19,6 +28,7 @@ const git = (root, ...args) =>
 function candidateRun(program, args, options = {}) {
   if (program === "docker") {
     calls.push(args);
+    if (args.includes("cat")) return readFileSync(config, "utf8");
     if (args[0] === "image" && args[1] === "ls") return "";
     if (args[0] === "image" && args[1] === "inspect") return JSON.stringify([images[args[2]]]);
     if (args[0] === "build") return "";
@@ -40,6 +50,17 @@ function candidateRun(program, args, options = {}) {
 }
 async function setup(t) {
   const f = fixture(t, { sourceSha: BASE });
+  const installationRoot = join(f.root, "managed-install"),
+    stateDirectory = join(installationRoot, ".ultistats", "stable"),
+    config = join(stateDirectory, "ingress", "ingress.conf");
+  mkdirSync(dirname(config), { recursive: true, mode: 0o700 });
+  copyFileSync(f.m.backend.ingress.configPath, config);
+  f.m.installationRoot = installationRoot;
+  f.m.stateDirectory = stateDirectory;
+  f.m.manifestPath = join(stateDirectory, "installation.json");
+  f.manifestPath = f.m.manifestPath;
+  f.m.backend.ingress.configPath = config;
+  f.ingress.Mounts[0].Source = dirname(config);
   const images = {},
     created = {},
     calls = [],
@@ -51,8 +72,10 @@ async function setup(t) {
     "baseRun",
     "hash",
     "writeFileSync",
+    "readFileSync",
+    "config",
     `return ${candidateRun.toString()}`,
-  )(images, created, calls, baseRun, hash, writeFileSync);
+  )(images, created, calls, baseRun, hash, writeFileSync, readFileSync, config);
   for (const [name, digit, digest] of [
     ["gradle:8.14-jdk21", "8", "a"],
     ["eclipse-temurin:21-jre-alpine", "9", "b"],
@@ -65,8 +88,19 @@ async function setup(t) {
     images[image.Id] = image;
     images[image.RepoDigests[0]] = image;
   }
-  const pm = join(f.root, "npm-cli.js");
-  writeFileSync(pm, "// synthetic retained package-manager CLI\n", { mode: 0o600 });
+  const pm = join(stateDirectory, "tools/pnpm-11.25.0/node_modules/pnpm/bin/pnpm.cjs");
+  mkdirSync(dirname(pm), { recursive: true, mode: 0o700 });
+  writeFileSync(
+    join(dirname(pm), "../package.json"),
+    JSON.stringify({ name: "pnpm", version: "11.25.0", bin: { pnpm: "bin/pnpm.mjs" } }),
+    { mode: 0o600 },
+  );
+  writeFileSync(pm, "#!/usr/bin/env node\nvoid import('./pnpm.mjs');\n", { mode: 0o600 });
+  writeFileSync(
+    join(dirname(pm), "pnpm.mjs"),
+    "throw new Error('package manager fixture must never execute');\n",
+    { mode: 0o600 },
+  );
   const tools = {
     nodeExecutablePath: realpathSync(process.execPath),
     nodeExecutableSha256: hash(readFileSync(process.execPath)),
@@ -105,7 +139,7 @@ async function setup(t) {
     git(webRoot, "config", "user.name", "Fixture");
     git(webRoot, "config", "user.email", "fixture@example.invalid");
     writeFileSync(join(webRoot, ".gitignore"), "node_modules\n");
-    writeFileSync(join(webRoot, "package.json"), '{"name":"fixture","packageManager":"npm@1.0.0"}\n');
+    writeFileSync(join(webRoot, "package.json"), '{"name":"fixture","packageManager":"pnpm@11.25.0"}\n');
     writeFileSync(join(webRoot, "pnpm-lock.yaml"), `lockfileVersion: 9\n# ${phase}\n`);
     mkdirSync(join(webRoot, "scripts"));
     writeFileSync(join(webRoot, "scripts/runtime-adapter.mjs"), "// synthetic source controller\n");
@@ -221,7 +255,11 @@ async function setup(t) {
   const call = (operation, extra) =>
     producer.executeCandidateRequest(request(operation, extra), { run, fetcher: f.fetcher });
   let serial = 0;
-  function cli(operation, extra = {}) {
+  function cli(operation, extra = {}, nodeExecutable = process.execPath) {
+    if (nodeExecutable !== process.execPath) {
+      assert.ok(nodeExecutable.startsWith(`${f.root}/`));
+      assert.equal(hash(readFileSync(nodeExecutable)), hash(readFileSync(process.execPath)));
+    }
     const requestPath = join(f.root, `request-${++serial}.json`),
       resultPath = join(f.root, `result-${serial}.json`),
       preload = join(f.root, "preload.mjs"),
@@ -237,7 +275,7 @@ async function setup(t) {
       api: f.api,
       ingress: f.ingress,
       state: f.state,
-      config: join(f.root, "ingress.conf"),
+      config: f.m.backend.ingress.configPath,
       network: f.network,
       edge: f.edge,
       image: f.m.backend.imageId,
@@ -254,7 +292,7 @@ async function setup(t) {
       stderr;
     try {
       execFileSync(
-        process.execPath,
+        nodeExecutable,
         [
           "--import",
           preload,
@@ -596,4 +634,231 @@ test("fenced current runtime cannot be substituted before backup", async (t) => 
   f.write(f.fencePath, fence);
   await assert.rejects(() => f.call("backup"), /FENCE_MISMATCH/);
   assert.equal(f.state.dumpCount, 0);
+});
+test("self-consistent unrelated Node file cannot replace the admitted executable", async (t) => {
+  const f = await setup(t);
+  f.state.open = true;
+  const other = join(f.root, "not-node.txt");
+  writeFileSync(other, "not the admitted Node\n", { mode: 0o600 });
+  const snap = readPrivateJson(f.stages.target);
+  snap.webToolchain.nodeExecutablePath = other;
+  snap.webToolchain.nodeExecutableSha256 = hash(readFileSync(other));
+  f.write(f.stages.target, snap);
+  f.descriptor.artifacts.target.stageSha256 = hash(readFileSync(f.stages.target));
+  f.descriptor.artifacts.target.web.toolchainSha256 = hash(JSON.stringify(snap.webToolchain));
+  f.write(f.descriptorPath, f.descriptor);
+  f.base.targetDescriptorSha256 = hash(readFileSync(f.descriptorPath));
+  await assert.rejects(() => f.call("inspect"));
+  assert.equal(f.state.dumpCount, 0);
+});
+for (const kind of ["backup", "fence", "descriptor", "dump", "uploads", "settings"])
+  test(`bound ${kind} bytes are rechecked after final await`, async (t) => {
+    const f = await setup(t);
+    let operation = "inspect",
+      file = f.descriptorPath;
+    if (kind !== "descriptor") {
+      f.api.State.Running = false;
+      await f.call("fence-acquire");
+      operation = "fence-recheck";
+      file = f.fencePath;
+      if (["backup", "dump", "uploads", "settings"].includes(kind)) {
+        await f.call("backup");
+        f.install("target");
+        f.api.State.Running = true;
+        await f.call("postflight");
+        operation = "fence-release";
+        file = join(
+          f.backupPath,
+          kind === "dump"
+            ? "database.dump"
+            : kind === "uploads"
+              ? "uploads/photo.png"
+              : kind === "settings"
+                ? "settings-0"
+                : "manifest.json",
+        );
+      }
+    } else f.state.open = true;
+    let changed = false;
+    await assert.rejects(() =>
+      producer.executeCandidateRequest(f.request(operation), {
+        run: f.run,
+        fetcher: async (...args) => {
+          const response = await f.fetcher(...args);
+          if (!changed) {
+            changed = true;
+            writeFileSync(file, readFileSync(file, "utf8") + "\n");
+          }
+          return response;
+        },
+      }),
+    );
+    assert.equal(existsSync(join(f.root, `${f.transactionId}.released.json`)), false);
+  });
+test("earlier stage is rechecked after the last target artifact observation", async (t) => {
+  const f = await setup(t);
+  f.api.State.Running = false;
+  await f.call("fence-acquire");
+  await f.call("backup");
+  f.install("target");
+  f.api.State.Running = true;
+  await f.call("postflight");
+  let targetChecks = 0,
+    changed = false;
+  await assert.rejects(() =>
+    producer.executeCandidateRequest(f.request("fence-release"), {
+      fetcher: f.fetcher,
+      run: (program, args, options) => {
+        if (
+          program === "docker" &&
+          args[0] === "image" &&
+          args[1] === "inspect" &&
+          args[2] === f.frames.target.backend.imageId &&
+          ++targetChecks === 4
+        ) {
+          changed = true;
+          writeFileSync(f.stages.current, readFileSync(f.stages.current, "utf8") + "\n");
+        }
+        return f.run(program, args, options);
+      },
+    }),
+  );
+  assert.equal(changed, true);
+  assert.equal(existsSync(join(f.root, `${f.transactionId}.released.json`)), false);
+});
+test("private actual Node copy is admitted only when its own mode is safe", async (t) => {
+  const f = await setup(t);
+  f.state.open = true;
+  const node = join(f.root, "owned-node");
+  copyFileSync(realpathSync(process.execPath), node);
+  assert.notEqual(node, realpathSync(process.execPath));
+  for (const phase of ["current", "target"]) {
+    const snap = readPrivateJson(f.stages[phase]);
+    snap.webToolchain.nodeExecutablePath = node;
+    snap.webToolchain.nodeExecutableSha256 = hash(readFileSync(node));
+    f.write(f.stages[phase], snap);
+    f.descriptor.artifacts[phase].stageSha256 = hash(readFileSync(f.stages[phase]));
+    f.descriptor.artifacts[phase].web.toolchainSha256 = hash(JSON.stringify(snap.webToolchain));
+  }
+  f.write(f.descriptorPath, f.descriptor);
+  f.base.targetDescriptorSha256 = hash(readFileSync(f.descriptorPath));
+  chmodSync(node, 0o775);
+  const refused = f.cli("inspect", {}, node);
+  assert.equal(refused.status, 2);
+  assert.equal(refused.result.reason, "CANDIDATE_FILE_UNPROVEN");
+  chmodSync(node, 0o700);
+  const accepted = f.cli("inspect", {}, node);
+  assert.equal(accepted.status, 0, JSON.stringify(accepted));
+});
+test("final target read cannot stale earlier tool source or directory evidence", async (t) => {
+  const f = await setup(t);
+  f.api.State.Running = false;
+  await f.call("fence-acquire");
+  await f.call("backup");
+  f.install("target");
+  f.api.State.Running = true;
+  await f.call("postflight");
+  const current = readPrivateJson(f.stages.current);
+  const files = [
+    current.webToolchain.packageManagerPath,
+    join(current.stage.backendRoot, "Dockerfile"),
+    join(current.stage.webRoot, "late-untracked.txt"),
+  ];
+  for (const file of files) {
+    assert.ok(file.startsWith(`${f.root}/`));
+    const original = existsSync(file) ? readFileSync(file) : null;
+    let checks = 0,
+      changed = false;
+    try {
+      await assert.rejects(() =>
+        producer.executeCandidateRequest(f.request("fence-release"), {
+          fetcher: f.fetcher,
+          run: (program, args, options) => {
+            if (
+              program === "docker" &&
+              args[0] === "image" &&
+              args[1] === "inspect" &&
+              args[2] === f.frames.target.backend.imageId &&
+              ++checks === 4
+            ) {
+              changed = true;
+              writeFileSync(file, Buffer.concat([original ?? Buffer.alloc(0), Buffer.from("\n")]), {
+                mode: 0o600,
+              });
+            }
+            return f.run(program, args, options);
+          },
+        }),
+      );
+      assert.equal(changed, true);
+      assert.equal(existsSync(join(f.root, `${f.transactionId}.released.json`)), false);
+    } finally {
+      if (original) writeFileSync(file, original);
+      else (await import("node:fs")).unlinkSync(file);
+    }
+  }
+});
+test("self-consistent other file is not the source-derived managed pnpm entrypoint", async (t) => {
+  const f = await setup(t);
+  f.state.open = true;
+  const file = join(f.root, "other-pm.txt");
+  writeFileSync(file, "unrelated bytes\n", { mode: 0o600 });
+  const snap = readPrivateJson(f.stages.target);
+  snap.webToolchain.packageManagerPath = file;
+  snap.webToolchain.packageManagerSha256 = hash(readFileSync(file));
+  f.write(f.stages.target, snap);
+  f.descriptor.artifacts.target.stageSha256 = hash(readFileSync(f.stages.target));
+  f.descriptor.artifacts.target.web.toolchainSha256 = hash(JSON.stringify(snap.webToolchain));
+  f.write(f.descriptorPath, f.descriptor);
+  f.base.targetDescriptorSha256 = hash(readFileSync(f.descriptorPath));
+  await assert.rejects(() => f.call("inspect"));
+  assert.equal(f.state.dumpCount, 0);
+});
+test("PM role refuses wrong managed cache metadata version root and bin selector", async (t) => {
+  const f = await setup(t);
+  f.state.open = true;
+  const original = structuredClone(f.descriptor),
+    snapshot = readPrivateJson(f.stages.target),
+    pm = snapshot.webToolchain.packageManagerPath,
+    metadata = join(dirname(pm), "../package.json"),
+    rawMetadata = readFileSync(metadata);
+  for (const field of ["name", "version"]) {
+    f.write(metadata, { name: "pnpm", version: "11.25.0", [field]: "other" });
+    await assert.rejects(() => f.call("inspect"), /CANDIDATE_PM_UNADMITTED/);
+    writeFileSync(metadata, rawMetadata);
+  }
+  for (const file of [
+    join(f.root, "other-tools/pnpm-11.25.0/node_modules/pnpm/bin/pnpm.cjs"),
+    join(f.m.stateDirectory, "tools/pnpm-99.0.0/node_modules/pnpm/bin/pnpm.cjs"),
+    join(dirname(pm), "pnpm.mjs"),
+  ]) {
+    mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
+    if (!existsSync(file)) writeFileSync(file, readFileSync(pm), { mode: 0o600 });
+    const snap = structuredClone(snapshot);
+    snap.webToolchain.packageManagerPath = file;
+    snap.webToolchain.packageManagerSha256 = hash(readFileSync(file));
+    f.write(f.stages.target, snap);
+    f.descriptor = structuredClone(original);
+    f.descriptor.artifacts.target.stageSha256 = hash(readFileSync(f.stages.target));
+    f.descriptor.artifacts.target.web.toolchainSha256 = hash(JSON.stringify(snap.webToolchain));
+    f.write(f.descriptorPath, f.descriptor);
+    f.base.targetDescriptorSha256 = hash(readFileSync(f.descriptorPath));
+    await assert.rejects(() => f.call("inspect"), /CANDIDATE_PM_UNADMITTED/);
+  }
+  assert.equal(f.state.dumpCount, 0);
+});
+test("private DTO filename is independent of protected internal installation anchor", async (t) => {
+  const f = await setup(t);
+  f.state.open = true;
+  const dto = join(f.root, "previous-manifest-dto.json");
+  f.write(dto, f.m);
+  f.base.installationManifestPath = dto;
+  assert.notEqual(dto, f.m.manifestPath);
+  assert.equal((await f.call("inspect")).evidence.ready, true);
+  f.m.stateDirectory = join(f.root, "unowned-state");
+  f.write(dto, f.m);
+  f.descriptor.sourceManifestSha256 = hash(readFileSync(dto));
+  f.write(f.descriptorPath, f.descriptor);
+  f.base.targetDescriptorSha256 = hash(readFileSync(f.descriptorPath));
+  await assert.rejects(() => f.call("inspect"), /CANDIDATE_STATE_UNPROVEN/);
 });

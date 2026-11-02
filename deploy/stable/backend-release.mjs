@@ -174,6 +174,18 @@ function boundRollback(r, manifestHash, identity, backupHash, context) {
   return planner;
 }
 
+function pinInputs(files) {
+  const expected = files.filter(Boolean).map((file) => {
+    readPrivateJson(file);
+    return [file, hash(readFileSync(file))];
+  });
+  return () => {
+    for (const [file, digest] of expected) {
+      readPrivateJson(file);
+      check(hash(readFileSync(file)) === digest, "BOUND_INPUT_CHANGED");
+    }
+  };
+}
 function sameBinding(receipt, r, context) {
   return r.protocolVersion === 1
     ? /^[a-f0-9]{64}$/.test(r.targetRecordSha256 ?? "") &&
@@ -194,6 +206,7 @@ function verifyCoreFence(f, r, manifestHash, identity, context, options = {}) {
       f.manifestSha256 === context.sourceManifestSha256 &&
       (options.target || f.manifestSha256 === manifestHash) &&
       same(f.artifactFrame, context.artifacts.current) &&
+      same(f.stateAnchor, context.stateAnchor) &&
       same(f.current, context.current) &&
       same(f.runtime, {
         imageId: context.artifacts.current.backend.imageId,
@@ -246,8 +259,25 @@ async function executeCore(r, { run = command, fetcher = fetch } = {}, record) {
       : { pair: desiredPair(record), compatibility: record.compatibility };
   const binding =
     r.protocolVersion === 2
-      ? { binding: context.binding, artifactFrame: context.frame }
+      ? {
+          binding: context.binding,
+          artifactFrame: context.frame,
+          stateAnchor: context.stateAnchor,
+        }
       : { targetRecordSha256: r.targetRecordSha256 };
+  const initialContext = context;
+  let assertReceipts = () => {};
+  const assertBoundInputs = () => {
+    if (r.protocolVersion === 2) {
+      check(
+        hash(readFileSync(r.installationManifestPath)) === manifestHash,
+        "CANDIDATE_MANIFEST_MISMATCH",
+      );
+      initialContext.assertFiles();
+      context.assertFiles();
+      assertReceipts();
+    }
+  };
   const options = { run, fetcher, transactionId: r.transactionId };
   const observe = async (phase) => {
     if (r.protocolVersion === 2) context = await candidateContext();
@@ -266,22 +296,25 @@ async function executeCore(r, { run = command, fetcher = fetch } = {}, record) {
     }
     return o;
   };
-  const success = (ev) => ({
-    protocolVersion: r.protocolVersion,
-    operation: r.operation,
-    transactionId: r.transactionId,
-    disposition: "ok",
-    reason: "VERIFIED",
-    evidence:
-      r.protocolVersion === 2
-        ? {
-            ...ev,
-            binding: context.binding,
-            artifactFrame: context.frame,
-            installationManifestSha256: manifestHash,
-          }
-        : ev,
-  });
+  const success = (ev) => {
+    assertBoundInputs();
+    return {
+      protocolVersion: r.protocolVersion,
+      operation: r.operation,
+      transactionId: r.transactionId,
+      disposition: "ok",
+      reason: "VERIFIED",
+      evidence:
+        r.protocolVersion === 2
+          ? {
+              ...ev,
+              binding: context.binding,
+              artifactFrame: context.frame,
+              installationManifestSha256: manifestHash,
+            }
+          : ev,
+    };
+  };
   const knownPair = (p) =>
     context.compatibility.supportedSourcePairs.some(
       (s) => s.web === p.web && s.backend === p.backend,
@@ -323,6 +356,7 @@ async function executeCore(r, { run = command, fetcher = fetch } = {}, record) {
       current: pair(m),
       runtime: runtime(m, o),
     };
+    assertBoundInputs();
     writePrivateJson(r.fencePath, fence);
     return success({
       ...evidence(m, context, o),
@@ -334,7 +368,9 @@ async function executeCore(r, { run = command, fetcher = fetch } = {}, record) {
   if (r.operation === "fence-recheck" || r.operation === "backup") {
     const fence = readPrivateJson(r.fencePath);
     verifyCoreFence(fence, r, manifestHash, fixedIdentity(m), context);
+    if (r.protocolVersion === 2) assertReceipts = pinInputs([r.fencePath]);
     const o = await observe("quiet");
+    assertBoundInputs();
     if (r.operation === "fence-recheck")
       return success({
         ...evidence(m, context, o),
@@ -347,6 +383,7 @@ async function executeCore(r, { run = command, fetcher = fetch } = {}, record) {
       manifest: m,
       receipt: fence,
       run,
+      assertBoundInputs,
       recheck: async () => {
         verifyCoreFence(
           readPrivateJson(r.fencePath),
@@ -356,9 +393,12 @@ async function executeCore(r, { run = command, fetcher = fetch } = {}, record) {
           context,
         );
         await observe("quiet");
+        assertBoundInputs();
       },
     });
     const manifestPath = join(r.backupPath, "manifest.json");
+    if (r.protocolVersion === 2)
+      readBackup(r.backupPath, { protocolVersion: 2 });
     return success({
       ...evidence(m, context, o),
       backupPath: r.backupPath,
@@ -377,6 +417,22 @@ async function executeCore(r, { run = command, fetcher = fetch } = {}, record) {
       target: true,
     },
   );
+  if (r.protocolVersion === 2) {
+    const seal = pinInputs([
+      r.fencePath,
+      join(r.backupPath, "manifest.json"),
+      r.rollbackPlanPath,
+      r.operation === "rollback-plan" ? r.previousManifestPath : undefined,
+    ]);
+    assertReceipts = () => {
+      seal();
+      check(
+        boundBackup(r, m, manifestHash, context, { target: true })
+          .backupHash === backupHash,
+        "BACKUP_MISMATCH",
+      );
+    };
+  }
   if (r.operation === "rollback-plan") {
     const o = await observe("quiet");
     const previous = validateManifest(readPrivateJson(r.previousManifestPath));
@@ -426,6 +482,7 @@ async function executeCore(r, { run = command, fetcher = fetch } = {}, record) {
           }
         : {}),
     };
+    assertBoundInputs();
     writePrivateJson(rollbackPlanPath, plan);
     return success({
       ...evidence(m, context, o),
@@ -494,6 +551,7 @@ async function executeCore(r, { run = command, fetcher = fetch } = {}, record) {
       : {}),
   };
   if (r.operation === "postflight") {
+    assertBoundInputs();
     writePrivateJson(postflightPath, proof);
     return success({
       ...evidence(m, context, o),
