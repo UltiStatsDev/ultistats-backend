@@ -1,0 +1,21 @@
+# Owned unpublished candidate protocol2
+
+Refs #176 and #159. This is an internal candidate producer, not official publication or runtime authority. Protocol1 records, public discovery and `backend-release.mjs` CLI remain strict and separate.
+
+`candidate-target.mjs` is the sole descriptor/request validator. Both checked wrappers live in `backend-release.mjs` and call its private lexical operation core. `candidate-release.mjs` re-exports only `executeCandidateRequest(request,{run,fetcher})` plus its CLI entrypoint. There is no raw-core export, injected policy, bootstrap relaxation or skip flag.
+
+```sh
+node deploy/stable/candidate-release.mjs OP --request /private/request.json --result /private/fresh-result.json
+```
+
+The seven operations and exit/disposition conventions match v1. Protocol2 replaces record selectors with `targetDescriptorPath`/`targetDescriptorSha256` and requires `candidateStages:{current,target}`, distinct canonical private snapshot files. Unknown/mixed keys, published pairs, duplicate supported pairs and colliding input/output paths reject. The exact frozen contract is `owned-candidate-v2/artifact-abi.json`, SHA256 fda148e1beccb3a519321a739651e001cc274db6f6b59b19ae22b7f53c7ebb76, immutable revision059d9a6def51.
+
+Descriptor kind is `owned-unpublished-candidate`; current/target versions stay `unpublished`. It binds transaction, original raw manifest hash, fixed installation identity, explicit V9 compatibility and two artifact frames. Each frame binds raw stage snapshot, actual backend source/tree/image/JAR/migration/build-result and Web source/tree/controller/lock/toolchain. A snapshot has exactly `{stage,webToolchain}`; the toolchain's four keys are normalized in ABI order before hashing.
+
+The loader independently checks canonical actual tool files without executing request-selected paths; raw Git files/index/trees and backend247 product parity; verified control checkouts and prepared local Vite dependency; genuine `stage.buildEvidence.stageDir/build-result.json` raw bytes and content; product/Dockerfile/generated recipe and actual immutable builder/runtime image digests; backend image labels and an independently extracted JAR. Extraction creates a labelled, network-none, **never started** artifact container and removes only that container. Source-only tests stub these Docker effects. Actual invocation needs a separately authorized owned phase. Web's existing admitted process/dependency verification remains its consumer responsibility.
+
+Before maintenance A stays running: B is verified from prebuilt stages, never observed as though A were B or started by the helper. Both raw backend trees retain the identical247/V9 migration set and both frames must match the common observer's actual canonical fingerprint. After switching, common observation proves actual B; rollback proves actual A against the real original manifest/frame. Active-match/client/quiet/capacity/data/backup/rollback guards remain shared.
+
+V2 receipts bind `{kind,descriptorSha256,transactionId,installationIdentity}`, the relevant manifest/artifact frame and original fence/backup/postflight hashes. V2 result evidence uses `installationManifestSha256` for its installation snapshot; existing backup evidence `manifestSha256` continues to hash the generated backup manifest and is never overwritten. V1 and v2 fence, backup, rollback and postflight receipts cannot substitute for each other; absent record hashes never compare as authority. Private backup format carries its producer protocol/binding and is read with the expected protocol. Only successful common postflight followed by fence-release writes the generated release. Descriptor/stage/artifact proof and original request/manifest snapshots are rechecked across observation boundaries; uncertainty remains blocked or maintenance, never forged success.
+
+Run `node --test deploy/stable/tests/candidate-release.test.mjs` and the existing relevant helper suites. Tests use real Node CLI/private files/Git/build-result production with Docker/SQL stubs; they do not establish actual PostgreSQL, data preservation, ingress, QA/PO or stable publication. The consumer imports this producer only after checked merge; no unmerged sibling or second schema is required.

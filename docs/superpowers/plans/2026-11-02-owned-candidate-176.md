@@ -2,7 +2,7 @@
 
 Base: bbd1f1b8b70699d1043376b63941d8c1f6e43e5c, tree d60af55aa85644713de9520356a1e58df1d2afc5. Refs #176 and #159. One independently callable producer; no runtime authority or unmerged consumer dependency.
 
-Frozen design SHA256 b244397956e88ed55e4492fd383a382f8427bbc7d2e8174fbb1e2cfea9bad143; artifact ABI fda148e1beccb3a519321a739651e001cc274db6f6b59b19ae22b7f53c7ebb76. Exact schema/phase fields follow those artifacts; selectors and echoed hashes are not authority.
+Frozen design SHA256 b244397956e88ed55e4492fd383a382f8427bbc7d2e8174fbb1e2cfea9bad143; artifact ABI fda148e1beccb3a519321a739651e001cc274db6f6b59b19ae22b7f53c7ebb76. Immutable snapshot revisions/059d9a6def51 (freeze SHA256059d9a6def517c76be3df063d217625750a57791646db85a2e768864f1633fa3). Exact schema/phase fields follow those artifacts; selectors and echoed hashes are not authority.
 
 ## Files and interfaces
 
@@ -24,3 +24,7 @@ Frozen design SHA256 b244397956e88ed55e4492fd383a382f8427bbc7d2e8174fbb1e2cfea9b
 7. Ordinary push/working PR to candidate/stable-v0.1.0, Refs only. Callback first PR/base/head/tree/diff/checks/limits to DevOps; lead creates ONE dedicated reviewer then same reviewer fixes. No author self-merge/stable publication. Producer merge does not wait for Web129 or release QA; after checked merge/ownEND archive worker/reviewer, preserve evidence.
 
 No Docker/SQL/runtime/host/port/resource lease, auth/175/162 or protected human stack actions are authorized. Tests prove source/CLI composition, not actual PG or runtime preservation. Actual later A→B/B→B and publication require their separate owners/phases.
+
+## Measured indivisible exception
+
+The initial readable checkpoint measured1249 added+deleted; the first complete readable source checkpoint measures1381 (1330 additions/51 deletions) including tests/docs/plan. The increase is own core hunk formatting plus required manifest/receipt mutation and backup-hash preservation fixes, not another feature. The accepted narrow technical exception retains this complete descriptor/staged-artifact→typed backup→postflight/release boundary; no prerequisite split, minification, test deletion, general framework or unrelated scope. `backup.mjs` needs producer protocol/binding plus an expected-protocol reader defaulting to1, so a v2 backup cannot pass v1. Final source/log/diff attribution is measured again before PR.

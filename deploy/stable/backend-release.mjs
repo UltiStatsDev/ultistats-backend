@@ -28,6 +28,10 @@ import {
 } from "./backup.mjs";
 import { rollbackCompatible } from "./maintenance.mjs";
 import { inspectBackupCapacity } from "./capacity.mjs";
+import {
+  validateCandidateRequest,
+  loadCandidateTarget,
+} from "./candidate-target.mjs";
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 export function verifyFence(
   f,
@@ -38,6 +42,8 @@ export function verifyFence(
 ) {
   check(
     f?.protocolVersion === 1 &&
+      !Object.hasOwn(f, "binding") &&
+      /^[a-f0-9]{64}$/.test(r.targetRecordSha256 ?? "") &&
       f.transactionId === r.transactionId &&
       f.targetRecordSha256 === r.targetRecordSha256 &&
       same(f.identity, identity) &&
@@ -98,12 +104,12 @@ function receiptPath(r, kind) {
     `${r.transactionId}.${r.rollbackPlanPath ? "rollback-" : ""}${kind}.json`,
   );
 }
-function evidence(m, record, o) {
+function evidence(m, context, o) {
   return {
     schema: 9,
     activeMatches: o.activeMatches,
     current: pair(m),
-    target: desiredPair(record),
+    target: context.pair,
     identity: fixedIdentity(m),
     compatibility: {
       verified: true,
@@ -128,28 +134,39 @@ function assertData(m, backup, { run }) {
     "DATA_PRESERVATION_FAILED",
   );
 }
-function boundBackup(r, m, manifestHash, { target = false } = {}) {
-  const backup = readBackup(r.backupPath);
+function boundBackup(r, m, manifestHash, context, { target = false } = {}) {
+  const backup = readBackup(r.backupPath, {
+    protocolVersion: r.protocolVersion,
+  });
   const fence = readPrivateJson(r.fencePath);
   check(same(backup.fence, fence), "FENCE_MISMATCH");
-  verifyFence(fence, r, manifestHash, fixedIdentity(m), { target });
-  check(backup.transactionId === r.transactionId, "BACKUP_MISMATCH");
+  verifyCoreFence(fence, r, manifestHash, fixedIdentity(m), context, {
+    target,
+  });
+  check(
+    backup.transactionId === r.transactionId &&
+      (r.protocolVersion === 1 || sameBinding(backup, r, context)),
+    "BACKUP_MISMATCH",
+  );
   return {
     backup,
     fence,
     backupHash: hash(readFileSync(join(r.backupPath, "manifest.json"))),
   };
 }
-function boundRollback(r, manifestHash, identity, backupHash) {
+function boundRollback(r, manifestHash, identity, backupHash, context) {
   if (!r.rollbackPlanPath) return undefined;
   const planner = readPrivateJson(r.rollbackPlanPath);
   check(
-    planner.protocolVersion === 1 &&
+    planner.protocolVersion === r.protocolVersion &&
       planner.operation === "rollback-plan" &&
       planner.transactionId === r.transactionId &&
-      planner.targetRecordSha256 === r.targetRecordSha256 &&
+      sameBinding(planner, r, context) &&
       planner.backupHash === backupHash &&
       same(planner.identity, identity) &&
+      (r.protocolVersion === 1 ||
+        (planner.previousManifestSha256 === context.sourceManifestSha256 &&
+          planner.fenceSha256 === hash(readFileSync(r.fencePath)))) &&
       planner.compatible === true,
     "ROLLBACK_UNPROVEN",
   );
@@ -157,39 +174,121 @@ function boundRollback(r, manifestHash, identity, backupHash) {
   return planner;
 }
 
-export async function executeRequest(
-  request,
-  { run = command, fetcher = fetch } = {},
-) {
+function sameBinding(receipt, r, context) {
+  return r.protocolVersion === 1
+    ? /^[a-f0-9]{64}$/.test(r.targetRecordSha256 ?? "") &&
+        receipt.targetRecordSha256 === r.targetRecordSha256 &&
+        !receipt.binding
+    : receipt.protocolVersion === 2 &&
+        !Object.hasOwn(receipt, "targetRecordSha256") &&
+        same(receipt.binding, context.binding);
+}
+function verifyCoreFence(f, r, manifestHash, identity, context, options = {}) {
+  if (r.protocolVersion === 1)
+    return verifyFence(f, r, manifestHash, identity, options);
+  check(
+    f?.protocolVersion === 2 &&
+      sameBinding(f, r, context) &&
+      f.transactionId === r.transactionId &&
+      same(f.identity, identity) &&
+      f.manifestSha256 === context.sourceManifestSha256 &&
+      (options.target || f.manifestSha256 === manifestHash) &&
+      same(f.artifactFrame, context.artifacts.current) &&
+      same(f.current, context.current) &&
+      same(f.runtime, {
+        imageId: context.artifacts.current.backend.imageId,
+        jarSha256: context.artifacts.current.backend.jarSha256,
+        sourceSha: context.artifacts.current.backend.sourceSha,
+      }),
+    "FENCE_MISMATCH",
+  );
+}
+export async function executeRequest(request, options = {}) {
   const r = validateRequest(request);
+  return executeCore(
+    r,
+    options,
+    targetRecord(r.targetRecordPath, r.targetRecordSha256),
+  );
+}
+export async function executeCandidateRequest(request, options = {}) {
+  return executeCore(
+    validateCandidateRequest(structuredClone(request)),
+    options,
+  );
+}
+async function executeCore(r, { run = command, fetcher = fetch } = {}, record) {
   privateDirectory(r.evidenceDirectory);
-  const m = validateManifest(readPrivateJson(r.installationManifestPath), {
-    bootstrap: r.operation === "inspect",
-  });
-  const manifestHash = hash(readFileSync(r.installationManifestPath));
-  const record = targetRecord(r.targetRecordPath, r.targetRecordSha256);
+  const input = readPrivateJson(r.installationManifestPath);
+  const manifestBytes = readFileSync(r.installationManifestPath);
+  const m = validateManifest(
+    r.protocolVersion === 2 ? JSON.parse(manifestBytes) : input,
+    {
+      bootstrap: r.protocolVersion === 1 && r.operation === "inspect",
+    },
+  );
+  const manifestHash = hash(manifestBytes);
+  const candidateContext = async () => {
+    check(
+      hash(readFileSync(r.installationManifestPath)) === manifestHash,
+      "CANDIDATE_MANIFEST_MISMATCH",
+    );
+    const verified = await loadCandidateTarget(r, m, { run });
+    check(
+      hash(readFileSync(r.installationManifestPath)) === manifestHash,
+      "CANDIDATE_MANIFEST_MISMATCH",
+    );
+    return verified;
+  };
+  let context =
+    r.protocolVersion === 2
+      ? await candidateContext()
+      : { pair: desiredPair(record), compatibility: record.compatibility };
+  const binding =
+    r.protocolVersion === 2
+      ? { binding: context.binding, artifactFrame: context.frame }
+      : { targetRecordSha256: r.targetRecordSha256 };
   const options = { run, fetcher, transactionId: r.transactionId };
-  const observe = (phase) =>
-    observeInstallation(m, {
+  const observe = async (phase) => {
+    if (r.protocolVersion === 2) context = await candidateContext();
+    const o = await observeInstallation(m, {
       ...options,
       phase,
-      bootstrap: r.operation === "inspect",
+      bootstrap: r.protocolVersion === 1 && r.operation === "inspect",
     });
+    if (r.protocolVersion === 2) {
+      context = await candidateContext();
+      check(
+        o.migrationFingerprint === context.frame.backend.migrationFingerprint &&
+          o.jarSha256 === context.frame.backend.jarSha256,
+        "CANDIDATE_RUNTIME_MISMATCH",
+      );
+    }
+    return o;
+  };
   const success = (ev) => ({
-    protocolVersion: 1,
+    protocolVersion: r.protocolVersion,
     operation: r.operation,
     transactionId: r.transactionId,
     disposition: "ok",
     reason: "VERIFIED",
-    evidence: ev,
+    evidence:
+      r.protocolVersion === 2
+        ? {
+            ...ev,
+            binding: context.binding,
+            artifactFrame: context.frame,
+            installationManifestSha256: manifestHash,
+          }
+        : ev,
   });
   const knownPair = (p) =>
-    record.compatibility.supportedSourcePairs.some(
+    context.compatibility.supportedSourcePairs.some(
       (s) => s.web === p.web && s.backend === p.backend,
     );
   if (r.operation === "inspect")
     check(
-      knownPair(pair(m)) || same(pair(m), desiredPair(record)),
+      knownPair(pair(m)) || same(pair(m), context.pair),
       "SOURCE_PAIR_UNSUPPORTED",
     );
   if (["fence-acquire", "fence-recheck", "backup"].includes(r.operation))
@@ -203,7 +302,7 @@ export async function executeRequest(
     check(response.status === 200, "SPORTING_API_UNREADY");
     await response.body?.cancel();
     return success({
-      ...evidence(m, record, o),
+      ...evidence(m, context, o),
       capacity: inspectBackupCapacity(
         m,
         r.backupPath ?? join(r.evidenceDirectory, "backup"),
@@ -216,9 +315,9 @@ export async function executeRequest(
   if (r.operation === "fence-acquire") {
     const o = await observe("quiet");
     const fence = {
-      protocolVersion: 1,
+      protocolVersion: r.protocolVersion,
       transactionId: r.transactionId,
-      targetRecordSha256: r.targetRecordSha256,
+      ...binding,
       manifestSha256: manifestHash,
       identity: fixedIdentity(m),
       current: pair(m),
@@ -226,7 +325,7 @@ export async function executeRequest(
     };
     writePrivateJson(r.fencePath, fence);
     return success({
-      ...evidence(m, record, o),
+      ...evidence(m, context, o),
       fencePath: r.fencePath,
       fenceSha256: hash(readFileSync(r.fencePath)),
       quiet: true,
@@ -234,11 +333,11 @@ export async function executeRequest(
   }
   if (r.operation === "fence-recheck" || r.operation === "backup") {
     const fence = readPrivateJson(r.fencePath);
-    verifyFence(fence, r, manifestHash, fixedIdentity(m));
+    verifyCoreFence(fence, r, manifestHash, fixedIdentity(m), context);
     const o = await observe("quiet");
     if (r.operation === "fence-recheck")
       return success({
-        ...evidence(m, record, o),
+        ...evidence(m, context, o),
         fencePath: r.fencePath,
         fenceSha256: hash(readFileSync(r.fencePath)),
         quiet: true,
@@ -249,18 +348,19 @@ export async function executeRequest(
       receipt: fence,
       run,
       recheck: async () => {
-        verifyFence(
+        verifyCoreFence(
           readPrivateJson(r.fencePath),
           r,
           manifestHash,
           fixedIdentity(m),
+          context,
         );
         await observe("quiet");
       },
     });
     const manifestPath = join(r.backupPath, "manifest.json");
     return success({
-      ...evidence(m, record, o),
+      ...evidence(m, context, o),
       backupPath: r.backupPath,
       manifestPath,
       manifestSha256: hash(readFileSync(manifestPath)),
@@ -268,9 +368,15 @@ export async function executeRequest(
       capacity: completedBackup.capacity,
     });
   }
-  const { backup, fence, backupHash } = boundBackup(r, m, manifestHash, {
-    target: true,
-  });
+  const { backup, fence, backupHash } = boundBackup(
+    r,
+    m,
+    manifestHash,
+    context,
+    {
+      target: true,
+    },
+  );
   if (r.operation === "rollback-plan") {
     const o = await observe("quiet");
     const previous = validateManifest(readPrivateJson(r.previousManifestPath));
@@ -283,7 +389,7 @@ export async function executeRequest(
     check(
       rollbackCompatible(
         pair(previous),
-        record.compatibility,
+        context.compatibility,
         o.migrationsVerified && o.sourceVerified,
       ),
       "ROLLBACK_UNPROVEN",
@@ -304,31 +410,47 @@ export async function executeRequest(
       `${r.transactionId}.rollback-plan.json`,
     );
     const plan = {
-      protocolVersion: 1,
+      protocolVersion: r.protocolVersion,
       operation: "rollback-plan",
       transactionId: r.transactionId,
-      targetRecordSha256: r.targetRecordSha256,
+      ...binding,
       backupHash,
       identity: fixedIdentity(m),
       compatible: true,
       previous: pair(previous),
+      ...(r.protocolVersion === 2
+        ? {
+            manifestSha256: manifestHash,
+            previousManifestSha256: fence.manifestSha256,
+            fenceSha256: hash(readFileSync(r.fencePath)),
+          }
+        : {}),
     };
     writePrivateJson(rollbackPlanPath, plan);
     return success({
-      ...evidence(m, record, o),
+      ...evidence(m, context, o),
       compatible: true,
       previous: pair(previous),
       rollbackPlanPath,
     });
   }
-  const planner = boundRollback(r, manifestHash, fixedIdentity(m), backupHash);
+  const planner = boundRollback(
+    r,
+    manifestHash,
+    fixedIdentity(m),
+    backupHash,
+    context,
+  );
   if (planner)
     check(
       same(planner.previous, fence.current) &&
-        rollbackCompatible(planner.previous, record.compatibility, true),
+        rollbackCompatible(planner.previous, context.compatibility, true),
       "ROLLBACK_UNPROVEN",
     );
-  check(same(pair(m), desiredPair(record, planner)), "TARGET_PAIR_MISMATCH");
+  check(
+    same(pair(m), planner?.previous ?? context.pair),
+    "TARGET_PAIR_MISMATCH",
+  );
   const o = await observe("target");
   if (planner) check(same(runtime(m, o), fence.runtime), "ROLLBACK_UNPROVEN");
   assertData(m, backup, { run });
@@ -355,10 +477,10 @@ export async function executeRequest(
   JSON.parse(body);
   const postflightPath = receiptPath(r, "postflight");
   const proof = {
-    protocolVersion: 1,
+    protocolVersion: r.protocolVersion,
     operation: "postflight",
     transactionId: r.transactionId,
-    targetRecordSha256: r.targetRecordSha256,
+    ...binding,
     manifestSha256: manifestHash,
     backupHash,
     rollbackPlanSha256: r.rollbackPlanPath
@@ -367,15 +489,21 @@ export async function executeRequest(
     identity: fixedIdentity(m),
     current: pair(m),
     verified: true,
+    ...(r.protocolVersion === 2
+      ? { fenceSha256: hash(readFileSync(r.fencePath)) }
+      : {}),
   };
   if (r.operation === "postflight") {
     writePrivateJson(postflightPath, proof);
     return success({
-      ...evidence(m, record, o),
+      ...evidence(m, context, o),
       verified: true,
       preserved: true,
       runtime: runtime(m, o),
       postflightPath,
+      ...(r.protocolVersion === 2
+        ? { backupHash, postflightSha256: hash(readFileSync(postflightPath)) }
+        : {}),
     });
   }
   check(
@@ -385,9 +513,16 @@ export async function executeRequest(
   );
   const releasePath = receiptPath(r, "released");
   const result = success({
-    ...evidence(m, record, o),
+    ...evidence(m, context, o),
     released: true,
     releasePath,
+    ...(r.protocolVersion === 2
+      ? {
+          backupHash,
+          postflightPath,
+          postflightSha256: hash(readFileSync(postflightPath)),
+        }
+      : {}),
   });
   writePrivateJson(releasePath, result);
   return result;
