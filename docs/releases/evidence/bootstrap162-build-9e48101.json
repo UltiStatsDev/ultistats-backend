@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "sourceSha": "9e48101f4982b3b57a0fc1a73bdb4752c40f80f3",
+  "imageTag": "ultistats-stable-000000000162-backend:9e48101f4982b3b57a0fc1a73bdb4752c40f80f3",
+  "imageId": "sha256:581c845d6e7c863a7d971ee79c6fff0ddb576edb753ec9493e7e280a8544b438",
+  "jarSha256": "1e263eed735f8f4eeeb0790267fc6bf29de4f0d6b31d7d38c7494d6f40d99ba3",
+  "productTree": "5c81f8910e958d1b28f1a096b59fcb700875b9f8",
+  "DockerfileSha256": "2bdac2cb64708050d9efdabcdf79a2897b82000d272c7800f9e1ab37c047f64e",
+  "toolchain": {
+    "builderRef": "gradle:8.14-jdk21",
+    "builderImageId": "sha256:aa72246029828dd4b4ddb5d4aba31f72ee070cafe52dc85ad5cc3296007ace6f",
+    "builderDigest": "gradle@sha256:aa72246029828dd4b4ddb5d4aba31f72ee070cafe52dc85ad5cc3296007ace6f",
+    "runtimeRef": "eclipse-temurin:21-jre-alpine",
+    "runtimeImageId": "sha256:82cf3d9ccbe1ed46252008d51b2f2329e6b9e8a2f4394c4bebefc3ea7f4b1372",
+    "runtimeDigest": "eclipse-temurin@sha256:82cf3d9ccbe1ed46252008d51b2f2329e6b9e8a2f4394c4bebefc3ea7f4b1372"
+  },
+  "generatedDockerfileSha256": "0956ce0a41befc0516ad391c762784e25348e7d99470b9ff56bf39b0ecce46d5",
+  "baselineSha": "24704e11143a0bf919559a41324603f936ae03cf",
+  "productTrees": {
+    "src/main": "5c81f8910e958d1b28f1a096b59fcb700875b9f8",
+    "src/test": "404a8fa3faa99b1eb43627329dc76e3cae18529a",
+    "build.gradle.kts": "846e10d293b236db9241b3a07358799f4da9b9da",
+    "settings.gradle.kts": "2e1a5d4e771e7111139113699fc5b0644c6b5923",
+    "gradle": "4ce72237e22e29d0267b5cbe52a3a823c2be45ef",
+    "gradlew": "23d15a9367071145e9c79bb4ddf879d1fbe78b5d",
+    "Dockerfile": "bd01eaf4cda96923e4ba084ca34c208faeaba5b9"
+  },
+  "execution": {
+    "platform": "Linux",
+    "node": "v24.22.1",
+    "hostJdkRequired": false,
+    "dockerServer": "29.9.2",
+    "gradleWrapper": "8.14.3",
+    "scope": "source build and stopped artifact extraction only",
+    "temporaryContainersRemaining": 0,
+    "hostPorts": [],
+    "volumesCreated": [],
+    "networksCreated": [],
+    "runtimeRehearsal": "NOT_RUN",
+    "macRuntime": "NOT_RUN"
+  }
+}
