@@ -42,8 +42,8 @@ export function resolveRow(event,match) {
         const name=[p.lastName?.trim(),p.firstName?.trim() ? `${Array.from(p.firstName.trim())[0]}.` : ''].filter(Boolean).join(' ');
         return {label:[p.number??'',name||'Игрок без имени'].filter(v=>v!=='').join(' '),teamId:p.teamId};
     };
-    const defense=kind!=='GOAL';
+    // Canonical from/to order is thrower/receiver or attacker/defending actor.
     return {id:event.id,type:event.type,category:kind,
-        left:player(defense?event.toParticipantId:event.fromParticipantId),
-        right:player(defense?event.fromParticipantId:event.toParticipantId)};
+        left:player(event.fromParticipantId),
+        right:player(event.toParticipantId)};
 }
