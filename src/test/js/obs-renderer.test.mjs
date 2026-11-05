@@ -8,7 +8,7 @@ import {defaults} from '../../main/resources/static/obs/feed.mjs';
 class Element {
  constructor(namespaceURI) {
   this.namespaceURI=namespaceURI;this.children=[];this.dataset={};this.parentNode=null;
-  this.style={setProperty(){}};this.classes=new Set();
+  this.style={setProperty(name,value){this[name]=value;}};this.classes=new Set();
   this.classList={add:value=>this.classes.add(value),contains:value=>this.classes.has(value)};
   this.moves=0;this.attributes={};
  }
@@ -65,8 +65,8 @@ test('event markers preserve player roles, accessible names and shared block gly
   root.children.forEach((node,index)=>{
    assert.equal(node.children.length,3,'only players and icon, no visible badge');
    const [left,icon,right]=node.children;
-   assert.equal(left.textContent,index===0?'17 Бросавший А.':'9 Принимающий Б.');
-   assert.equal(right.textContent,index===0?'9 Принимающий Б.':'17 Бросавший А.');
+   assert.equal(left.textContent,'17 Бросавший А.');
+   assert.equal(right.textContent,'9 Принимающий Б.');
    assert.equal(icon.namespaceURI,'http://www.w3.org/2000/svg');
    assert.equal(icon.attributes.role,'img');
    assert.equal(icon.attributes['aria-label'],labels[index]);
@@ -85,5 +85,28 @@ test('event markers preserve player roles, accessible names and shared block gly
   const unknown=renderer.nodes.get('unknown');
   assert.equal(unknown.children[0].textContent,'Неизвестный игрок');
   assert.equal(unknown.children[2].textContent,'Неизвестный игрок');
+ } finally {globalThis.document=oldDocument;}
+});
+
+test('defensive renderer accents follow attacker left and defender right; GOAL keeps assister/scorer',()=>{
+ const oldDocument=globalThis.document;
+ globalThis.document={createElement:()=>new Element(),createElementNS:ns=>new Element(ns)};
+ try {
+  const root=new Element(),renderer=new Renderer(root);
+  const match={teams:[
+   {teamId:'attack',participants:[{participantId:'a',number:17,lastName:'Атакующий',firstName:'Алексей'},
+    {participantId:'scorer',number:8,lastName:'Голевой',firstName:'Глеб'}]},
+   {teamId:'defense',participants:[{participantId:'b',number:42,lastName:'Защитник',firstName:'Денис'}]}
+  ]};
+  const types=['BLOCK','BLOCK_MARKER','BLOCK_FIELD','INTERCEPTION','CALLAHAN','GOAL'];
+  renderer.render(types.map(type=>({event:{id:type,type,fromParticipantId:'a',toParticipantId:type==='GOAL'?'scorer':'b'}})),
+   match,{...defaults,teamColors:{attack:'#ffcc00',defense:'#00ccff'}});
+  root.children.forEach((node,index)=>{
+   const [left,,right]=node.children;
+   assert.equal(left.textContent,'17 Атакующий А.');
+   assert.equal(right.textContent,index===5?'8 Голевой Г.':'42 Защитник Д.');
+   assert.equal(left.style['--accent'],'#ffcc00');
+   assert.equal(right.style['--accent'],index===5?'#ffcc00':'#00ccff');
+  });
  } finally {globalThis.document=oldDocument;}
 });
