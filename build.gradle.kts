@@ -44,6 +44,8 @@ dependencies {
 	runtimeOnly("org.postgresql:postgresql")
 	compileOnly("org.projectlombok:lombok")
 	annotationProcessor("org.projectlombok:lombok")
+	implementation("io.sentry:sentry-spring-boot-starter-jakarta:8.62.0")
+	implementation("io.sentry:sentry-logback:8.62.0")
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
 	testImplementation("org.springframework.security:spring-security-test")
 	testImplementation("com.networknt:json-schema-validator:1.5.9")

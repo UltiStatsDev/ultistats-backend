@@ -63,7 +63,7 @@ class PhotoLifecycleService(
             fileStorageService.delete(url)
         } catch (cleanupError: RuntimeException) {
             // Retain the file rather than turn a committed operation into a false rollback.
-            log.warn("Photo completion cleanup failed; retained storage object: {}", url, cleanupError)
+            log.error("Photo completion cleanup failed; retained storage object", cleanupError)
         }
     }
 
