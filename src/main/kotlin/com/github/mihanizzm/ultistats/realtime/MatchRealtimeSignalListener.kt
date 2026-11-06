@@ -14,7 +14,8 @@ class MatchRealtimeSignalListener(
         runCatching {
             streamService.eventLogChanged(signal.matchId, signal.operation, signal.eventId)
         }.onFailure { cause ->
-            logger.warn("Failed to deliver event-log change for matchId=${signal.matchId}", cause)
+            logger.atError().addKeyValue("matchId", signal.matchId).addKeyValue("eventId", signal.eventId)
+                .setCause(cause).log("Failed to deliver event-log change")
         }
     }
 
@@ -23,7 +24,8 @@ class MatchRealtimeSignalListener(
         runCatching {
             streamService.finishMatch(signal.matchId)
         }.onFailure { cause ->
-            logger.warn("Failed to deliver match-finished signal for matchId=${signal.matchId}", cause)
+            logger.atError().addKeyValue("matchId", signal.matchId).setCause(cause)
+                .log("Failed to deliver match-finished signal")
         }
     }
 

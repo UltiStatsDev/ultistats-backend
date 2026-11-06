@@ -3,6 +3,7 @@ package com.github.mihanizzm.ultistats.controller
 import com.github.mihanizzm.ultistats.service.FileStorageException
 import com.github.mihanizzm.ultistats.service.InvalidFileUploadException
 import jakarta.servlet.http.HttpServletRequest
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
@@ -13,6 +14,8 @@ import java.net.URI
 
 @RestControllerAdvice
 class FileUploadExceptionHandler {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     @ExceptionHandler(InvalidFileUploadException::class)
     fun handleInvalidFile(
         exception: InvalidFileUploadException,
@@ -27,7 +30,8 @@ class FileUploadExceptionHandler {
         badRequest("File exceeds maximum size of 10 MiB", request)
 
     @ExceptionHandler(FileStorageException::class)
-    fun handleStorageFailure(request: HttpServletRequest): ResponseEntity<ProblemDetail> {
+    fun handleStorageFailure(exception: FileStorageException, request: HttpServletRequest): ResponseEntity<ProblemDetail> {
+        log.error("File storage operation failed", exception)
         val problem = ProblemDetail.forStatusAndDetail(
             HttpStatus.SERVICE_UNAVAILABLE,
             "File storage operation failed",
