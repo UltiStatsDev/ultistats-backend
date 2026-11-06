@@ -17,6 +17,7 @@ import com.github.mihanizzm.ultistats.model.events.StoredEvent
 import com.github.mihanizzm.ultistats.model.events.SystemEvent
 import com.github.mihanizzm.ultistats.model.events.TeamEvent
 import com.github.mihanizzm.ultistats.model.events.TwoPlayerEvent
+import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchParticipantRepository
 import com.github.mihanizzm.ultistats.service.EventService
 import com.github.mihanizzm.ultistats.service.MatchService
 import com.github.mihanizzm.ultistats.service.result.EventCommandResult
@@ -41,6 +42,7 @@ class EventFacade(
     private val eventService: EventService,
     private val matchService: MatchService,
     private val eventFactory: EventFactory,
+    private val matchParticipantRepository: SpringDataMatchParticipantRepository,
 ) {
     fun getAll(matchId: UUID): EventResult {
         if (matchService.get(matchId) == null) return EventResult.NotFound
@@ -96,8 +98,31 @@ class EventFacade(
             else -> throw InvalidEventUpdateException("Event patch shape does not match the stored event")
         }
         return when (val creation = eventFactory.createValidatedFromRequest(merged, matchId)) {
-            is EventCreationResult.Success -> creation.event
+            is EventCreationResult.Success -> creation.event.also {
+                validateOriginalParticipantTeams(stored.event, it, matchId)
+            }
             is EventCreationResult.Invalid -> throw InvalidEventUpdateException(creation.detail)
+        }
+    }
+
+    private fun validateOriginalParticipantTeams(original: Event, updated: Event, matchId: UUID) {
+        val replacements = when {
+            original is OnePlayerEvent && updated is OnePlayerEvent ->
+                listOf(original.participant to updated.participant)
+            original is TwoPlayerEvent && updated is TwoPlayerEvent -> listOf(
+                original.fromParticipant to updated.fromParticipant,
+                original.toParticipant to updated.toParticipant,
+            )
+            else -> return
+        }
+        val teamByParticipantId = matchParticipantRepository.findAllByMatchId(matchId)
+            .associate { it.participantId to it.teamId }
+        replacements.forEach { (originalId, replacementId) ->
+            val originalTeam = teamByParticipantId[originalId]
+                ?: throw InvalidEventUpdateException("Participant $originalId is not part of match $matchId")
+            if (teamByParticipantId[replacementId] != originalTeam) {
+                throw InvalidEventUpdateException("Replacement participant $replacementId must belong to the original participant's match team")
+            }
         }
     }
 

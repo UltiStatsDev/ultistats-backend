@@ -57,7 +57,7 @@ sealed interface UpdateEventRequest {
 data class OnePlayerEventPatchRequest(
     override val type: EventType,
     @field:Schema(
-        description = "Обязательный UUID нового участника из состава матча, включая UNKNOWN. Роли как в POST: INCOMPLETE_PASS — бросающий; PULL/BRICK — выполнивший пулл; PICKUP — подобравший диск.",
+        description = "Обязательный UUID нового участника из той же команды снимка матча, что и исходный участник, включая UNKNOWN. Роли как в POST: INCOMPLETE_PASS — бросающий; PULL/BRICK — выполнивший пулл; PICKUP — подобравший диск.",
         example = "11111111-1111-1111-1111-111111111111",
     )
     val participantId: UUID,
@@ -68,13 +68,13 @@ data class TwoPlayerEventPatchRequest(
     override val type: EventType,
     @field:Schema(
         types = ["string", "null"],
-        description = "Новый UUID бросающего участника матча, включая UNKNOWN. Для PASS/GOAL — автор паса/ассиста, для блоков и перехватов — бросающий соперник. Отсутствие или null сохраняет прежнее значение. Итоговые участники должны различаться.",
+        description = "Новый UUID бросающего участника из той же команды снимка матча, что и исходный бросающий, включая UNKNOWN. Для PASS/GOAL — автор паса/ассиста, для блоков и перехватов — бросающий соперник. Отсутствие или null сохраняет прежнее значение. Итоговые участники должны различаться.",
         example = "11111111-1111-1111-1111-111111111111",
     )
     val fromParticipantId: UUID? = null,
     @field:Schema(
         types = ["string", "null"],
-        description = "Новый UUID принимающего участника для PASS/GOAL (та же команда) либо защитника для BLOCK/BLOCK_MARKER/BLOCK_FIELD/INTERCEPTION/CALLAHAN (противоположная команда). Допустим UNKNOWN из состава матча. Отсутствие или null сохраняет прежнее значение.",
+        description = "Новый UUID принимающего участника для PASS/GOAL (та же команда) либо защитника для BLOCK/BLOCK_MARKER/BLOCK_FIELD/INTERCEPTION/CALLAHAN (противоположная команда). Замена должна принадлежать команде исходного принимающего или защитника в снимке матча, включая UNKNOWN. Отсутствие или null сохраняет прежнее значение.",
         example = "22222222-2222-2222-2222-222222222222",
     )
     val toParticipantId: UUID? = null,

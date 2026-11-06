@@ -154,7 +154,7 @@ class EventControllerTest {
     @Test
     fun `retry after event update or deletion returns conflict`() {
         val updatedEventId = UUID.randomUUID()
-        val updatedRequest = validPull() + ("eventId" to updatedEventId)
+        val updatedRequest = validPull() + mapOf("eventId" to updatedEventId, "participantId" to player2.id)
         mockMvc.perform(postEvent(updatedRequest)).andExpect(status().isCreated)
         mockMvc.perform(
             patch("/api/v1/matches/${match.id}/events/$updatedEventId")
@@ -884,6 +884,94 @@ class EventControllerTest {
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.participantId").value(unknown.participantId.toString()))
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["PULL", "PASS", "GOAL", "BLOCK", "BLOCK_MARKER", "BLOCK_FIELD", "INTERCEPTION", "CALLAHAN", "UNKNOWN"])
+    fun `participant patch rejects changes to original slot teams without side effects`(scenario: String) {
+        val ownUnknown = unknownParticipants(team1)[0]
+        val otherUnknown = unknownParticipants(team2)[0]
+        val type = if (scenario == "UNKNOWN") "PULL" else scenario
+        val eventId = if (type == "PULL") {
+            createAndGetId(validPull() + ("participantId" to player1.id))
+        } else {
+            createAndGetId(validPull(EVENT_OCCURRED_AT.minusSeconds(2)))
+            createAndGetId(validPickup(EVENT_OCCURRED_AT.minusSeconds(1)))
+            createAndGetId(mapOf(
+                "type" to type,
+                "occurredAt" to EVENT_OCCURRED_AT,
+                "fromParticipantId" to player1.id,
+                "toParticipantId" to if (type in listOf("PASS", "GOAL")) player2.id else opponent.id,
+            ))
+        }
+        val beforeEvent = eventService.get(UUID.fromString(eventId), match.id)
+        val beforeMatch = matchService.getOrThrow(match.id)
+        val body = when (scenario) {
+            "PULL" -> mapOf("type" to type, "participantId" to opponent.id)
+            "UNKNOWN" -> mapOf("type" to type, "participantId" to otherUnknown)
+            "PASS", "GOAL" -> mapOf("type" to type, "fromParticipantId" to opponent.id, "toParticipantId" to otherUnknown)
+            else -> mapOf("type" to type, "fromParticipantId" to opponent.id, "toParticipantId" to ownUnknown)
+        }
+
+        patchParticipantEvent(eventId, body)
+            .andExpectProblem(400, "INVALID_REQUEST", "/api/v1/matches/${match.id}/events/$eventId")
+
+        assertEquals(beforeEvent, eventService.get(UUID.fromString(eventId), match.id))
+        val afterMatch = matchService.getOrThrow(match.id)
+        assertEquals(beforeMatch.teamScores, afterMatch.teamScores)
+        assertEquals(beforeMatch.eventLogRevision, afterMatch.eventLogRevision)
+        assertEquals(beforeMatch.lastEventLogInvalidationRevision, afterMatch.lastEventLogInvalidationRevision)
+    }
+
+    @Test
+    fun `single slot correction follows snapshot team after current roster changes`() {
+        val eventId = createAndGetId(validPull() + ("participantId" to player1.id))
+        val unknown = unknownParticipants(team1)[0]
+        teamPlayerService.remove(team1.id, player2.id)
+        teamPlayerService.add(team2.id, player2.id, 4)
+        val before = eventService.get(UUID.fromString(eventId), match.id)!!
+        patchParticipantEvent(eventId, mapOf("type" to "PULL", "participantId" to unknown))
+            .andExpect(status().isOk)
+        patchParticipantEvent(eventId, mapOf("type" to "PULL", "participantId" to player2.id))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.participantId").value(player2.id.toString()))
+        val after = eventService.get(UUID.fromString(eventId), match.id)!!
+        assertEquals(before.id, after.id)
+        assertEquals(before.sequenceNumber, after.sequenceNumber)
+        assertEquals(before.event.occurredAt, after.event.occurredAt)
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["PASS", "GOAL", "BLOCK", "BLOCK_MARKER", "BLOCK_FIELD", "INTERCEPTION", "CALLAHAN"])
+    fun `double slot corrections preserve each original team for player and unknown`(type: String) {
+        createAndGetId(validPull(EVENT_OCCURRED_AT.minusSeconds(2)))
+        createAndGetId(validPickup(EVENT_OCCURRED_AT.minusSeconds(1)))
+        val sameTeam = type in listOf("PASS", "GOAL")
+        val originalTo = if (sameTeam) player2.id else opponent.id
+        val eventId = createAndGetId(mapOf(
+            "type" to type, "occurredAt" to EVENT_OCCURRED_AT,
+            "fromParticipantId" to player1.id, "toParticipantId" to originalTo,
+        ))
+        val fromUnknown = unknownParticipants(team1)[0]
+        val toUnknown = unknownParticipants(if (sameTeam) team1 else team2)[1]
+        val beforeRevision = matchService.getOrThrow(match.id).eventLogRevision
+        patchParticipantEvent(eventId, mapOf("type" to type, "fromParticipantId" to fromUnknown))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.toParticipantId").value(originalTo.toString()))
+        patchParticipantEvent(eventId, mapOf("type" to type, "fromParticipantId" to null, "toParticipantId" to toUnknown))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.fromParticipantId").value(fromUnknown.toString()))
+        patchParticipantEvent(eventId, mapOf("type" to type, "fromParticipantId" to player1.id, "toParticipantId" to originalTo))
+            .andExpect(status().isOk)
+        assertEquals(beforeRevision + 3, matchService.getOrThrow(match.id).eventLogRevision)
+    }
+
+    private fun unknownParticipants(team: Team) = matchService.getOrThrow(match.id).participantsByTeam.getValue(team.id)
+        .filter { it.kind == MatchParticipantKind.UNKNOWN }.map { it.participantId }
+
+    private fun patchParticipantEvent(eventId: String, body: Map<String, Any?>) = mockMvc.perform(
+        patch("/api/v1/matches/${match.id}/events/$eventId")
+            .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(body)),
+    )
 
     private fun postEvent(body: Map<String, Any>, matchId: UUID = match.id) = post("/api/v1/matches/$matchId/events")
         .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(body))
