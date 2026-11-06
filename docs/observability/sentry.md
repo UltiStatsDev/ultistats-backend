@@ -23,10 +23,19 @@ There is intentionally no `sentry.dsn` default in application.yaml. Spring's
 environment binding supplies it when present. `sentry.logs.enabled=true` is
 the 8.62 property (not `logs.enable`). Logback is an explicit dependency;
 the starter alone does not include it. Its initializer attaches the appender
-to `com.github.mihanizzm.ultistats`, preserving existing console appenders.
+to `com.github.mihanizzm.ultistats` and the two default Spring background error
+loggers, preserving existing console appenders.
 ERROR logs create issues; WARN+ also becomes Logs. Unhandled MVC exceptions
 are captured by the SDK resolver after normal exception advice. Framework
-console errors are not separately forwarded as application log issues.
+console errors outside those two background boundaries are not forwarded.
+
+The narrow background loggers are `TaskUtils$LoggingErrorHandler` under
+`org.springframework.scheduling.support` and `SimpleAsyncUncaughtExceptionHandler`
+under `org.springframework.aop.interceptor`. Repeating scheduled failures keep
+Spring's log-and-suppress behavior so later ticks continue. Void async failures
+use Spring's default uncaught handler; caller-handled async Future failures
+remain on their Future. No production async feature or executor is added.
+Custom error handlers that consume failures must still log or capture them.
 
 No tracing sample rate, profiling, source-context upload, SDK Gradle plugin,
 or custom logging facade is introduced. Auto session tracking and client
@@ -75,6 +84,11 @@ both event and structured-log paths. Captured synthetic envelopes are in
 `build/sentry-proof`; no HTTP transport is created by those tests.
 `SentryDisabledTest` covers missing/empty DSN against the main config, and
 `SentryEmptyDsnStartupTest` checks the real auth ingress with an empty DSN.
+`SentryBackgroundTest` loads the main config with the same in-memory transport,
+executes audit cleanup on a bounded real scheduler, and invokes test-only
+Spring async proxies. It checks continuation, exactly one issue per unhandled
+failure, event/Logs privacy, Future behavior, unrelated-framework exclusion,
+and missing/empty DSN. Envelopes are in `build/sentry-background-proof`.
 
 This proves SDK/application serialization and filtering, not SaaS ingestion,
 project configuration, UI issue grouping, alerting or production activation.

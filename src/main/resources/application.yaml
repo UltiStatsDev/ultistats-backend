@@ -47,7 +47,11 @@ sentry:
   tags:
     service: ${SENTRY_SERVICE:ultistats-backend}
   logging:
-    loggers: com.github.mihanizzm.ultistats
+    loggers:
+      - com.github.mihanizzm.ultistats
+      # Default Spring background error boundaries; keep all other framework logs local.
+      - org.springframework.scheduling.support.TaskUtils$LoggingErrorHandler
+      - org.springframework.aop.interceptor.SimpleAsyncUncaughtExceptionHandler
     minimum-event-level: ERROR
     minimum-breadcrumb-level: INFO
     minimum-level: WARN
