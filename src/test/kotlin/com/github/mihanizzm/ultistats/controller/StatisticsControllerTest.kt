@@ -8,8 +8,10 @@ import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.model.MatchParticipantKind
 import com.github.mihanizzm.ultistats.model.Player
 import com.github.mihanizzm.ultistats.model.Team
+import com.github.mihanizzm.ultistats.model.events.AnnouncementStartEvent
 import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.model.events.OnePlayerEvent
+import com.github.mihanizzm.ultistats.model.events.SystemEvent
 import com.github.mihanizzm.ultistats.model.events.TeamEvent
 import com.github.mihanizzm.ultistats.model.events.TwoPlayerEvent
 import com.github.mihanizzm.ultistats.service.EventService
@@ -112,6 +114,69 @@ class StatisticsControllerTest {
             .andExpect(jsonPath("$.teams[0].participants[0].time.possessionTimeMs").isNumber)
             .andExpect(jsonPath("$.playerStatistics").doesNotExist())
             .andExpect(jsonPath("$.teamStatistics").doesNotExist())
+    }
+
+    @Test
+    fun `Completed announcements report teams in snapshot order and zero for a legacy log`() {
+        eventService.create(OnePlayerEvent(players1[0].id, MATCH_STARTED_AT.plusSeconds(1), EventType.PULL), match.id)
+
+        mockMvc.perform(get("/api/v1/matches/${match.id}/statistics"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.announcements.count").value(0))
+            .andExpect(jsonPath("$.announcements.durationMs").value(0))
+            .andExpect(jsonPath("$.announcements.byTeam.length()").value(2))
+            .andExpect(jsonPath("$.announcements.byTeam[0].teamId").value(team1.id.toString()))
+            .andExpect(jsonPath("$.announcements.byTeam[0].count").value(0))
+            .andExpect(jsonPath("$.announcements.byTeam[0].durationMs").value(0))
+            .andExpect(jsonPath("$.announcements.byTeam[1].teamId").value(team2.id.toString()))
+            .andExpect(jsonPath("$.announcements.byTeam[1].count").value(0))
+            .andExpect(jsonPath("$.announcements.byTeam[1].durationMs").value(0))
+            .andExpect(jsonPath("$.announcements.unknown.count").value(0))
+            .andExpect(jsonPath("$.announcements.unknown.durationMs").value(0))
+    }
+
+    @Test
+    fun `Completed announcement totals include unknown and remove an undone end`() {
+        eventService.create(OnePlayerEvent(players1[0].id, MATCH_STARTED_AT.plusSeconds(1), EventType.PULL), match.id)
+
+        fun start(teamId: UUID?, seconds: Long) = eventService.create(
+            AnnouncementStartEvent(teamId, MATCH_STARTED_AT.plusSeconds(seconds)), match.id,
+        )
+
+        fun end(seconds: Long, nanos: Long = 0) = eventService.create(
+            SystemEvent(MATCH_STARTED_AT.plusSeconds(seconds).plusNanos(nanos), EventType.ANNOUNCEMENT_END), match.id,
+        )
+
+        start(team1.id, 2)
+        end(3, 600_000)
+        start(team1.id, 4)
+        end(4)
+        start(team2.id, 5)
+        end(5)
+        start(null, 6)
+        end(8, 600_000)
+
+        fun assertTotals(unknownCount: Int, unknownDuration: Int, totalDuration: Int) {
+            mockMvc.perform(get("/api/v1/matches/${match.id}/statistics"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.announcements.count").value(3 + unknownCount))
+                .andExpect(jsonPath("$.announcements.durationMs").value(totalDuration))
+                .andExpect(jsonPath("$.announcements.byTeam[0].teamId").value(team1.id.toString()))
+                .andExpect(jsonPath("$.announcements.byTeam[0].count").value(2))
+                .andExpect(jsonPath("$.announcements.byTeam[0].durationMs").value(1000))
+                .andExpect(jsonPath("$.announcements.byTeam[1].teamId").value(team2.id.toString()))
+                .andExpect(jsonPath("$.announcements.byTeam[1].count").value(1))
+                .andExpect(jsonPath("$.announcements.byTeam[1].durationMs").value(0))
+                .andExpect(jsonPath("$.announcements.unknown.count").value(unknownCount))
+                .andExpect(jsonPath("$.announcements.unknown.durationMs").value(unknownDuration))
+        }
+
+        assertTotals(1, 2000, 3001)
+        start(null, 9)
+        assertTotals(1, 2000, 3001)
+        eventService.undoLast(match.id)
+        eventService.undoLast(match.id)
+        assertTotals(0, 0, 1000)
     }
 
     @Test

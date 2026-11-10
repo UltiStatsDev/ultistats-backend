@@ -1,5 +1,7 @@
 package com.github.mihanizzm.ultistats.export
 
+import com.github.mihanizzm.ultistats.dto.response.statistics.AnnouncementSummaryResponse
+import com.github.mihanizzm.ultistats.dto.response.statistics.AnnouncementTotalsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.DefenseStatisticsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.MatchStatisticsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.MatchTimeStatisticsResponse
@@ -23,6 +25,7 @@ class StatisticsZipExporterTest {
     @Test
     fun `Архив содержит нормализованные таблицы и общую статистику матча`() {
         val response = MatchStatisticsResponse(
+            announcements = AnnouncementSummaryResponse(1, 1_000, emptyList(), AnnouncementTotalsResponse(1, 1_000)),
             matchId = MATCH_ID,
             teams = emptyList(),
             time = MatchTimeStatisticsResponse(
@@ -46,6 +49,7 @@ class StatisticsZipExporterTest {
     @Test
     fun `Командная таблица содержит идентификаторы статистику и корректно экранированное имя`() {
         val response = MatchStatisticsResponse(
+            announcements = AnnouncementSummaryResponse(0, 0, emptyList(), AnnouncementTotalsResponse(0, 0)),
             matchId = MATCH_ID,
             teams = listOf(
                 TeamStatisticsResponse(
@@ -112,6 +116,7 @@ class StatisticsZipExporterTest {
             time = PlayerTimeStatisticsResponse(0, 0),
         )
         val response = MatchStatisticsResponse(
+            announcements = AnnouncementSummaryResponse(0, 0, emptyList(), AnnouncementTotalsResponse(0, 0)),
             matchId = MATCH_ID,
             teams = listOf(
                 TeamStatisticsResponse(

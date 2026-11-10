@@ -1,11 +1,14 @@
 package com.github.mihanizzm.ultistats.mapper
 
+import com.github.mihanizzm.ultistats.dto.response.statistics.AnnouncementSummaryResponse
+import com.github.mihanizzm.ultistats.dto.response.statistics.AnnouncementTotalsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.DefenseStatisticsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.MatchStatisticsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.MatchTimeStatisticsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.ParticipantStatisticsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.PlayerAttackStatisticsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.PlayerTimeStatisticsResponse
+import com.github.mihanizzm.ultistats.dto.response.statistics.TeamAnnouncementTotalsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.TeamAttackStatisticsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.TeamStatisticsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.TeamTimeStatisticsResponse
@@ -20,6 +23,8 @@ import com.github.mihanizzm.ultistats.model.statistics.PlayerTimeStatistics
 import com.github.mihanizzm.ultistats.model.statistics.TeamAttackStatistics
 import com.github.mihanizzm.ultistats.model.statistics.TeamTimeStatistics
 import org.springframework.stereotype.Component
+import java.time.Duration
+import java.util.UUID
 
 @Component
 class StatisticsResponseMapper {
@@ -51,6 +56,20 @@ class StatisticsResponseMapper {
                 )
             },
             time = statistics.timeStatistics.toResponse(),
+            announcements = statistics.timeStatistics.announcementSummary(match.teamIds),
+        )
+    }
+
+    private fun MatchTimeStatistics.announcementSummary(teamIds: List<UUID>): AnnouncementSummaryResponse {
+        val unknown = announcements[null]
+        return AnnouncementSummaryResponse(
+            count = announcements.values.sumOf { it.count },
+            durationMs = announcements.values.fold(Duration.ZERO) { total, value -> total.plus(value.duration) }.toMillis(),
+            byTeam = teamIds.map { teamId ->
+                val totals = announcements[teamId]
+                TeamAnnouncementTotalsResponse(teamId, totals?.count ?: 0, totals?.duration?.toMillis() ?: 0)
+            },
+            unknown = AnnouncementTotalsResponse(unknown?.count ?: 0, unknown?.duration?.toMillis() ?: 0),
         )
     }
 

@@ -1,5 +1,7 @@
 package com.github.mihanizzm.ultistats.facade
 
+import com.github.mihanizzm.ultistats.dto.response.statistics.AnnouncementSummaryResponse
+import com.github.mihanizzm.ultistats.dto.response.statistics.AnnouncementTotalsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.MatchStatisticsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.MatchTimeStatisticsResponse
 import com.github.mihanizzm.ultistats.export.StatisticsZipExporter
@@ -29,6 +31,7 @@ class StatisticsFacadeTest {
         val match = Match(id = UUID.randomUUID(), teamIds = emptyList())
         val statistics = MatchStatistics(playerStatistics = emptyList(), teamStatistics = emptyList())
         val response = MatchStatisticsResponse(
+            announcements = AnnouncementSummaryResponse(0, 0, emptyList(), AnnouncementTotalsResponse(0, 0)),
             matchId = match.id,
             teams = emptyList(),
             time = MatchTimeStatisticsResponse(0, 0, 0, 0, 0),

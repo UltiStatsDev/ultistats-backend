@@ -1,11 +1,14 @@
 package com.github.mihanizzm.ultistats.mapper
 
+import com.github.mihanizzm.ultistats.dto.response.statistics.AnnouncementSummaryResponse
+import com.github.mihanizzm.ultistats.dto.response.statistics.AnnouncementTotalsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.DefenseStatisticsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.MatchStatisticsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.MatchTimeStatisticsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.ParticipantStatisticsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.PlayerAttackStatisticsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.PlayerTimeStatisticsResponse
+import com.github.mihanizzm.ultistats.dto.response.statistics.TeamAnnouncementTotalsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.TeamAttackStatisticsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.TeamStatisticsResponse
 import com.github.mihanizzm.ultistats.dto.response.statistics.TeamTimeStatisticsResponse
@@ -37,6 +40,15 @@ class StatisticsResponseMapperTest {
         assertThat(response).isEqualTo(
             MatchStatisticsResponse(
                 matchId = MATCH_ID,
+                announcements = AnnouncementSummaryResponse(
+                    count = 0,
+                    durationMs = 0,
+                    byTeam = listOf(
+                        TeamAnnouncementTotalsResponse(TEAM_1_ID, 0, 0),
+                        TeamAnnouncementTotalsResponse(TEAM_2_ID, 0, 0),
+                    ),
+                    unknown = AnnouncementTotalsResponse(0, 0),
+                ),
                 teams = listOf(
                     TeamStatisticsResponse(
                         teamId = TEAM_1_ID,
