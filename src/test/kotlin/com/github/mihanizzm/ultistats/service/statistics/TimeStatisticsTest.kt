@@ -1,11 +1,13 @@
 package com.github.mihanizzm.ultistats.service.statistics
 
 import com.github.mihanizzm.ultistats.MatchAbstractTest
+import com.github.mihanizzm.ultistats.model.events.AnnouncementStartEvent
 import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.model.events.OnePlayerEvent
 import com.github.mihanizzm.ultistats.model.events.SystemEvent
 import com.github.mihanizzm.ultistats.model.events.TeamEvent
 import com.github.mihanizzm.ultistats.model.events.TwoPlayerEvent
+import com.github.mihanizzm.ultistats.model.statistics.AnnouncementStatistics
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -20,6 +22,29 @@ class TimeStatisticsTest : MatchAbstractTest() {
     fun setup() {
         MATCH.events.clear()
         matchService.update(MATCH)
+    }
+
+    @Test
+    fun `only closed announcement pairs contribute to the canonical time aggregate`() {
+        val team = UUIDS[0]
+        MATCH.events.addAll(listOf(
+            OnePlayerEvent(UUIDS[2], ts(0), EventType.PULL),
+            AnnouncementStartEvent(team, ts(1)),
+            SystemEvent(ts(3), EventType.ANNOUNCEMENT_END),
+            AnnouncementStartEvent(null, ts(4)),
+            SystemEvent(ts(4), EventType.ANNOUNCEMENT_END),
+            AnnouncementStartEvent(team, ts(5)),
+            SystemEvent(ts(8), EventType.ANNOUNCEMENT_END),
+            AnnouncementStartEvent(null, ts(9)),
+        ))
+
+        val time = recalculateTestMatchStatistics().timeStatistics
+        assertThat(time.announcements).isEqualTo(mapOf(
+            team to AnnouncementStatistics(2, Duration.ofSeconds(5)),
+            null to AnnouncementStatistics(1, Duration.ZERO),
+        ))
+        assertThat(time.totalTime).isEqualTo(Duration.ofSeconds(9))
+        assertThat(time.pureGameTime).isEqualTo(Duration.ofSeconds(4))
     }
 
     @Test

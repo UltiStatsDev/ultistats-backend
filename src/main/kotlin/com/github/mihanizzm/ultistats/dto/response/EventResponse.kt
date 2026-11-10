@@ -1,5 +1,7 @@
 package com.github.mihanizzm.ultistats.dto.response
 
+import com.fasterxml.jackson.annotation.JsonInclude
+import com.github.mihanizzm.ultistats.model.events.AnnouncementStartEvent
 import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.model.events.OnePlayerEvent
 import com.github.mihanizzm.ultistats.model.events.StoredEvent
@@ -12,7 +14,7 @@ import java.time.Instant
 import java.util.UUID
 
 @Schema(
-    oneOf = [OnePlayerEventResponse::class, TwoPlayerEventResponse::class, TeamEventResponse::class, SystemEventResponse::class],
+    oneOf = [OnePlayerEventResponse::class, TwoPlayerEventResponse::class, TeamEventResponse::class, SystemEventResponse::class, AnnouncementStartResponse::class],
     discriminatorProperty = "type",
     discriminatorMapping = [
         DiscriminatorMapping(value = "INCOMPLETE_PASS", schema = OnePlayerEventResponse::class),
@@ -30,6 +32,8 @@ import java.util.UUID
         DiscriminatorMapping(value = "TIMEOUT_END", schema = TeamEventResponse::class),
         DiscriminatorMapping(value = "HALFTIME_START", schema = SystemEventResponse::class),
         DiscriminatorMapping(value = "HALFTIME_END", schema = SystemEventResponse::class),
+        DiscriminatorMapping(value = "ANNOUNCEMENT_START", schema = AnnouncementStartResponse::class),
+        DiscriminatorMapping(value = "ANNOUNCEMENT_END", schema = SystemEventResponse::class),
     ],
 )
 sealed interface EventResponse {
@@ -48,6 +52,8 @@ sealed interface EventResponse {
                 event.fromParticipant, event.toParticipant,
             )
             is TeamEvent -> TeamEventResponse(stored.id, stored.sequenceNumber, event.type, event.occurredAt, event.team)
+            is AnnouncementStartEvent ->
+                AnnouncementStartResponse(stored.id, stored.sequenceNumber, event.type, event.occurredAt, event.team)
             is SystemEvent -> SystemEventResponse(stored.id, stored.sequenceNumber, event.type, event.occurredAt)
         }
     }
@@ -76,6 +82,17 @@ data class TeamEventResponse(
     override val type: EventType,
     override val occurredAt: Instant,
     val teamId: UUID,
+) : EventResponse
+
+data class AnnouncementStartResponse(
+    override val id: UUID,
+    override val sequenceNumber: Int,
+    override val type: EventType,
+    override val occurredAt: Instant,
+    @get:JsonInclude(JsonInclude.Include.ALWAYS)
+    @field:Schema(description = "Команда из снимка матча или null.", types = ["string", "null"], format = "uuid",
+        requiredMode = Schema.RequiredMode.REQUIRED)
+    val teamId: UUID?,
 ) : EventResponse
 
 data class SystemEventResponse(

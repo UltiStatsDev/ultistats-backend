@@ -1,5 +1,6 @@
 package com.github.mihanizzm.ultistats.validation.event
 
+import com.github.mihanizzm.ultistats.model.events.AnnouncementStartEvent
 import com.github.mihanizzm.ultistats.model.events.Event
 import com.github.mihanizzm.ultistats.model.events.EventCategory
 import com.github.mihanizzm.ultistats.model.events.EventType
@@ -98,20 +99,21 @@ class EventSequencePolicyTest {
             INTERCEPTION,
             CALLAHAN,
             TIMEOUT_START,
+            ANNOUNCEMENT_START,
         )
 
         @JvmStatic
         fun stateCases(): Stream<Arguments> = Stream.of(
             state("до первого пулла", emptyList(), "BEFORE_FIRST_PULL", setOf(PULL, TIMEOUT_START)),
-            state("пулл в полете", events(PULL), "PULL_IN_FLIGHT", setOf(BRICK, PICKUP)),
-            state("ожидание подбора после брика", events(PULL, BRICK), "PICKUP_REQUIRED", setOf(PICKUP)),
+            state("пулл в полете", events(PULL), "PULL_IN_FLIGHT", setOf(BRICK, PICKUP, ANNOUNCEMENT_START)),
+            state("ожидание подбора после брика", events(PULL, BRICK), "PICKUP_REQUIRED", setOf(PICKUP, ANNOUNCEMENT_START)),
             state("активное владение после подбора", events(PULL, PICKUP), "POSSESSION_ACTIVE", activeEvents),
             state("активное владение после паса", events(PULL, PICKUP, PASS), "POSSESSION_ACTIVE", activeEvents),
             state("активное владение после перехвата", events(PULL, PICKUP, INTERCEPTION), "POSSESSION_ACTIVE", activeEvents),
-            state("ожидание подбора после незавершенного паса", events(PULL, PICKUP, INCOMPLETE_PASS), "PICKUP_REQUIRED", setOf(PICKUP)),
-            state("ожидание подбора после общего блока", events(PULL, PICKUP, BLOCK), "PICKUP_REQUIRED", setOf(PICKUP)),
-            state("ожидание подбора после marker блока", events(PULL, PICKUP, BLOCK_MARKER), "PICKUP_REQUIRED", setOf(PICKUP)),
-            state("ожидание подбора после field блока", events(PULL, PICKUP, BLOCK_FIELD), "PICKUP_REQUIRED", setOf(PICKUP)),
+            state("ожидание подбора после незавершенного паса", events(PULL, PICKUP, INCOMPLETE_PASS), "PICKUP_REQUIRED", setOf(PICKUP, ANNOUNCEMENT_START)),
+            state("ожидание подбора после общего блока", events(PULL, PICKUP, BLOCK), "PICKUP_REQUIRED", setOf(PICKUP, ANNOUNCEMENT_START)),
+            state("ожидание подбора после marker блока", events(PULL, PICKUP, BLOCK_MARKER), "PICKUP_REQUIRED", setOf(PICKUP, ANNOUNCEMENT_START)),
+            state("ожидание подбора после field блока", events(PULL, PICKUP, BLOCK_FIELD), "PICKUP_REQUIRED", setOf(PICKUP, ANNOUNCEMENT_START)),
             state(
                 "завершенный поинт",
                 events(PULL, PICKUP, GOAL),
@@ -131,6 +133,11 @@ class EventSequencePolicyTest {
                 "AFTER_HALFTIME",
                 setOf(PULL, TIMEOUT_START),
             ),
+            state("объявление во время пулла", events(PULL, ANNOUNCEMENT_START), "ANNOUNCEMENT", setOf(ANNOUNCEMENT_END)),
+            state("пулл после объявления", events(PULL, ANNOUNCEMENT_START, ANNOUNCEMENT_END), "PULL_IN_FLIGHT",
+                setOf(BRICK, PICKUP, ANNOUNCEMENT_START)),
+            state("владение после объявления", events(PULL, PICKUP, ANNOUNCEMENT_START, ANNOUNCEMENT_END),
+                "POSSESSION_ACTIVE", activeEvents),
             state("таймаут до первого пулла", events(TIMEOUT_START), "TIMEOUT", setOf(TIMEOUT_END)),
             state("таймаут во время владения", events(PULL, PICKUP, TIMEOUT_START), "TIMEOUT", setOf(TIMEOUT_END)),
             state("таймаут между поинтами", events(PULL, PICKUP, GOAL, TIMEOUT_START), "TIMEOUT", setOf(TIMEOUT_END)),
@@ -153,6 +160,7 @@ class EventSequencePolicyTest {
                 EventCategory.ONE_PLAYER -> OnePlayerEvent(PARTICIPANT_1, occurredAt, type)
                 EventCategory.TWO_PLAYER -> TwoPlayerEvent(PARTICIPANT_1, PARTICIPANT_2, occurredAt, type)
                 EventCategory.TEAM -> TeamEvent(TEAM, occurredAt, type)
+                EventCategory.ANNOUNCEMENT -> AnnouncementStartEvent(null, occurredAt)
                 EventCategory.SYSTEM -> SystemEvent(occurredAt, type)
             }
         }
@@ -174,3 +182,6 @@ private val TIMEOUT_START = EventType.TIMEOUT_START
 private val TIMEOUT_END = EventType.TIMEOUT_END
 private val HALFTIME_START = EventType.HALFTIME_START
 private val HALFTIME_END = EventType.HALFTIME_END
+
+private val ANNOUNCEMENT_START = EventType.ANNOUNCEMENT_START
+private val ANNOUNCEMENT_END = EventType.ANNOUNCEMENT_END

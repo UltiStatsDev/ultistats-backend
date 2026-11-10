@@ -25,9 +25,11 @@ import java.util.UUID
     JsonSubTypes.Type(TeamEventRequest::class, name = "TIMEOUT_END"),
     JsonSubTypes.Type(SystemEventRequest::class, name = "HALFTIME_START"),
     JsonSubTypes.Type(SystemEventRequest::class, name = "HALFTIME_END"),
+    JsonSubTypes.Type(AnnouncementStartRequest::class, name = "ANNOUNCEMENT_START"),
+    JsonSubTypes.Type(SystemEventRequest::class, name = "ANNOUNCEMENT_END"),
 )
 @Schema(
-    oneOf = [OnePlayerEventRequest::class, TwoPlayerEventRequest::class, TeamEventRequest::class, SystemEventRequest::class],
+    oneOf = [OnePlayerEventRequest::class, TwoPlayerEventRequest::class, TeamEventRequest::class, SystemEventRequest::class, AnnouncementStartRequest::class],
     discriminatorProperty = "type",
     discriminatorMapping = [
         DiscriminatorMapping(value = "INCOMPLETE_PASS", schema = OnePlayerEventRequest::class),
@@ -45,6 +47,8 @@ import java.util.UUID
         DiscriminatorMapping(value = "TIMEOUT_END", schema = TeamEventRequest::class),
         DiscriminatorMapping(value = "HALFTIME_START", schema = SystemEventRequest::class),
         DiscriminatorMapping(value = "HALFTIME_END", schema = SystemEventRequest::class),
+        DiscriminatorMapping(value = "ANNOUNCEMENT_START", schema = AnnouncementStartRequest::class),
+        DiscriminatorMapping(value = "ANNOUNCEMENT_END", schema = SystemEventRequest::class),
     ],
 )
 sealed interface CreateEventRequest {
@@ -109,7 +113,21 @@ data class TeamEventRequest(
     override val eventId: UUID? = null,
 ) : CreateEventRequest
 
-@Schema(description = "Системное событие: HALFTIME_START — начало перерыва после завершённого розыгрыша; HALFTIME_END — окончание перерыва, после которого ожидается PULL. Требуются только type и occurredAt; участники и команда не передаются.")
+@Schema(description = "Начало объявления в активном поинте. Отсутствующий или null teamId означает неизвестную команду.")
+data class AnnouncementStartRequest(
+    override val type: EventType,
+    override val occurredAt: Instant,
+    @field:Schema(
+        description = "UUID команды из снимка матча или null, если команда неизвестна.",
+        types = ["string", "null"],
+        format = "uuid",
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED,
+    )
+    val teamId: UUID? = null,
+    override val eventId: UUID? = null,
+) : CreateEventRequest
+
+@Schema(description = "Системное событие: HALFTIME_START, HALFTIME_END или ANNOUNCEMENT_END. Требуются только type и occurredAt; участники и команда не передаются.")
 data class SystemEventRequest(
     override val type: EventType,
     override val occurredAt: Instant,

@@ -4,7 +4,7 @@ import java.time.Instant
 
 /**
  * Системное событие.
- * Используется для: HALFTIME_START, HALFTIME_END.
+ * Используется для: HALFTIME_START, HALFTIME_END, ANNOUNCEMENT_END.
  */
 data class SystemEvent(
     override val occurredAt: Instant,

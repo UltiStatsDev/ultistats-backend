@@ -95,6 +95,10 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
             }
             EventCategory.TEAM -> check(event.teamId in teamIds && event.fromParticipantId == null && event.toParticipantId == null,
                 path, "TEAM requires only teamId belonging to this match")
+            EventCategory.ANNOUNCEMENT -> check(
+                (event.teamId == null || event.teamId in teamIds) && event.fromParticipantId == null && event.toParticipantId == null,
+                path, "Announcement start accepts only an optional teamId belonging to this match",
+            )
             EventCategory.SYSTEM -> check(event.teamId == null && event.fromParticipantId == null && event.toParticipantId == null,
                 path, "SYSTEM cannot reference teams or participants")
         }
@@ -111,5 +115,6 @@ internal fun PortableEvent.toDomain(): Event = when (type.category) {
     EventCategory.ONE_PLAYER -> OnePlayerEvent(requireNotNull(fromParticipantId), occurredAt, type)
     EventCategory.TWO_PLAYER -> TwoPlayerEvent(requireNotNull(fromParticipantId), requireNotNull(toParticipantId), occurredAt, type)
     EventCategory.TEAM -> TeamEvent(requireNotNull(teamId), occurredAt, type)
+    EventCategory.ANNOUNCEMENT -> AnnouncementStartEvent(teamId, occurredAt)
     EventCategory.SYSTEM -> SystemEvent(occurredAt, type)
 }

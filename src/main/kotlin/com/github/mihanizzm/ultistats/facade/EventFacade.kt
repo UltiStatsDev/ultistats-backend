@@ -11,6 +11,7 @@ import com.github.mihanizzm.ultistats.dto.request.UpdateEventRequest
 import com.github.mihanizzm.ultistats.dto.response.EventResponse
 import com.github.mihanizzm.ultistats.factory.EventFactory
 import com.github.mihanizzm.ultistats.factory.EventCreationResult
+import com.github.mihanizzm.ultistats.model.events.AnnouncementStartEvent
 import com.github.mihanizzm.ultistats.model.events.Event
 import com.github.mihanizzm.ultistats.model.events.OnePlayerEvent
 import com.github.mihanizzm.ultistats.model.events.StoredEvent
@@ -94,7 +95,7 @@ class EventFacade(
                 )
             stored.event is TeamEvent && request is TeamEventPatchRequest ->
                 TeamEventRequest(stored.event.type, stored.event.occurredAt, request.teamId)
-            stored.event is SystemEvent -> throw UnsupportedEventUpdateException()
+            stored.event is SystemEvent || stored.event is AnnouncementStartEvent -> throw UnsupportedEventUpdateException()
             else -> throw InvalidEventUpdateException("Event patch shape does not match the stored event")
         }
         return when (val creation = eventFactory.createValidatedFromRequest(merged, matchId)) {

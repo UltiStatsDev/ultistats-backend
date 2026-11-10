@@ -32,6 +32,10 @@ sealed interface EventSequenceState {
         override val code: String = "HALFTIME"
     }
 
+    data class Announcement(val resume: EventSequenceState) : EventSequenceState {
+        override val code: String = "ANNOUNCEMENT"
+    }
+
     data class Timeout(val resume: EventSequenceState) : EventSequenceState {
         override val code: String = "TIMEOUT"
     }

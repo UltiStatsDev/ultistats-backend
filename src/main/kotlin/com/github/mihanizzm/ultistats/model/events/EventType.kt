@@ -76,6 +76,8 @@ enum class EventType(
 
     /** Окончание halftime. Следующий поинт ожидает [PULL]. */
     HALFTIME_END("Конец халф-тайма", EventCategory.SYSTEM),
+    ANNOUNCEMENT_START("Начало объявления", EventCategory.ANNOUNCEMENT),
+    ANNOUNCEMENT_END("Конец объявления", EventCategory.SYSTEM),
     ;
 
     fun canReplace(previous: EventType): Boolean =

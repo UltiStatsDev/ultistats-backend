@@ -391,6 +391,8 @@ class EventServiceImpl(
                 listOf(type, occurredAt, fromParticipant, toParticipant)
             is com.github.mihanizzm.ultistats.model.events.TeamEvent ->
                 listOf(type, occurredAt, team)
+            is com.github.mihanizzm.ultistats.model.events.AnnouncementStartEvent ->
+                listOf(type, occurredAt, team)
             is com.github.mihanizzm.ultistats.model.events.SystemEvent ->
                 listOf(type, occurredAt)
         }.joinToString("|")

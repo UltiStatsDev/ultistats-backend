@@ -190,6 +190,18 @@ class EventController(
                         value = """{"eventId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","type":"TIMEOUT_END","occurredAt":"2026-07-28T12:30:00Z","teamId":"33333333-3333-3333-3333-333333333333"}""",
                     ),
                     ExampleObject(
+                        name = "ANNOUNCEMENT_START",
+                        summary = "ANNOUNCEMENT_START — Начало объявления",
+                        description = "Начинает паузу после пулла в активном поинте. teamId — команда матча или null. Время от начала матча продолжает идти.",
+                        value = """{"eventId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","type":"ANNOUNCEMENT_START","occurredAt":"2026-07-28T12:30:00Z","teamId":null}""",
+                    ),
+                    ExampleObject(
+                        name = "ANNOUNCEMENT_END",
+                        summary = "ANNOUNCEMENT_END — Конец объявления",
+                        description = "Завершает открытую паузу и восстанавливает прежнее игровое состояние. Команда берётся из начала.",
+                        value = """{"eventId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","type":"ANNOUNCEMENT_END","occurredAt":"2026-07-28T12:30:00Z"}""",
+                    ),
+                    ExampleObject(
                         name = "HALFTIME_START",
                         summary = "HALFTIME_START — Начало перерыва",
                         description = "Начинает перерыв после завершённого розыгрыша и останавливает игровой таймер. Требуются только type и occurredAt, без participantId/teamId.",
@@ -230,7 +242,7 @@ class EventController(
             "отсутствие или null сохраняет прежнее значение; можно передать только type для уточнения блока. " +
             "Роли участников и ограничения команд совпадают с POST. " +
             "occurredAt неизменяем и не входит в PATCH; идентификатор и sequenceNumber также сохраняются. " +
-            "Системные события HALFTIME_START и HALFTIME_END не редактируются: " +
+            "Границы HALFTIME_START, HALFTIME_END, ANNOUNCEMENT_START и ANNOUNCEMENT_END не редактируются: " +
             "PATCH с их сохранённым type возвращает 405 Method Not Allowed. " +
             "Исправление допускается после начала матча, в том числе после завершения; " +
             "нарушение последовательности событий или правил состояния возвращает 409.",
