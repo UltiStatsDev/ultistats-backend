@@ -1,5 +1,6 @@
 package com.github.mihanizzm.ultistats.model
 
+import com.github.mihanizzm.ultistats.model.events.AnnouncementStartEvent
 import com.github.mihanizzm.ultistats.model.events.Event
 import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.model.events.OnePlayerEvent
@@ -79,6 +80,8 @@ data class EventEntity(
         }
         com.github.mihanizzm.ultistats.model.events.EventCategory.TEAM ->
             TeamEvent(requireNotNull(teamId), effectiveOccurredAt, eventType)
+        com.github.mihanizzm.ultistats.model.events.EventCategory.ANNOUNCEMENT ->
+            AnnouncementStartEvent(teamId, effectiveOccurredAt)
         com.github.mihanizzm.ultistats.model.events.EventCategory.SYSTEM ->
             SystemEvent(effectiveOccurredAt, eventType)
     }
@@ -103,6 +106,11 @@ data class EventEntity(
                 creationFingerprint = creationFingerprint,
             )
             is TeamEvent -> EventEntity(
+                id, matchId, sequenceNumber, event.type, event.occurredAt,
+                teamId = event.team,
+                creationFingerprint = creationFingerprint,
+            )
+            is AnnouncementStartEvent -> EventEntity(
                 id, matchId, sequenceNumber, event.type, event.occurredAt,
                 teamId = event.team,
                 creationFingerprint = creationFingerprint,

@@ -23,4 +23,7 @@ enum class EventCategory {
      * Системное событие. Не требует дополнительных полей.
      */
     SYSTEM,
+
+    /** Announcement start can have a match team or unknown attribution. */
+    ANNOUNCEMENT,
 }

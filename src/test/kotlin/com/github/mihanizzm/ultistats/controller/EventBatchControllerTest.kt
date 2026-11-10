@@ -61,7 +61,7 @@ open class EventBatchControllerTest {
     private fun event(type: String, id: UUID = UUID.randomUUID(), time: Instant = at) =
         mapOf("eventId" to id, "type" to type, "occurredAt" to time.toString(), "participantId" to participant)
 
-    private fun batch(events: List<Map<String, Any>>, sequence: Int = 0, revision: Long = 0) =
+    private fun batch(events: List<Map<String, Any?>>, sequence: Int = 0, revision: Long = 0) =
         mapOf("events" to events, "expectedLastSequenceNumber" to sequence, "expectedLogRevision" to revision)
 
     private fun send(body: Any, code: Int = 201): JsonNode = mapper.readTree(
@@ -72,6 +72,95 @@ open class EventBatchControllerTest {
     private fun snapshot(): JsonNode = mapper.readTree(
         mvc.perform(get(path)).andExpect(status().isOk).andReturn().response.contentAsString,
     )
+
+    private fun announcement(type: String, seconds: Long = 0): Map<String, Any?> =
+        mapOf("eventId" to UUID.randomUUID(), "type" to type, "occurredAt" to at.plusSeconds(seconds))
+
+    @Test
+    fun `announcement pause resumes free disc and undo restores original pause`() {
+        val start = announcement("ANNOUNCEMENT_START") + ("teamId" to null)
+        val end = announcement("ANNOUNCEMENT_END")
+        assertEquals("BEFORE_FIRST_PULL", send(batch(listOf(start)), 409)["currentState"].asText())
+        val pull = event("PULL")
+        val first = send(batch(listOf(pull, start)))
+        assertEquals(true, first["events"][1]["teamId"].isNull)
+        assertEquals(first, send(batch(listOf(pull, start - "teamId")), 200))
+        assertEquals("EVENT_IDEMPOTENCY_CONFLICT",
+            send(batch(listOf(pull, start + ("teamId" to match.teamIds.first()))), 409)["code"].asText())
+        mvc.perform(post("/api/v1/matches/${match.id}/end").contentType(MediaType.APPLICATION_JSON)
+            .content(mapper.writeValueAsBytes(mapOf("timestamp" to at)))).andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code").value("MATCH_NOT_AT_POINT_END"))
+            .andExpect(jsonPath("$.currentState").value("ANNOUNCEMENT"))
+
+        val brick = event("BRICK")
+        val timeout = announcement("TIMEOUT_START") + ("teamId" to match.teamIds.first())
+        for (blocked in listOf(start + ("eventId" to UUID.randomUUID()), brick, timeout)) {
+            assertEquals("ANNOUNCEMENT", send(batch(listOf(blocked), 2, 1), 409)["currentState"].asText())
+        }
+        send(batch(listOf(end), 2, 1))
+        assertEquals(false, snapshot()["events"].last().has("teamId"))
+
+        fun undo(target: Any?, revision: Int) {
+            val request = mapOf("commandId" to UUID.randomUUID(), "expectedLastEventId" to target,
+                "expectedLogRevision" to revision)
+            mvc.perform(post("$path/undo").contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsBytes(request))).andExpect(status().isOk)
+                .andExpect(jsonPath("$.outcome").value("APPLIED"))
+        }
+        undo(end["eventId"], 2)
+        assertEquals(first["events"][1], snapshot()["events"].last())
+        assertEquals("ANNOUNCEMENT", send(batch(listOf(brick), 3, 3), 409)["currentState"].asText())
+        undo(start["eventId"], 3)
+        send(batch(listOf(brick), 3, 4))
+        assertEquals(listOf("PULL", "BRICK"), snapshot()["events"].map { it["type"].asText() })
+
+        val known = announcement("ANNOUNCEMENT_START") + ("teamId" to match.teamIds.first())
+        send(batch(listOf(known, announcement("ANNOUNCEMENT_END"), event("PICKUP")), 4, 5))
+        assertEquals("PICKUP", snapshot()["events"].last()["type"].asText())
+    }
+
+    @Test
+    fun `announcement excludes pause from possession and transfers with attribution`() {
+        val root = "/api/v1/matches/${match.id}"
+        val team = match.teamIds.first()
+        val teammate = matches.getOrThrow(match.id).participantsByTeam.getValue(team)[1].participantId
+        send(batch(listOf(event("PULL"), event("PICKUP", time = at.plusSeconds(1)))))
+        val start = announcement("ANNOUNCEMENT_START", 2) + ("teamId" to team)
+        val foreign = start + ("teamId" to UUID.randomUUID())
+        assertEquals("INVALID_REQUEST", send(batch(listOf(foreign), 2, 1), 400)["code"].asText())
+        fun v1Event(command: Any) = mvc.perform(post("$root/events").contentType(MediaType.APPLICATION_JSON)
+            .content(mapper.writeValueAsBytes(command)))
+        v1Event(start).andExpect(status().isCreated).andExpect(jsonPath("$.teamId").value(team.toString()))
+        mvc.perform(patch("$root/events/${start["eventId"]}").contentType(MediaType.APPLICATION_JSON)
+            .content("""{"type":"ANNOUNCEMENT_START"}""")).andExpect(status().isMethodNotAllowed)
+        val goal = announcement("GOAL", 9) + mapOf("fromParticipantId" to participant, "toParticipantId" to teammate)
+        val end = announcement("ANNOUNCEMENT_END", 6)
+        send(batch(listOf(end, goal), 3, 2))
+        mvc.perform(post("$root/end").contentType(MediaType.APPLICATION_JSON)
+            .content(mapper.writeValueAsBytes(mapOf("timestamp" to at.plusSeconds(9))))).andExpect(status().isOk)
+        val statistics = mapper.readTree(mvc.perform(get("$root/statistics")).andExpect(status().isOk)
+            .andReturn().response.contentAsString)
+        assertEquals(9000, statistics["time"]["totalTimeMs"].asInt())
+        assertEquals(5000, statistics["time"]["pureGameTimeMs"].asInt())
+        val teamStatistics = statistics["teams"].single { it["teamId"].asText() == team.toString() }
+        assertEquals(4000, teamStatistics["time"]["possessionTimeMs"].asInt())
+        val hold = teamStatistics["participants"].single { it["participantId"].asText() == participant.toString() }
+        assertEquals(4000, hold["time"]["possessionTimeMs"].asInt())
+        assertEquals(4000, hold["time"]["averagePossessionTimeMs"].asInt())
+        assertEquals(1, teamStatistics["attack"]["score"].asInt())
+
+        fun export(id: UUID) = mapper.readTree(mvc.perform(post("/api/v1/matches/export")
+            .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(mapOf("matchIds" to listOf(id)))))
+            .andExpect(status().isOk).andReturn().response.contentAsString)
+        val original = export(match.id)
+        val imported = mapper.readTree(mvc.perform(post("/api/v1/matches/import").contentType(MediaType.APPLICATION_JSON)
+            .content(mapper.writeValueAsBytes(original))).andExpect(status().isOk).andReturn().response.contentAsString)
+        val copy = export(UUID.fromString(imported["matchIds"][match.id.toString()].asText()))["matches"][0]
+        assertEquals(listOf("PULL", "PICKUP", "ANNOUNCEMENT_START", "ANNOUNCEMENT_END", "GOAL"),
+            copy["events"].map { it["type"].asText() })
+        assertEquals(copy["teams"][0]["teamId"], copy["events"][2]["teamId"])
+        assertEquals(at.plusSeconds(6).toString(), copy["events"][3]["occurredAt"].asText())
+    }
 
     @Test
     fun `ordered batch assigns canonical numbers and retry is side effect free`() {

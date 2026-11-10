@@ -40,20 +40,20 @@ class EventOpenApiTest {
         assertTrue(example.path("description").asText().isNotBlank())
         val payload = example["value"]
         val schemaName = CREATE_TYPES.entries.single { type.name in it.value }.key
-        assertEquals(CREATE_FIELDS.getValue(schemaName) + "eventId", payload.fieldNames().asSequence().toSet())
+        assertEquals(createProperties(schemaName), payload.fieldNames().asSequence().toSet())
         val request = objectMapper.treeToValue(payload, CreateEventRequest::class.java)
         assertEquals(type, request.type)
         assertEquals(schemaName, request.javaClass.simpleName)
     }
 
     @ParameterizedTest
-    @ValueSource(strings = ["OnePlayerEventRequest", "TwoPlayerEventRequest", "TeamEventRequest", "SystemEventRequest"])
+    @ValueSource(strings = ["OnePlayerEventRequest", "TwoPlayerEventRequest", "TeamEventRequest", "SystemEventRequest", "AnnouncementStartRequest"])
     fun `creation schemas describe all required fields and map types to their payload shape`(name: String) {
         val schemas = apiDocs()["components"]["schemas"]
         val schema = schemas[name]
         val properties = resolvedProperties(schema, schemas)
         assertEquals(CREATE_FIELDS.getValue(name), schema.path("required").map { it.asText() }.toSet())
-        assertEquals(CREATE_FIELDS.getValue(name) + "eventId", properties.keys)
+        assertEquals(createProperties(name), properties.keys)
         CREATE_TYPES.getValue(name).forEach { type ->
             assertEquals("#/components/schemas/$name", schemas["CreateEventRequest"]["discriminator"]["mapping"][type].asText())
         }
@@ -105,7 +105,7 @@ class EventOpenApiTest {
             expectedFields.keys.map { "#/components/schemas/$it" }.toSet(),
             patch["oneOf"].map { it["\$ref"].asText() }.toSet(),
         )
-        val allowedTypes = CREATE_TYPES.filterKeys { it != "SystemEventRequest" }.values.flatten().toSet()
+        val allowedTypes = expectedFields.keys.flatMap { CREATE_TYPES.getValue(it.removeSuffix("PatchRequest") + "Request") }.toSet()
         assertEquals(allowedTypes, patch["discriminator"]["mapping"].fieldNames().asSequence().toSet())
     }
 
@@ -129,13 +129,30 @@ class EventOpenApiTest {
     fun `PATCH documents immutable time block refinement and unsupported system edits`() {
         val operation = apiDocs()["paths"][EVENT_PATH]["patch"]
         val description = operation.path("description").asText()
-        listOf("occurredAt", "BLOCK", "BLOCK_MARKER", "BLOCK_FIELD", "HALFTIME_START", "HALFTIME_END")
+        listOf("occurredAt", "BLOCK", "BLOCK_MARKER", "BLOCK_FIELD", "HALFTIME_START", "HALFTIME_END", "ANNOUNCEMENT_START", "ANNOUNCEMENT_END")
             .forEach { assertTrue(it in description, "PATCH must explain $it") }
         assertTrue(operation["responses"].has("405"))
         assertEquals(
             "#/components/schemas/ProblemDetail",
             operation["responses"]["409"]["content"]["application/problem+json"]["schema"]["\$ref"].asText(),
         )
+    }
+
+    private fun createProperties(name: String): Set<String> =
+        CREATE_FIELDS.getValue(name) + "eventId" + if (name == "AnnouncementStartRequest") setOf("teamId") else emptySet()
+
+    @Test
+    fun `announcement schemas preserve explicit nullable attribution in canonical reads`() {
+        val schemas = apiDocs()["components"]["schemas"]
+        val input = resolvedProperties(schemas["AnnouncementStartRequest"], schemas).getValue("teamId")
+        val response = schemas["AnnouncementStartResponse"]
+        val output = resolvedProperties(response, schemas).getValue("teamId")
+        assertEquals(setOf("string", "null"), input["type"].map { it.asText() }.toSet())
+        assertEquals(setOf("string", "null"), output["type"].map { it.asText() }.toSet())
+        assertTrue("teamId" in response["required"].map { it.asText() })
+        val mapping = schemas["EventResponse"]["discriminator"]["mapping"]
+        assertEquals("#/components/schemas/AnnouncementStartResponse", mapping["ANNOUNCEMENT_START"].asText())
+        assertEquals("#/components/schemas/SystemEventResponse", mapping["ANNOUNCEMENT_END"].asText())
     }
 
     private fun apiDocs(): JsonNode = objectMapper.readTree(
@@ -159,13 +176,15 @@ class EventOpenApiTest {
             "OnePlayerEventRequest" to setOf("INCOMPLETE_PASS", "PULL", "BRICK", "PICKUP"),
             "TwoPlayerEventRequest" to setOf("PASS", "GOAL", "BLOCK", "BLOCK_MARKER", "BLOCK_FIELD", "INTERCEPTION", "CALLAHAN"),
             "TeamEventRequest" to setOf("TIMEOUT_START", "TIMEOUT_END"),
-            "SystemEventRequest" to setOf("HALFTIME_START", "HALFTIME_END"),
+            "SystemEventRequest" to setOf("HALFTIME_START", "HALFTIME_END", "ANNOUNCEMENT_END"),
+            "AnnouncementStartRequest" to setOf("ANNOUNCEMENT_START"),
         )
         val CREATE_FIELDS = mapOf(
             "OnePlayerEventRequest" to setOf("type", "occurredAt", "participantId"),
             "TwoPlayerEventRequest" to setOf("type", "occurredAt", "fromParticipantId", "toParticipantId"),
             "TeamEventRequest" to setOf("type", "occurredAt", "teamId"),
             "SystemEventRequest" to setOf("type", "occurredAt"),
+            "AnnouncementStartRequest" to setOf("type", "occurredAt"),
         )
     }
 }

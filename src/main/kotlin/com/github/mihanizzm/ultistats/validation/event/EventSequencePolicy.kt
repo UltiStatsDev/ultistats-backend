@@ -41,15 +41,18 @@ class EventSequencePolicy {
             else -> null
         }
         EventSequenceState.PullInFlight -> when (type) {
+            EventType.ANNOUNCEMENT_START -> EventSequenceState.Announcement(state)
             EventType.BRICK -> EventSequenceState.PickupRequired
             EventType.PICKUP -> EventSequenceState.PossessionActive
             else -> null
         }
         EventSequenceState.PickupRequired -> when (type) {
+            EventType.ANNOUNCEMENT_START -> EventSequenceState.Announcement(state)
             EventType.PICKUP -> EventSequenceState.PossessionActive
             else -> null
         }
         EventSequenceState.PossessionActive -> when (type) {
+            EventType.ANNOUNCEMENT_START -> EventSequenceState.Announcement(state)
             EventType.PASS, EventType.INTERCEPTION -> EventSequenceState.PossessionActive
             EventType.GOAL, EventType.CALLAHAN -> EventSequenceState.PointEnded
             EventType.INCOMPLETE_PASS,
@@ -62,6 +65,10 @@ class EventSequencePolicy {
         }
         EventSequenceState.Halftime -> when (type) {
             EventType.HALFTIME_END -> EventSequenceState.AfterHalftime
+            else -> null
+        }
+        is EventSequenceState.Announcement -> when (type) {
+            EventType.ANNOUNCEMENT_END -> state.resume
             else -> null
         }
         is EventSequenceState.Timeout -> when (type) {

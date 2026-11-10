@@ -1,10 +1,12 @@
 package com.github.mihanizzm.ultistats.factory
 
+import com.github.mihanizzm.ultistats.dto.request.AnnouncementStartRequest
 import com.github.mihanizzm.ultistats.dto.request.CreateEventRequest
 import com.github.mihanizzm.ultistats.dto.request.OnePlayerEventRequest
 import com.github.mihanizzm.ultistats.dto.request.SystemEventRequest
 import com.github.mihanizzm.ultistats.dto.request.TeamEventRequest
 import com.github.mihanizzm.ultistats.dto.request.TwoPlayerEventRequest
+import com.github.mihanizzm.ultistats.model.events.AnnouncementStartEvent
 import com.github.mihanizzm.ultistats.model.events.Event
 import com.github.mihanizzm.ultistats.model.events.EventCategory
 import com.github.mihanizzm.ultistats.model.events.EventType
@@ -70,10 +72,16 @@ class EventFactory(
                 if (request.type.category != EventCategory.TEAM) {
                     return invalid("Event type ${request.type} is not valid for a team request")
                 }
-                val teamExists = matchTeamRepository.findAllByMatchIdOrderByPosition(matchId)
-                    .any { it.teamId == request.teamId }
-                if (!teamExists) return invalid("Team ${request.teamId} is not part of match $matchId")
+                if (!hasTeam(matchId, request.teamId)) return invalid("Team ${request.teamId} is not part of match $matchId")
                 EventCreationResult.Success(TeamEvent(request.teamId, request.occurredAt, request.type))
+            }
+            is AnnouncementStartRequest -> {
+                if (request.type != EventType.ANNOUNCEMENT_START) {
+                    return invalid("Event type ${request.type} is not valid for an announcement start request")
+                }
+                val team = request.teamId
+                if (team != null && !hasTeam(matchId, team)) return invalid("Team $team is not part of match $matchId")
+                EventCreationResult.Success(AnnouncementStartEvent(team, request.occurredAt))
             }
             is SystemEventRequest -> {
                 if (request.type.category != EventCategory.SYSTEM) {
@@ -83,6 +91,9 @@ class EventFactory(
             }
         }
     }
+
+    private fun hasTeam(matchId: UUID, teamId: UUID): Boolean =
+        matchTeamRepository.findAllByMatchIdOrderByPosition(matchId).any { it.teamId == teamId }
 
     private fun invalid(detail: String) = EventCreationResult.Invalid(detail)
 }

@@ -1,10 +1,12 @@
 package com.github.mihanizzm.ultistats.service.statistics
 
+import com.github.mihanizzm.ultistats.model.events.AnnouncementStartEvent
 import com.github.mihanizzm.ultistats.model.events.Event
 import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.model.events.OnePlayerEvent
 import com.github.mihanizzm.ultistats.model.events.TeamEvent
 import com.github.mihanizzm.ultistats.model.events.TwoPlayerEvent
+import com.github.mihanizzm.ultistats.model.statistics.AnnouncementStatistics
 import com.github.mihanizzm.ultistats.model.statistics.MatchStatistics
 import com.github.mihanizzm.ultistats.model.statistics.MatchTimeStatistics
 import org.springframework.stereotype.Component
@@ -25,6 +27,8 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
         var currentParticipantPossessing: UUID? = null
         var isStopped = false
         var teamOnTimeout: UUID? = null
+        var announcementStart: AnnouncementStartEvent? = null
+        val announcements = mutableMapOf<UUID?, AnnouncementStatistics>()
         var lastBetweenPointsStart: Instant? = null
 
         val teamPossessionTime = mutableMapOf<UUID, Duration>().withDefault { Duration.ZERO }
@@ -67,7 +71,7 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
                     }
                     holdingDuration = Duration.ZERO
                 }
-                else -> Unit // Timeout pauses the current hold without completing it.
+                else -> Unit // Timeouts and announcements pause the hold without completing it.
             }
 
             when (event.type) {
@@ -119,6 +123,21 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
                     // Кэллахан завершает поинт
                     lastBetweenPointsStart = event.occurredAt
                 }
+                EventType.ANNOUNCEMENT_START -> {
+                    announcementStart = event as AnnouncementStartEvent
+                    isStopped = true
+                }
+                EventType.ANNOUNCEMENT_END -> {
+                    announcementStart?.let { start ->
+                        val previous = announcements[start.team] ?: AnnouncementStatistics()
+                        announcements[start.team] = AnnouncementStatistics(
+                            previous.count + 1,
+                            previous.duration.plus(Duration.between(start.occurredAt, event.occurredAt)),
+                        )
+                        isStopped = false
+                    }
+                    announcementStart = null
+                }
                 EventType.TIMEOUT_START -> {
                     teamOnTimeout = (event as TeamEvent).team
                     isStopped = true
@@ -156,6 +175,7 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
             .minus(totalTimeBetweenPoints)
             .minus(totalTimeOnTimeouts)
             .minus(timeSpentOnHalftime)
+            .minus(announcements.values.fold(Duration.ZERO) { sum, item -> sum.plus(item.duration) })
 
         val newPlayerStats = previousStatisticsState.playerStatistics.map { stats ->
             val possession = participantPossessionTime.getOrDefault(stats.participantId, Duration.ZERO)
@@ -188,6 +208,7 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
                 timeSpentOnTimeouts = totalTimeOnTimeouts,
                 timeSpentOnHalftime = timeSpentOnHalftime,
                 pureGameTime = purePlayTime,
+                announcements = announcements.toMap(),
             ),
         )
     }

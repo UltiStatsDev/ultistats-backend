@@ -24,9 +24,11 @@ import java.util.UUID
     JsonSubTypes.Type(TeamEventPatchRequest::class, name = "TIMEOUT_END"),
     JsonSubTypes.Type(SystemEventPatchRequest::class, name = "HALFTIME_START"),
     JsonSubTypes.Type(SystemEventPatchRequest::class, name = "HALFTIME_END"),
+    JsonSubTypes.Type(SystemEventPatchRequest::class, name = "ANNOUNCEMENT_START"),
+    JsonSubTypes.Type(SystemEventPatchRequest::class, name = "ANNOUNCEMENT_END"),
 )
 @Schema(
-    description = "Исправление участников или команды существующего события. occurredAt неизменяем и не входит в PATCH. Редактирование HALFTIME_START/HALFTIME_END не поддерживается (405).",
+    description = "Исправление участников или команды существующего события. occurredAt неизменяем и не входит в PATCH. Редактирование HALFTIME_START/HALFTIME_END и ANNOUNCEMENT_START/ANNOUNCEMENT_END не поддерживается (405).",
     oneOf = [OnePlayerEventPatchRequest::class, TwoPlayerEventPatchRequest::class, TeamEventPatchRequest::class],
     discriminatorProperty = "type",
     discriminatorMapping = [
@@ -90,5 +92,5 @@ data class TeamEventPatchRequest(
     val teamId: UUID,
 ) : UpdateEventRequest
 
-@Schema(description = "Системные события HALFTIME_START/HALFTIME_END не редактируются: запрос с сохранённым type возвращает 405 Method Not Allowed.")
+@Schema(description = "Границы перерыва и объявления не редактируются: запрос с сохранённым type возвращает 405 Method Not Allowed.")
 data class SystemEventPatchRequest(override val type: EventType) : UpdateEventRequest
