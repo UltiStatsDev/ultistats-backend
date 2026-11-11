@@ -649,19 +649,21 @@ class EventControllerTest {
         mockMvc.perform(get("/v3/api-docs"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.propertyName").value("type"))
-            .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.length()").value(17))
+            .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.length()").value(18))
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.PICKUP").value("#/components/schemas/OnePlayerEventResponse"))
+            .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.POSSESSION_SET").value("#/components/schemas/OnePlayerEventResponse"))
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.BLOCK").value("#/components/schemas/TwoPlayerEventResponse"))
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.PASS").value("#/components/schemas/TwoPlayerEventResponse"))
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.TIMEOUT_START").value("#/components/schemas/TeamEventResponse"))
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.HALFTIME_START").value("#/components/schemas/SystemEventResponse"))
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.ANNOUNCEMENT_START").value("#/components/schemas/AnnouncementStartResponse"))
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.ANNOUNCEMENT_END").value("#/components/schemas/SystemEventResponse"))
-            .andExpect(jsonPath("$.components.schemas.CreateEventRequest.discriminator.mapping.length()").value(17))
+            .andExpect(jsonPath("$.components.schemas.CreateEventRequest.discriminator.mapping.length()").value(18))
             .andExpect(jsonPath("$.components.schemas.CreateEventRequest.discriminator.mapping.ANNOUNCEMENT_START").value("#/components/schemas/AnnouncementStartRequest"))
             .andExpect(jsonPath("$.components.schemas.CreateEventRequest.discriminator.mapping.ANNOUNCEMENT_END").value("#/components/schemas/SystemEventRequest"))
-            .andExpect(jsonPath("$.components.schemas.UpdateEventRequest.discriminator.mapping.length()").value(13))
+            .andExpect(jsonPath("$.components.schemas.UpdateEventRequest.discriminator.mapping.length()").value(14))
             .andExpect(jsonPath("$.components.schemas.UpdateEventRequest.discriminator.mapping.PICKUP").value("#/components/schemas/OnePlayerEventPatchRequest"))
+            .andExpect(jsonPath("$.components.schemas.UpdateEventRequest.discriminator.mapping.POSSESSION_SET").value("#/components/schemas/OnePlayerEventPatchRequest"))
             .andExpect(jsonPath("$.components.schemas.UpdateEventRequest.discriminator.mapping.BLOCK_MARKER").value("#/components/schemas/TwoPlayerEventPatchRequest"))
             .andExpect(jsonPath("$.components.schemas.UpdateEventRequest.discriminator.mapping.TIMEOUT_START").value("#/components/schemas/TeamEventPatchRequest"))
     }
@@ -683,6 +685,7 @@ class EventControllerTest {
             "PULL" to commonFields + "participantId",
             "BRICK" to commonFields + "participantId",
             "PICKUP" to commonFields + "participantId",
+            "POSSESSION_SET" to commonFields + "participantId",
             "BLOCK" to commonFields + setOf("fromParticipantId", "toParticipantId"),
             "BLOCK_MARKER" to commonFields + setOf("fromParticipantId", "toParticipantId"),
             "BLOCK_FIELD" to commonFields + setOf("fromParticipantId", "toParticipantId"),

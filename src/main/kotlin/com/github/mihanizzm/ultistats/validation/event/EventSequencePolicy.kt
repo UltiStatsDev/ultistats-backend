@@ -43,17 +43,17 @@ class EventSequencePolicy {
         EventSequenceState.PullInFlight -> when (type) {
             EventType.ANNOUNCEMENT_START -> EventSequenceState.Announcement(state)
             EventType.BRICK -> EventSequenceState.PickupRequired
-            EventType.PICKUP -> EventSequenceState.PossessionActive
+            EventType.PICKUP, EventType.POSSESSION_SET -> EventSequenceState.PossessionActive
             else -> null
         }
         EventSequenceState.PickupRequired -> when (type) {
             EventType.ANNOUNCEMENT_START -> EventSequenceState.Announcement(state)
-            EventType.PICKUP -> EventSequenceState.PossessionActive
+            EventType.PICKUP, EventType.POSSESSION_SET -> EventSequenceState.PossessionActive
             else -> null
         }
         EventSequenceState.PossessionActive -> when (type) {
             EventType.ANNOUNCEMENT_START -> EventSequenceState.Announcement(state)
-            EventType.PASS, EventType.INTERCEPTION -> EventSequenceState.PossessionActive
+            EventType.PASS, EventType.INTERCEPTION, EventType.POSSESSION_SET -> EventSequenceState.PossessionActive
             EventType.GOAL, EventType.CALLAHAN -> EventSequenceState.PointEnded
             EventType.INCOMPLETE_PASS,
             EventType.BLOCK,

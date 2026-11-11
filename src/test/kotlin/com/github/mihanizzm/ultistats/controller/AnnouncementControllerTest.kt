@@ -219,7 +219,7 @@ open class AnnouncementWriteDisabledTest : AnnouncementHttpFixture() {
             .andExpect(status().isOk)
             .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, approvedOrigin))
             .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
-                "$ANNOUNCEMENT_START_ENABLED_HEADER, $ANNOUNCEMENT_STATISTICS_HEADER"))
+                "$ANNOUNCEMENT_START_ENABLED_HEADER, $ANNOUNCEMENT_STATISTICS_HEADER, $POSSESSION_CHANGE_ENABLED_HEADER"))
             .andExpect(header().string(ANNOUNCEMENT_START_ENABLED_HEADER, "false"))
 
         val body = mapOf("id" to id, "startedAt" to at)
@@ -237,7 +237,7 @@ open class AnnouncementWriteDisabledTest : AnnouncementHttpFixture() {
             .andExpect(status().isOk)
             .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, approvedOrigin))
             .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
-                "$ANNOUNCEMENT_START_ENABLED_HEADER, $ANNOUNCEMENT_STATISTICS_HEADER"))
+                "$ANNOUNCEMENT_START_ENABLED_HEADER, $ANNOUNCEMENT_STATISTICS_HEADER, $POSSESSION_CHANGE_ENABLED_HEADER"))
             .andExpect(header().string(ANNOUNCEMENT_STATISTICS_HEADER, "combined-v1"))
     }
 

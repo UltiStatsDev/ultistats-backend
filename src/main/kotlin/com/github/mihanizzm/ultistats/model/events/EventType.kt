@@ -35,6 +35,9 @@ enum class EventType(
      */
     PICKUP("Подбор диска", EventCategory.ONE_PLAYER),
 
+    /** Establishes the actual holder within an active point without recording a gameplay action. */
+    POSSESSION_SET("Смена владельца диска", EventCategory.ONE_PLAYER),
+
     /**
      * Блок без уточнения позиции защитника. Первый участник — бросающий, второй — выполнивший блок защитник.
      * Защитнику записывается неуточнённый block; диск остаётся свободным до [PICKUP].

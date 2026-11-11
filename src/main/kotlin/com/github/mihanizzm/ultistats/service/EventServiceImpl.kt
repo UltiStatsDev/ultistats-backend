@@ -52,6 +52,7 @@ class EventServiceImpl(
     private val receiptRepository: SpringDataEventBatchReceiptRepository,
     private val undoReceipts: SpringDataUndoCommandReceiptRepository,
     private val objectMapper: ObjectMapper,
+    private val possessionChangeWrites: PossessionChangeWrites,
 ) : EventService {
     @Transactional
     override fun create(event: Event, matchId: UUID, eventId: UUID?): EventCommandResult {
@@ -168,6 +169,9 @@ class EventServiceImpl(
         val active = eventRepository.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(match.id)
         val policyMatch = match.toPolicyMatch(active)
         pending.forEachIndexed { index, command ->
+            possessionChangeWrites.rejection(command.event.type)?.let {
+                return AppendResult.Rejected(EventCommandResult.Conflict(it), index)
+            }
             lifecyclePolicy.validateEventCreation(policyMatch, command.event.occurredAt).toCommandRejection()
                 ?.let { return AppendResult.Rejected(it, index) }
             validateSequence(policyMatch.events + command.event)
@@ -216,6 +220,7 @@ class EventServiceImpl(
 
         require(event.type.canReplace(existing.eventType)) { "Event type can only be refined within the block family" }
         require(event.occurredAt == existing.effectiveOccurredAt) { "Event occurrence time is immutable" }
+        possessionChangeWrites.rejection(event.type)?.let { return EventCommandResult.Conflict(it) }
         val activeEvents = eventRepository.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(matchId)
         val proposedEvents = activeEvents.map { entity ->
             if (entity.id == eventId) event else entity.toDomain()

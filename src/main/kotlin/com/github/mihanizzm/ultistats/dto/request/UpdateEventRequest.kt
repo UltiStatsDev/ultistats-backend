@@ -13,6 +13,7 @@ import java.util.UUID
     JsonSubTypes.Type(OnePlayerEventPatchRequest::class, name = "PULL"),
     JsonSubTypes.Type(OnePlayerEventPatchRequest::class, name = "BRICK"),
     JsonSubTypes.Type(OnePlayerEventPatchRequest::class, name = "PICKUP"),
+    JsonSubTypes.Type(OnePlayerEventPatchRequest::class, name = "POSSESSION_SET"),
     JsonSubTypes.Type(TwoPlayerEventPatchRequest::class, name = "PASS"),
     JsonSubTypes.Type(TwoPlayerEventPatchRequest::class, name = "GOAL"),
     JsonSubTypes.Type(TwoPlayerEventPatchRequest::class, name = "BLOCK"),
@@ -36,6 +37,7 @@ import java.util.UUID
         DiscriminatorMapping(value = "PULL", schema = OnePlayerEventPatchRequest::class),
         DiscriminatorMapping(value = "BRICK", schema = OnePlayerEventPatchRequest::class),
         DiscriminatorMapping(value = "PICKUP", schema = OnePlayerEventPatchRequest::class),
+        DiscriminatorMapping(value = "POSSESSION_SET", schema = OnePlayerEventPatchRequest::class),
         DiscriminatorMapping(value = "PASS", schema = TwoPlayerEventPatchRequest::class),
         DiscriminatorMapping(value = "GOAL", schema = TwoPlayerEventPatchRequest::class),
         DiscriminatorMapping(value = "BLOCK", schema = TwoPlayerEventPatchRequest::class),
@@ -55,11 +57,11 @@ sealed interface UpdateEventRequest {
     val type: EventType
 }
 
-@Schema(description = "Замена единственного участника INCOMPLETE_PASS, PULL, BRICK или PICKUP. Обязательны type и participantId.")
+@Schema(description = "Замена единственного участника INCOMPLETE_PASS, PULL, BRICK, PICKUP или POSSESSION_SET. Обязательны type и participantId.")
 data class OnePlayerEventPatchRequest(
     override val type: EventType,
     @field:Schema(
-        description = "Обязательный UUID нового участника из той же команды снимка матча, что и исходный участник, включая UNKNOWN. Роли как в POST: INCOMPLETE_PASS — бросающий; PULL/BRICK — выполнивший пулл; PICKUP — подобравший диск.",
+        description = "Обязательный UUID нового участника, включая UNKNOWN. Для POSSESSION_SET допустима любая команда снимка, для остальных типов требуется исходная команда. Роли как в POST: INCOMPLETE_PASS — бросающий; PULL/BRICK — выполнивший пулл; PICKUP — подобравший диск.",
         example = "11111111-1111-1111-1111-111111111111",
     )
     val participantId: UUID,

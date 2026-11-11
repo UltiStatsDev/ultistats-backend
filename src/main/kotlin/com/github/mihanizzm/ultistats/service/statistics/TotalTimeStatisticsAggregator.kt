@@ -75,18 +75,20 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
 
             lastEventTime = event.occurredAt
 
-            when (event.type) {
+            val completesHold = when (event.type) {
                 EventType.PASS, EventType.GOAL, EventType.PICKUP,
                 EventType.BLOCK, EventType.BLOCK_MARKER, EventType.BLOCK_FIELD,
                 EventType.INCOMPLETE_PASS, EventType.INTERCEPTION, EventType.CALLAHAN,
-                EventType.HALFTIME_START -> {
-                    currentParticipantPossessing?.let { participant ->
-                        completedHoldingDuration.merge(participant, holdingDuration, Duration::plus)
-                        completedHoldCount.merge(participant, 1L, Long::plus)
-                    }
-                    holdingDuration = Duration.ZERO
+                EventType.HALFTIME_START -> true
+                EventType.POSSESSION_SET -> currentParticipantPossessing != (event as OnePlayerEvent).participant
+                else -> false // Timeouts and announcements pause the hold without completing it.
+            }
+            if (completesHold) {
+                currentParticipantPossessing?.let { participant ->
+                    completedHoldingDuration.merge(participant, holdingDuration, Duration::plus)
+                    completedHoldCount.merge(participant, 1L, Long::plus)
                 }
-                else -> Unit // Timeouts and announcements pause the hold without completing it.
+                holdingDuration = Duration.ZERO
             }
 
             when (event.type) {
@@ -118,7 +120,7 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
                     isStopped = false
                 }
                 EventType.BRICK -> { }
-                EventType.PICKUP -> {
+                EventType.PICKUP, EventType.POSSESSION_SET -> {
                     val ope = event as OnePlayerEvent
                     currentTeamPossessing = teamByParticipantId.getValue(ope.participant)
                     currentParticipantPossessing = ope.participant

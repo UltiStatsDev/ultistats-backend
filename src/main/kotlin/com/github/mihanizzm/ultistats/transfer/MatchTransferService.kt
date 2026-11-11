@@ -1,9 +1,12 @@
 package com.github.mihanizzm.ultistats.transfer
 
 import com.github.mihanizzm.ultistats.model.*
+import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.repository.jpa.*
 import com.github.mihanizzm.ultistats.service.MatchAnnouncementService
 import com.github.mihanizzm.ultistats.service.MatchService
+import com.github.mihanizzm.ultistats.service.PossessionChangeWrites
+import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
@@ -20,6 +23,7 @@ class MatchTransferService(
     private val players: SpringDataPlayerRepository,
     private val matchService: MatchService,
     private val announcementService: MatchAnnouncementService,
+    private val possessionChangeWrites: PossessionChangeWrites,
     private val validator: MatchTransferValidator,
 ) {
     /** All queries see one source snapshot, even while an in-progress match changes. */
@@ -54,7 +58,7 @@ class MatchTransferService(
         val catalogTeams = teams.findAllById(sourceTeams.map { it.teamId }).associateBy { it.id }
         val catalogPlayers = players.findAllById(allPlayers.map { it.participantId }).associateBy { it.id }
         return MatchTransferPackage(
-            if (portableMatches.any { it.announcements.isNotEmpty() }) 2 else 1, portableMatches,
+            portableMatches.requiredFormatVersion(), portableMatches,
             sourceTeams.map { snapshot ->
                 val current = catalogTeams[snapshot.teamId]
                 PortableTeam(snapshot.teamId, current?.name ?: snapshot.teamName, current?.city)
@@ -70,6 +74,11 @@ class MatchTransferService(
     @Transactional
     fun importPackage(data: MatchTransferPackage): MatchTransferResult {
         validator.validate(data)
+        if (data.formatVersion == 3) {
+            possessionChangeWrites.rejection(EventType.POSSESSION_SET)?.let {
+                throw TransferWriteDisabledException(it)
+            }
+        }
         if (data.matches.any { it.announcements.isNotEmpty() }) announcementService.requireNewIntervalsEnabled()
         val matchIds = freshIds(data.matches.map { it.id })
         val teamIds = freshIds(data.teams.map { it.id })
@@ -115,3 +124,5 @@ class MatchTransferService(
 
     private fun freshIds(ids: List<UUID>): Map<UUID, UUID> = ids.associateWith { UUID.randomUUID() }
 }
+
+class TransferWriteDisabledException(val problem: MatchProblem) : RuntimeException(problem.detail)

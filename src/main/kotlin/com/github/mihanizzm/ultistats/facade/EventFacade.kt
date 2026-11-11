@@ -13,6 +13,7 @@ import com.github.mihanizzm.ultistats.factory.EventFactory
 import com.github.mihanizzm.ultistats.factory.EventCreationResult
 import com.github.mihanizzm.ultistats.model.events.AnnouncementStartEvent
 import com.github.mihanizzm.ultistats.model.events.Event
+import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.model.events.OnePlayerEvent
 import com.github.mihanizzm.ultistats.model.events.StoredEvent
 import com.github.mihanizzm.ultistats.model.events.SystemEvent
@@ -100,7 +101,9 @@ class EventFacade(
         }
         return when (val creation = eventFactory.createValidatedFromRequest(merged, matchId)) {
             is EventCreationResult.Success -> creation.event.also {
-                validateOriginalParticipantTeams(stored.event, it, matchId)
+                if (it.type != EventType.POSSESSION_SET) {
+                    validateOriginalParticipantTeams(stored.event, it, matchId)
+                }
             }
             is EventCreationResult.Invalid -> throw InvalidEventUpdateException(creation.detail)
         }

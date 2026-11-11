@@ -14,6 +14,7 @@ import java.util.UUID
     JsonSubTypes.Type(OnePlayerEventRequest::class, name = "PULL"),
     JsonSubTypes.Type(OnePlayerEventRequest::class, name = "BRICK"),
     JsonSubTypes.Type(OnePlayerEventRequest::class, name = "PICKUP"),
+    JsonSubTypes.Type(OnePlayerEventRequest::class, name = "POSSESSION_SET"),
     JsonSubTypes.Type(TwoPlayerEventRequest::class, name = "PASS"),
     JsonSubTypes.Type(TwoPlayerEventRequest::class, name = "GOAL"),
     JsonSubTypes.Type(TwoPlayerEventRequest::class, name = "BLOCK"),
@@ -36,6 +37,7 @@ import java.util.UUID
         DiscriminatorMapping(value = "PULL", schema = OnePlayerEventRequest::class),
         DiscriminatorMapping(value = "BRICK", schema = OnePlayerEventRequest::class),
         DiscriminatorMapping(value = "PICKUP", schema = OnePlayerEventRequest::class),
+        DiscriminatorMapping(value = "POSSESSION_SET", schema = OnePlayerEventRequest::class),
         DiscriminatorMapping(value = "PASS", schema = TwoPlayerEventRequest::class),
         DiscriminatorMapping(value = "GOAL", schema = TwoPlayerEventRequest::class),
         DiscriminatorMapping(value = "BLOCK", schema = TwoPlayerEventRequest::class),
@@ -72,12 +74,12 @@ sealed interface CreateEventRequest {
     val occurredAt: Instant
 }
 
-@Schema(description = "Событие с одним участником матча: INCOMPLETE_PASS, PULL, BRICK или PICKUP.")
+@Schema(description = "Событие с одним участником матча: INCOMPLETE_PASS, PULL, BRICK, PICKUP или POSSESSION_SET.")
 data class OnePlayerEventRequest(
     override val type: EventType,
     override val occurredAt: Instant,
     @field:Schema(
-        description = "UUID участника из состава этого матча (participantId, включая UNKNOWN). INCOMPLETE_PASS — бросающий, чей пас не завершён; PULL — выполнивший пулл; BRICK — выполнивший предшествующий пулл, а не объявивший брик; PICKUP — подобравший диск.",
+        description = "UUID участника из состава этого матча (participantId, включая UNKNOWN). INCOMPLETE_PASS — бросающий, чей пас не завершён; PULL — выполнивший пулл; BRICK — выполнивший предшествующий пулл, а не объявивший брик; PICKUP — подобравший диск; POSSESSION_SET — фактический владелец из любой команды снимка.",
         example = "11111111-1111-1111-1111-111111111111",
     )
     val participantId: UUID,

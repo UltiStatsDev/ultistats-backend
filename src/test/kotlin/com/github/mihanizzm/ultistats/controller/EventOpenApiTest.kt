@@ -173,7 +173,7 @@ class EventOpenApiTest {
         const val EVENTS_PATH = "/api/v1/matches/{matchId}/events"
         const val EVENT_PATH = "/api/v1/matches/{matchId}/events/{eventId}"
         val CREATE_TYPES = mapOf(
-            "OnePlayerEventRequest" to setOf("INCOMPLETE_PASS", "PULL", "BRICK", "PICKUP"),
+            "OnePlayerEventRequest" to setOf("INCOMPLETE_PASS", "PULL", "BRICK", "PICKUP", "POSSESSION_SET"),
             "TwoPlayerEventRequest" to setOf("PASS", "GOAL", "BLOCK", "BLOCK_MARKER", "BLOCK_FIELD", "INTERCEPTION", "CALLAHAN"),
             "TeamEventRequest" to setOf("TIMEOUT_START", "TIMEOUT_END"),
             "SystemEventRequest" to setOf("HALFTIME_START", "HALFTIME_END", "ANNOUNCEMENT_END"),

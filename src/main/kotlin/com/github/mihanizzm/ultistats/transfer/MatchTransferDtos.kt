@@ -9,9 +9,9 @@ import java.util.UUID
 
 data class MatchExportRequest(val matchIds: List<UUID>)
 
-@Schema(description = "Portable selected-match package. Versions 1 and 2 create independent copies. Version 2 includes standalone announcement intervals.")
+@Schema(description = "Portable selected-match package. Versions 1 and 2 create independent copies. Version 2 includes standalone announcement intervals. Version 3 includes POSSESSION_SET events and may also include standalone intervals.")
 data class MatchTransferPackage(
-    @field:Schema(description = "Required format version: 1 without standalone announcements, 2 with standalone announcements.", minimum = "1", maximum = "2")
+    @field:Schema(description = "Required format version: 3 with POSSESSION_SET, otherwise 2 with standalone announcements, otherwise 1.", minimum = "1", maximum = "3")
     val formatVersion: Int,
     val matches: List<PortableMatch>,
     val teams: List<PortableTeam>,
@@ -33,7 +33,7 @@ data class PortableMatch(
     val events: List<PortableEvent>,
     @get:JsonInclude(JsonInclude.Include.NON_EMPTY)
     @field:Schema(
-        description = "Standalone announcement intervals, omitted when empty. Nonempty intervals require format version 2.",
+        description = "Standalone announcement intervals, omitted when empty. Nonempty intervals require format version 2 or 3.",
         requiredMode = Schema.RequiredMode.NOT_REQUIRED,
     )
     val announcements: List<PortableAnnouncement> = emptyList(),
@@ -71,7 +71,7 @@ data class PortableEvent(
     val sequenceNumber: Int,
     val type: EventType,
     val occurredAt: Instant,
-    @field:Schema(description = "ONE_PLAYER: acting participant. TWO_PLAYER: throwing participant. Absent for TEAM/SYSTEM.")
+    @field:Schema(description = "ONE_PLAYER: acting participant or new holder for POSSESSION_SET. TWO_PLAYER: throwing participant. Absent for TEAM/SYSTEM.")
     val fromParticipantId: UUID? = null,
     @field:Schema(description = "TWO_PLAYER: receiver or defender; absent for other categories.")
     val toParticipantId: UUID? = null,

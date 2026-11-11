@@ -28,6 +28,8 @@ spring:
 ultistats:
   announcements:
     write-enabled: ${ULTISTATS_ANNOUNCEMENTS_WRITE_ENABLED:false}
+  possession-change:
+    write-enabled: ${ULTISTATS_POSSESSION_CHANGE_WRITE_ENABLED:false}
 
 server:
   tomcat:

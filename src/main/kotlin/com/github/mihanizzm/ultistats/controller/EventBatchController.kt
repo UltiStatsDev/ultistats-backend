@@ -4,16 +4,19 @@ import com.github.mihanizzm.ultistats.dto.request.CreateEventBatchRequest
 import com.github.mihanizzm.ultistats.dto.response.EventLogResponse
 import com.github.mihanizzm.ultistats.service.EventIdempotencyConflictException
 import com.github.mihanizzm.ultistats.service.EventService
+import com.github.mihanizzm.ultistats.service.PossessionChangeWrites
 import com.github.mihanizzm.ultistats.service.result.EventBatchResult
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.headers.Header
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.servlet.http.HttpServletRequest
+import org.springframework.http.CacheControl
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
@@ -22,24 +25,43 @@ import org.springframework.web.bind.annotation.*
 import java.net.URI
 import java.util.UUID
 
+const val POSSESSION_CHANGE_ENABLED_HEADER = "X-UltiStats-Possession-Change-Enabled"
+
 @RestController
 @RequestMapping("/api/v2/matches/{matchId}/events")
 @Tag(name = "Events v2", description = "Offline-first event synchronization. v1 remains supported and is not deprecated pending frontend migration and field acceptance.")
-class EventBatchController(private val events: EventService) {
+class EventBatchController(
+    private val events: EventService,
+    private val possessionChangeWrites: PossessionChangeWrites,
+) {
     @GetMapping
     @Operation(summary = "Read a consistent canonical event log and synchronization position",
         description = "Returns active events in sequenceNumber order, the highest ever allocated number (including deleted events), and logRevision under the match lock. Use both position fields for the next batch. No events are reordered by occurredAt.")
     @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Consistent snapshot", content = [Content(schema = Schema(implementation = EventLogResponse::class))]),
+        ApiResponse(
+            responseCode = "200", description = "Consistent snapshot",
+            content = [Content(schema = Schema(implementation = EventLogResponse::class))],
+            headers = [Header(
+                name = POSSESSION_CHANGE_ENABLED_HEADER,
+                description = "Whether the server accepts new POSSESSION_SET writes. Independent of announcement capabilities.",
+                schema = Schema(type = "string", allowableValues = ["true", "false"]),
+            )],
+        ),
         ApiResponse(responseCode = "404", description = "Match not found: empty body, no Content-Type header", content = [Content()]),
     )
     fun snapshot(@PathVariable matchId: UUID): ResponseEntity<EventLogResponse> =
-        events.snapshot(matchId)?.let { ResponseEntity.ok(it) } ?: ResponseEntity.notFound().build()
+        events.snapshot(matchId)?.let {
+            ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .header(POSSESSION_CHANGE_ENABLED_HEADER, possessionChangeWrites.enabled.toString())
+                .body(it)
+        } ?: ResponseEntity.notFound().build()
 
     @PostMapping("/batch")
     @Operation(summary = "Atomically append 1–100 ordered events with stable client UUIDs",
         description = "Server assigns consecutive sequence numbers in request order. Both expected bases are required. " +
             "The entire batch commits or nothing commits; lifecycle, participants, timestamps and EventSequencePolicy match v1. " +
+            "POSSESSION_SET requires participantId from either team and an active point after PULL. " +
+            "Its write gate does not affect canonical reads, exact retries or Undo. " +
             "Equal timestamps are allowed; backwards timestamps are rejected. Score is recalculated once. " +
             "201 confirms a new batch; 200 replays the exact original batch (same bases, UUIDs, payloads and order), even after later appends. " +
             "PATCH/DELETE/undo through either API invalidate earlier batch retries. Partial, reordered and subset retries are 409. " +
@@ -50,7 +72,7 @@ class EventBatchController(private val events: EventService) {
         ApiResponse(responseCode = "200", description = "Exact retry, no writes or repeated notifications", content = [Content(schema = Schema(implementation = EventLogResponse::class))]),
         ApiResponse(responseCode = "400", description = "Invalid body, bases, batch size, missing/repeated UUID or invalid event participants", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = EventBatchProblem::class))]),
         ApiResponse(responseCode = "404", description = "Match not found"),
-        ApiResponse(responseCode = "409", description = "EVENT_LOG_STALE, EVENT_BATCH_CONFLICT, EVENT_IDEMPOTENCY_CONFLICT, EVENT_SEQUENCE_VIOLATION or existing lifecycle/timestamp code. No writes. Includes current position and offending eventId/eventIndex when applicable (zero-based index).", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = EventBatchProblem::class))]),
+        ApiResponse(responseCode = "409", description = "EVENT_LOG_STALE, EVENT_BATCH_CONFLICT, EVENT_IDEMPOTENCY_CONFLICT, EVENT_SEQUENCE_VIOLATION, POSSESSION_CHANGE_WRITE_DISABLED or existing lifecycle/timestamp code. No writes. Includes current position and offending eventId/eventIndex when applicable (zero-based index).", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = EventBatchProblem::class))]),
     )
     fun append(
         @PathVariable matchId: UUID,
