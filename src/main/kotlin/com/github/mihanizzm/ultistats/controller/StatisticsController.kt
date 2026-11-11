@@ -5,6 +5,7 @@ import com.github.mihanizzm.ultistats.facade.StatisticsFacade
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.headers.Header
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.ExampleObject
 import io.swagger.v3.oas.annotations.media.Schema
@@ -25,6 +26,9 @@ import org.springframework.web.bind.annotation.RestController
 import java.net.URI
 import java.util.UUID
 
+const val ANNOUNCEMENT_STATISTICS_HEADER = "X-UltiStats-Announcement-Statistics"
+private const val COMBINED_ANNOUNCEMENT_STATISTICS = "combined-v1"
+
 @RestController
 @RequestMapping("/api/v1/matches/{matchId}/statistics")
 @Tag(name = "Statistics", description = "Получение статистики матча")
@@ -38,6 +42,11 @@ class StatisticsController(
             ApiResponse(
                 responseCode = "200",
                 description = "Статистика матча",
+                headers = [Header(
+                    name = ANNOUNCEMENT_STATISTICS_HEADER,
+                    description = "Combined completed legacy and standalone announcement totals; timing accounts for standalone intervals",
+                    schema = Schema(type = "string", allowableValues = [COMBINED_ANNOUNCEMENT_STATISTICS]),
+                )],
                 content = [Content(
                     mediaType = MediaType.APPLICATION_JSON_VALUE,
                     schema = Schema(implementation = MatchStatisticsResponse::class),
@@ -60,7 +69,7 @@ class StatisticsController(
         @PathVariable matchId: UUID,
         request: HttpServletRequest,
     ): ResponseEntity<*> = statisticsFacade.get(matchId)
-        ?.let { ResponseEntity.ok(it) }
+        ?.let { ResponseEntity.ok().header(ANNOUNCEMENT_STATISTICS_HEADER, COMBINED_ANNOUNCEMENT_STATISTICS).body(it) }
         ?: notFound(matchId, request)
 
     @GetMapping("/export", produces = [APPLICATION_ZIP_VALUE])

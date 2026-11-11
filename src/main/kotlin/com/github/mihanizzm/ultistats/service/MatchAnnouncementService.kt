@@ -42,9 +42,7 @@ class MatchAnnouncementService(
             }
             throw AnnouncementConflictException(AnnouncementConflictCode.ANNOUNCEMENT_CONFLICT, "Announcement ID already has a different start")
         }
-        if (!startEnabled) {
-            throw AnnouncementConflictException(AnnouncementConflictCode.ANNOUNCEMENT_WRITE_DISABLED, "Starting announcements is disabled")
-        }
+        requireNewIntervalsEnabled()
         if (match.status != MatchStatus.IN_PROGRESS) {
             return MatchCommandResult.InvalidState(
                 MatchProblem(MatchProblemCode.MATCH_NOT_IN_PROGRESS, "Match state conflict",
@@ -94,6 +92,12 @@ class MatchAnnouncementService(
             throw AnnouncementConflictException(AnnouncementConflictCode.ANNOUNCEMENT_CONFLICT, "Match cannot finish before its announcement boundary")
         }
         intervals.singleOrNull { it.endedAt == null }?.let { announcements.end(matchId, it.id, endedAt) }
+    }
+
+    fun requireNewIntervalsEnabled() {
+        if (!startEnabled) {
+            throw AnnouncementConflictException(AnnouncementConflictCode.ANNOUNCEMENT_WRITE_DISABLED, "Starting announcements is disabled")
+        }
     }
 
     private fun invalid(detail: String) =

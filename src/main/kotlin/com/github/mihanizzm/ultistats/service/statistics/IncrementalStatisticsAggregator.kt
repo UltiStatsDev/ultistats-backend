@@ -1,5 +1,6 @@
 package com.github.mihanizzm.ultistats.service.statistics
 
+import com.github.mihanizzm.ultistats.model.MatchAnnouncement
 import com.github.mihanizzm.ultistats.model.events.Event
 import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.model.events.OnePlayerEvent
@@ -21,6 +22,7 @@ class IncrementalStatisticsAggregator : StatisticsAggregator {
         previousStatisticsState: MatchStatistics,
         events: List<Event>,
         teamByParticipantId: Map<UUID, UUID>,
+        announcements: List<MatchAnnouncement>,
     ): MatchStatistics {
         var stats = previousStatisticsState
         for (event in events) {

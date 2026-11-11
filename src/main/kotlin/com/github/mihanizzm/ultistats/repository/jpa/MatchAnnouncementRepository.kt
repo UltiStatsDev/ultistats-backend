@@ -28,8 +28,12 @@ class MatchAnnouncementRepository(private val jdbc: JdbcTemplate) {
 
     fun insert(matchId: UUID, value: MatchAnnouncement) {
         jdbc.update(
-            "INSERT INTO match_announcements (match_id, id, team_id, started_second, started_nano) VALUES (?, ?, ?, ?, ?)",
+            """
+            INSERT INTO match_announcements (match_id, id, team_id, started_second, started_nano, ended_second, ended_nano)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """.trimIndent(),
             matchId, value.id, value.teamId, value.startedAt.epochSecond, value.startedAt.nano,
+            value.endedAt?.epochSecond, value.endedAt?.nano,
         )
     }
 

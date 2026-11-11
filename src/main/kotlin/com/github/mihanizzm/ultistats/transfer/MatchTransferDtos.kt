@@ -1,5 +1,6 @@
 package com.github.mihanizzm.ultistats.transfer
 
+import com.fasterxml.jackson.annotation.JsonInclude
 import com.github.mihanizzm.ultistats.model.MatchParticipantKind
 import com.github.mihanizzm.ultistats.model.events.EventType
 import io.swagger.v3.oas.annotations.media.Schema
@@ -8,9 +9,9 @@ import java.util.UUID
 
 data class MatchExportRequest(val matchIds: List<UUID>)
 
-@Schema(description = "Portable selected-match package. Version 1 creates independent copies; no photos, current memberships, deleted events or request fingerprints.")
+@Schema(description = "Portable selected-match package. Versions 1 and 2 create independent copies. Version 2 includes standalone announcement intervals.")
 data class MatchTransferPackage(
-    @field:Schema(description = "Required format version. Only integer 1 is supported.", allowableValues = ["1"])
+    @field:Schema(description = "Required format version: 1 without standalone announcements, 2 with standalone announcements.", minimum = "1", maximum = "2")
     val formatVersion: Int,
     val matches: List<PortableMatch>,
     val teams: List<PortableTeam>,
@@ -30,6 +31,23 @@ data class PortableMatch(
     val teams: List<PortableMatchTeam>,
     @field:Schema(description = "Active event log in strictly increasing sequenceNumber order; gaps are allowed.")
     val events: List<PortableEvent>,
+    @get:JsonInclude(JsonInclude.Include.NON_EMPTY)
+    @field:Schema(
+        description = "Standalone announcement intervals, omitted when empty. Nonempty intervals require format version 2.",
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED,
+    )
+    val announcements: List<PortableAnnouncement> = emptyList(),
+)
+
+@JsonInclude(JsonInclude.Include.ALWAYS)
+data class PortableAnnouncement(
+    @field:Schema(description = "Identity scoped to the source match, preserved within the new match.")
+    val id: UUID,
+    @field:Schema(types = ["string", "null"], format = "uuid")
+    val teamId: UUID? = null,
+    val startedAt: Instant,
+    @field:Schema(types = ["string", "null"], format = "date-time")
+    val endedAt: Instant? = null,
 )
 
 data class PortableMatchTeam(

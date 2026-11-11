@@ -1,5 +1,6 @@
 package com.github.mihanizzm.ultistats.service.statistics
 
+import com.github.mihanizzm.ultistats.model.MatchAnnouncement
 import com.github.mihanizzm.ultistats.model.events.AnnouncementStartEvent
 import com.github.mihanizzm.ultistats.model.events.Event
 import com.github.mihanizzm.ultistats.model.events.EventType
@@ -21,6 +22,7 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
         previousStatisticsState: MatchStatistics,
         events: List<Event>,
         teamByParticipantId: Map<UUID, UUID>,
+        announcements: List<MatchAnnouncement>,
     ): MatchStatistics {
         var lastEventTime: Instant? = null
         var currentTeamPossessing: UUID? = null
@@ -28,7 +30,18 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
         var isStopped = false
         var teamOnTimeout: UUID? = null
         var announcementStart: AnnouncementStartEvent? = null
-        val announcements = mutableMapOf<UUID?, AnnouncementStatistics>()
+        val announcementTotals = mutableMapOf<UUID?, AnnouncementStatistics>()
+        val announcementCoverage = AnnouncementCoverage(announcements)
+        var overlapWithExistingPauses = Duration.ZERO
+
+        fun countAnnouncement(teamId: UUID?, duration: Duration) {
+            val previous = announcementTotals[teamId] ?: AnnouncementStatistics()
+            announcementTotals[teamId] = AnnouncementStatistics(previous.count + 1, previous.duration.plus(duration))
+        }
+
+        fun recordExistingPause(start: Instant?, end: Instant) {
+            overlapWithExistingPauses = overlapWithExistingPauses.plus(announcementCoverage.overlap(start, end))
+        }
         var lastBetweenPointsStart: Instant? = null
 
         val teamPossessionTime = mutableMapOf<UUID, Duration>().withDefault { Duration.ZERO }
@@ -44,17 +57,19 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
         var timeSpentOnHalftime = Duration.ZERO
 
         for (event in events) {
+            val previousEventTime = lastEventTime
             var duration = Duration.ZERO
-            if (lastEventTime != null) {
-                duration = Duration.between(lastEventTime, event.occurredAt)
+            if (previousEventTime != null) {
+                duration = Duration.between(previousEventTime, event.occurredAt)
                 totalMatchTime = totalMatchTime.plus(duration)
 
-                if (currentTeamPossessing != null && !isStopped) {
-                    teamPossessionTime.merge(currentTeamPossessing, duration, Duration::plus)
-                }
-                if (currentParticipantPossessing != null && !isStopped) {
-                    participantPossessionTime.merge(currentParticipantPossessing, duration, Duration::plus)
-                    holdingDuration = holdingDuration.plus(duration)
+                if (!isStopped) {
+                    val active = duration.minus(announcementCoverage.overlap(previousEventTime, event.occurredAt))
+                    currentTeamPossessing?.let { team -> teamPossessionTime.merge(team, active, Duration::plus) }
+                    currentParticipantPossessing?.let { participant ->
+                        participantPossessionTime.merge(participant, active, Duration::plus)
+                        holdingDuration = holdingDuration.plus(active)
+                    }
                 }
             }
 
@@ -96,6 +111,7 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
                     }
                     if (!between.isNegative && !between.isZero) {
                         teamTimeBetweenPoints.merge(pullTeam, between, Duration::plus)
+                        recordExistingPause(lastBetweenPointsStart ?: previousEventTime, event.occurredAt)
                     }
                     // После пулла отсчет между поинтами завершен
                     lastBetweenPointsStart = null
@@ -129,11 +145,8 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
                 }
                 EventType.ANNOUNCEMENT_END -> {
                     announcementStart?.let { start ->
-                        val previous = announcements[start.team] ?: AnnouncementStatistics()
-                        announcements[start.team] = AnnouncementStatistics(
-                            previous.count + 1,
-                            previous.duration.plus(Duration.between(start.occurredAt, event.occurredAt)),
-                        )
+                        countAnnouncement(start.team, Duration.between(start.occurredAt, event.occurredAt))
+                        recordExistingPause(start.occurredAt, event.occurredAt)
                         isStopped = false
                     }
                     announcementStart = null
@@ -146,6 +159,7 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
                     isStopped = false
                     if (teamOnTimeout != null) {
                         timeSpentOnTimeouts.merge(teamOnTimeout, duration, Duration::plus)
+                        recordExistingPause(previousEventTime, event.occurredAt)
                         teamOnTimeout = null
                     }
                     // Между поинтами не должно включать время таймаута, поэтому старт переносим на конец таймаута
@@ -161,6 +175,7 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
                 EventType.HALFTIME_END -> {
                     isStopped = false
                     timeSpentOnHalftime = timeSpentOnHalftime.plus(duration)
+                    recordExistingPause(previousEventTime, event.occurredAt)
                     // Между поинтами не должно включать время халфтайма, поэтому старт переносим на конец халфтайма
                     if (lastBetweenPointsStart != null) {
                         lastBetweenPointsStart = event.occurredAt
@@ -171,11 +186,22 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
 
         val totalTimeBetweenPoints = teamTimeBetweenPoints.values.fold(Duration.ZERO, Duration::plus)
         val totalTimeOnTimeouts = timeSpentOnTimeouts.values.fold(Duration.ZERO, Duration::plus)
+        // The validated journal's excluded spans are disjoint. Subtract only the new coverage
+        // outside those spans, clipped to the same first-to-last-event horizon as totalMatchTime.
+        val standaloneTime = lastEventTime?.let {
+            announcementCoverage.overlap(events.first().occurredAt, it).minus(overlapWithExistingPauses)
+        } ?: Duration.ZERO
         val purePlayTime = totalMatchTime
             .minus(totalTimeBetweenPoints)
             .minus(totalTimeOnTimeouts)
             .minus(timeSpentOnHalftime)
-            .minus(announcements.values.fold(Duration.ZERO) { sum, item -> sum.plus(item.duration) })
+            .minus(announcementTotals.values.fold(Duration.ZERO) { sum, item -> sum.plus(item.duration) })
+            .minus(standaloneTime)
+        for (announcement in announcements) {
+            announcement.endedAt?.let { end ->
+                countAnnouncement(announcement.teamId, Duration.between(announcement.startedAt, end))
+            }
+        }
 
         val newPlayerStats = previousStatisticsState.playerStatistics.map { stats ->
             val possession = participantPossessionTime.getOrDefault(stats.participantId, Duration.ZERO)
@@ -208,8 +234,30 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
                 timeSpentOnTimeouts = totalTimeOnTimeouts,
                 timeSpentOnHalftime = timeSpentOnHalftime,
                 pureGameTime = purePlayTime,
-                announcements = announcements.toMap(),
+                announcements = announcementTotals.toMap(),
             ),
         )
+    }
+}
+
+/** The repository provides ordered, nonoverlapping intervals. Zero-length records only affect counts. */
+private class AnnouncementCoverage(announcements: List<MatchAnnouncement>) {
+    private val intervals = announcements.filter { it.startedAt != it.endedAt }
+
+    fun overlap(start: Instant?, end: Instant): Duration {
+        if (start == null || start >= end || intervals.isEmpty()) return Duration.ZERO
+
+        // A call that started before this span may still be active at its beginning.
+        val exactOrInsertion = intervals.binarySearch { it.startedAt.compareTo(start) }
+        val first = if (exactOrInsertion >= 0) exactOrInsertion else (-exactOrInsertion - 2).coerceAtLeast(0)
+        var duration = Duration.ZERO
+        for (index in first until intervals.size) {
+            val interval = intervals[index]
+            if (interval.startedAt >= end) break
+            val overlapStart = maxOf(start, interval.startedAt)
+            val overlapEnd = minOf(end, interval.endedAt ?: end)
+            if (overlapStart < overlapEnd) duration = duration.plus(Duration.between(overlapStart, overlapEnd))
+        }
+        return duration
     }
 }

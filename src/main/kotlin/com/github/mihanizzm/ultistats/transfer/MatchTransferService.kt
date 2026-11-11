@@ -2,6 +2,7 @@ package com.github.mihanizzm.ultistats.transfer
 
 import com.github.mihanizzm.ultistats.model.*
 import com.github.mihanizzm.ultistats.repository.jpa.*
+import com.github.mihanizzm.ultistats.service.MatchAnnouncementService
 import com.github.mihanizzm.ultistats.service.MatchService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Isolation
@@ -14,9 +15,11 @@ class MatchTransferService(
     private val matchTeams: SpringDataMatchTeamRepository,
     private val participants: SpringDataMatchParticipantRepository,
     private val events: SpringDataEventRepository,
+    private val announcements: MatchAnnouncementRepository,
     private val teams: SpringDataTeamRepository,
     private val players: SpringDataPlayerRepository,
     private val matchService: MatchService,
+    private val announcementService: MatchAnnouncementService,
     private val validator: MatchTransferValidator,
 ) {
     /** All queries see one source snapshot, even while an in-progress match changes. */
@@ -39,6 +42,9 @@ class MatchTransferService(
                 events.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(id).map {
                     PortableEvent(it.id, it.sequenceNumber, it.eventType, it.effectiveOccurredAt, it.fromParticipantId, it.toParticipantId, it.teamId)
                 },
+                announcements.list(id).map {
+                    PortableAnnouncement(it.id, it.teamId, it.startedAt, it.endedAt)
+                },
             )
         }
         val sourceTeams = portableMatches.flatMap { it.teams }.distinctBy { it.teamId }
@@ -48,7 +54,7 @@ class MatchTransferService(
         val catalogTeams = teams.findAllById(sourceTeams.map { it.teamId }).associateBy { it.id }
         val catalogPlayers = players.findAllById(allPlayers.map { it.participantId }).associateBy { it.id }
         return MatchTransferPackage(
-            1, portableMatches,
+            if (portableMatches.any { it.announcements.isNotEmpty() }) 2 else 1, portableMatches,
             sourceTeams.map { snapshot ->
                 val current = catalogTeams[snapshot.teamId]
                 PortableTeam(snapshot.teamId, current?.name ?: snapshot.teamName, current?.city)
@@ -64,6 +70,7 @@ class MatchTransferService(
     @Transactional
     fun importPackage(data: MatchTransferPackage): MatchTransferResult {
         validator.validate(data)
+        if (data.matches.any { it.announcements.isNotEmpty() }) announcementService.requireNewIntervalsEnabled()
         val matchIds = freshIds(data.matches.map { it.id })
         val teamIds = freshIds(data.teams.map { it.id })
         val playerIds = freshIds(data.players.map { it.id })
@@ -96,6 +103,11 @@ class MatchTransferService(
                     event.fromParticipantId?.let(participantMap::getValue), event.toParticipantId?.let(participantMap::getValue),
                     event.teamId?.let(teamIds::getValue))
             })
+            for (interval in source.announcements) {
+                announcements.insert(id, MatchAnnouncement(
+                    interval.id, interval.teamId?.let(teamIds::getValue), interval.startedAt, interval.endedAt,
+                ))
+            }
             matchService.recalculateScore(id)
         }
         return MatchTransferResult(matchIds, teamIds, playerIds, eventIds, participantIds)
