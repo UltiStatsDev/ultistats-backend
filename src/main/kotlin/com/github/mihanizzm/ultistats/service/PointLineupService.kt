@@ -3,9 +3,11 @@ package com.github.mihanizzm.ultistats.service
 import com.github.mihanizzm.ultistats.dto.request.ConfirmPointLineupPlayer
 import com.github.mihanizzm.ultistats.dto.request.ConfirmPointLineupRequest
 import com.github.mihanizzm.ultistats.dto.request.ConfirmPointLineupTemporary
+import com.github.mihanizzm.ultistats.dto.request.IdentifyPointLineupSlotRequest
 import com.github.mihanizzm.ultistats.dto.response.PointLineupResponse
 import com.github.mihanizzm.ultistats.dto.response.PointLineupsResponse
 import com.github.mihanizzm.ultistats.model.Match
+import com.github.mihanizzm.ultistats.model.MatchParticipantId
 import com.github.mihanizzm.ultistats.model.MatchParticipantKind
 import com.github.mihanizzm.ultistats.model.PointLineup
 import com.github.mihanizzm.ultistats.model.PointLineupPlayer
@@ -88,6 +90,48 @@ class PointLineupService(
         return point.toResponse(confirmed)
     }
 
+    @Transactional
+    fun identify(matchId: UUID, pointId: UUID, slotId: UUID, request: IdentifyPointLineupSlotRequest): PointLineupResponse? {
+        val match = matches.findByIdForUpdate(matchId) ?: return null
+        if (request.expectedLineupRevision < 0) invalid("expectedLineupRevision must be a nonnegative integer")
+        if (!writesEnabled) reject(PointLineupProblemCode.POINT_LINEUP_WRITE_DISABLED, "Point lineup writes are disabled")
+        val point = timeline(match).firstOrNull { it.pointId == pointId }
+            ?: conflict("Point is no longer canonical for this match")
+        if (point.status != PointStatus.COMPLETED || point.closingEventId != request.expectedClosingEventId) {
+            conflict("The point must be completed with the expected closing event")
+        }
+
+        val saved = lineups.list(matchId, teamIds(matchId))[pointId] ?: conflict("Point has no confirmed lineup")
+        if (saved.revision != request.expectedLineupRevision) conflict("The point lineup revision has changed")
+        val (team, slot) = saved.teams.firstNotNullOfOrNull { team ->
+            team.entries.filterIsInstance<PointLineupTemporary>().firstOrNull { it.slotId == slotId }?.let { team to it }
+        } ?: conflict("Temporary slot is not part of this point lineup")
+
+        val candidateId = request.participantId
+        if (candidateId == slot.resolvedParticipantId) return point.toResponse(saved)
+        if (candidateId != null) {
+            val candidate = participants.findById(MatchParticipantId(matchId, candidateId)).orElse(null)
+            if (candidate?.kind != MatchParticipantKind.PLAYER || candidate.teamId != team.teamId) {
+                conflict("Player must belong to the slot's match team")
+            }
+            val occupied = team.entries.any {
+                when (it) {
+                    is PointLineupPlayer -> it.participantId == candidateId
+                    is PointLineupTemporary -> it.resolvedParticipantId == candidateId
+                }
+            }
+            if (occupied) conflict("Player already occupies a place in this point lineup")
+        }
+
+        lineups.identifySlot(matchId, pointId, slotId, candidateId)
+        val updated = saved.copy(revision = saved.revision + 1, teams = saved.teams.map {
+            if (it == team) team.copy(entries = team.entries.map { entry ->
+                if (entry == slot) slot.copy(resolvedParticipantId = candidateId) else entry
+            }) else it
+        })
+        return point.toResponse(updated)
+    }
+
     private fun validateSelection(match: Match, selection: List<PointLineupTeam>, saved: Collection<PointLineup>): String? {
         val roster = participants.findAllByMatchId(match.id).associateBy { it.participantId }
         val usedPlayers = mutableSetOf<UUID>()
@@ -127,6 +171,8 @@ class PointLineupService(
 
     private fun PointBoundary.toResponse(lineup: PointLineup?) =
         PointLineupResponse(pointId, number, status, pullEventId, closingEventId, lineup)
+
+    private fun conflict(detail: String): Nothing = reject(PointLineupProblemCode.POINT_LINEUP_CONFLICT, detail)
 
     private fun invalid(detail: String): Nothing = reject(PointLineupProblemCode.INVALID_REQUEST, detail)
 

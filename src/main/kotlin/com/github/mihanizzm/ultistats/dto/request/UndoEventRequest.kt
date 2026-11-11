@@ -19,11 +19,11 @@ data class UndoEventRequest(
     val expectedLogRevision: Long?,
 )
 
-/** Only this additive command boundary is strict; frozen append deserialization is unchanged. */
+/** Use on revision fields that require a JSON integer without coercion. */
 class UndoLogRevisionDeserializer : JsonDeserializer<Long>() {
     override fun deserialize(parser: JsonParser, context: DeserializationContext): Long {
         if (parser.currentToken != JsonToken.VALUE_NUMBER_INT) {
-            return context.reportInputMismatch(Long::class.java, "expectedLogRevision must be a JSON integer")
+            return context.reportInputMismatch(Long::class.java, "${parser.currentName()} must be a JSON integer")
         }
         return parser.longValue
     }
