@@ -218,7 +218,8 @@ open class AnnouncementWriteDisabledTest : AnnouncementHttpFixture() {
         rawMvc.perform(get(route).header(HttpHeaders.ORIGIN, approvedOrigin))
             .andExpect(status().isOk)
             .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, approvedOrigin))
-            .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, ANNOUNCEMENT_START_ENABLED_HEADER))
+            .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
+                "$ANNOUNCEMENT_START_ENABLED_HEADER, $ANNOUNCEMENT_STATISTICS_HEADER"))
             .andExpect(header().string(ANNOUNCEMENT_START_ENABLED_HEADER, "false"))
 
         val body = mapOf("id" to id, "startedAt" to at)
@@ -227,6 +228,17 @@ open class AnnouncementWriteDisabledTest : AnnouncementHttpFixture() {
         assertEquals("ANNOUNCEMENT_WRITE_DISABLED", rejected["code"].asText())
         val closed = command("$route/$id/end", mapOf("endedAt" to at.plusSeconds(1)), 200)
         assertEquals(closed, command(route, body, 200))
+
+        // In-progress statistics require staff credentials. Finished statistics are public.
+        completePoint()
+        command("/api/v1/matches/${match.id}/end", mapOf("timestamp" to at.plusSeconds(4)), 200)
+        val statsRoute = "/api/v1/matches/${match.id}/statistics"
+        rawMvc.perform(get(statsRoute).header(HttpHeaders.ORIGIN, approvedOrigin))
+            .andExpect(status().isOk)
+            .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, approvedOrigin))
+            .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS,
+                "$ANNOUNCEMENT_START_ENABLED_HEADER, $ANNOUNCEMENT_STATISTICS_HEADER"))
+            .andExpect(header().string(ANNOUNCEMENT_STATISTICS_HEADER, "combined-v1"))
     }
 
     @Test
@@ -237,6 +249,23 @@ open class AnnouncementWriteDisabledTest : AnnouncementHttpFixture() {
         val endedAt = "2026-07-28T12:00:20.987654321Z"
         command("/api/v1/matches/${match.id}/end", mapOf("timestamp" to endedAt), 200)
         assertEquals(endedAt, list().single()["endedAt"].asText())
+    }
+
+    @Test
+    fun `portable import cannot create intervals with announcement writes disabled`() {
+        val selection = mapOf("matchIds" to listOf(match.id))
+        val versionOne = command("/api/v1/matches/export", selection, 200)
+        assertEquals(1, versionOne["formatVersion"].asInt())
+        command("/api/v1/matches/import", versionOne, 200)
+
+        seedOpen(UUID.randomUUID())
+        val versionTwo = command("/api/v1/matches/export", selection, 200)
+        assertEquals(2, versionTwo["formatVersion"].asInt())
+        assertEquals(1, versionTwo["matches"][0]["announcements"].size())
+        val before = matches.count()
+        val rejection = command("/api/v1/matches/import", versionTwo, 409)
+        assertEquals("ANNOUNCEMENT_WRITE_DISABLED", rejection["code"].asText())
+        assertEquals(before, matches.count())
     }
 
     private fun seedOpen(id: UUID) {

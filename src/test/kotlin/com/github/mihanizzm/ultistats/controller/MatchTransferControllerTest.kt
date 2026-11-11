@@ -245,6 +245,14 @@ class MatchTransferControllerTest {
         val operation = docs["paths"]["/api/v1/matches/import"]["post"]
         val content = operation["requestBody"]["content"]["application/json"]
         assertThat(content["schema"]["$" + "ref"].asText()).isEqualTo("#/components/schemas/MatchTransferPackage")
+        val schemas = docs["components"]["schemas"]
+        val portableMatch = schemas["PortableMatch"]
+        assertThat(portableMatch["required"].map { it.asText() }).doesNotContain("announcements")
+        assertThat(portableMatch["properties"]["announcements"]["items"]["$" + "ref"].asText())
+            .isEqualTo("#/components/schemas/PortableAnnouncement")
+        val interval = schemas["PortableAnnouncement"]["properties"]
+        assertThat(interval["teamId"]["type"].map { it.asText() }).containsExactlyInAnyOrder("string", "null")
+        assertThat(interval["endedAt"]["type"].map { it.asText() }).containsExactlyInAnyOrder("string", "null")
         val example = content["examples"]["portableMatch"]["value"]
         assertThat(example).isNotNull()
         assertThat(import(example)["matchIds"].size()).isEqualTo(1)

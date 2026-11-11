@@ -11,7 +11,9 @@ import java.util.UUID
 @Component
 class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
     fun validate(data: MatchTransferPackage) {
-        check(data.formatVersion == 1, "formatVersion", "Only format version 1 is supported")
+        val expectedVersion = if (data.matches.any { it.announcements.isNotEmpty() }) 2 else 1
+        check(data.formatVersion == expectedVersion, "formatVersion",
+            "Expected version $expectedVersion for the included standalone announcements")
         check(data.matches.isNotEmpty(), "matches", "Select at least one match")
         unique(data.matches.map { it.id }, "matches")
         unique(data.teams.map { it.id }, "teams")
@@ -76,9 +78,33 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
             lastSequence = event.sequenceNumber
             lastTime = event.occurredAt
         }
+        validateAnnouncements(match, "$path.announcements")
         val decision = sequencePolicy.validate(match.events.map { it.toDomain() }, requirePointEnded = match.endedAt != null)
         if (decision is EventSequenceDecision.Rejected) {
             fail("$path.events[${decision.violation.eventIndex}]", "Invalid event sequence in state ${decision.violation.currentState}")
+        }
+    }
+
+    private fun validateAnnouncements(match: PortableMatch, path: String) {
+        unique(match.announcements.map { it.id }, path)
+        val teamIds = match.teams.map { it.teamId }
+        val ordered = match.announcements.withIndex().sortedWith(
+            compareBy<IndexedValue<PortableAnnouncement>> { it.value.startedAt }
+                .thenBy { it.value.endedAt != it.value.startedAt },
+        )
+        var previousEnd = match.startedAt
+        for ((index, interval) in ordered) {
+            val intervalPath = "$path[$index]"
+            check(interval.teamId == null || interval.teamId in teamIds, "$intervalPath.teamId",
+                "Team must belong to this match")
+            check(previousEnd != null && !interval.startedAt.isBefore(previousEnd), "$intervalPath.startedAt",
+                "Start requires an active match and cannot overlap another interval or precede match start")
+            val end = interval.endedAt
+            check(end == null || !end.isBefore(interval.startedAt), "$intervalPath.endedAt",
+                "End cannot precede start")
+            check(match.endedAt == null || (end != null && !end.isAfter(match.endedAt)), "$intervalPath.endedAt",
+                "Finished matches require closed intervals ending no later than match end")
+            previousEnd = end
         }
     }
 
