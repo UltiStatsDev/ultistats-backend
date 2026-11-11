@@ -20,7 +20,10 @@ import kotlin.test.assertTrue
 
 @Import(LegacyDomainHttpSecurity::class)
 @AutoConfigureMockMvc
-@SpringBootTest(properties = ["ultistats.announcements.write-enabled=true"])
+@SpringBootTest(properties = [
+    "ultistats.announcements.write-enabled=true",
+    "ultistats.possession-change.write-enabled=true",
+])
 open class AnnouncementStatisticsControllerTest : AnnouncementHttpFixture() {
     private val offense get() = match.teamIds[1]
     private val attack get() = matches.getOrThrow(match.id).participantsByTeam.getValue(offense)
@@ -107,6 +110,60 @@ open class AnnouncementStatisticsControllerTest : AnnouncementHttpFixture() {
     }
 
     @Test
+    fun `correction only moves attribution buckets in combined statistics`() {
+        startPoint()
+        event("ANNOUNCEMENT_START", at.plusSeconds(5), emptyMap())
+        event("ANNOUNCEMENT_END", at.plusSeconds(9), emptyMap())
+        val id = startCall(4)
+        endCall(id, 7)
+        goal(13)
+        command("/api/v1/matches/${match.id}/end", mapOf("timestamp" to at.plusSeconds(15)), 200)
+        val before = statistics()
+        val journal = getJson("/api/v2/matches/${match.id}/events")
+        val matchDetail = getJson("/api/v1/matches/${match.id}")
+        assertSummary(before, knownCount = 0, knownMs = 0, unknownCount = 2, unknownMs = 7_000)
+
+        correct(id, mapOf("teamId" to offense, "expectedAttributionRevision" to 0), 200)
+
+        val after = statistics()
+        assertSummary(after, knownCount = 1, knownMs = 3_000, unknownCount = 1, unknownMs = 4_000)
+        (after["announcements"] as ObjectNode).setAll<ObjectNode>(
+            mapOf("byTeam" to before["announcements"]["byTeam"], "unknown" to before["announcements"]["unknown"]),
+        )
+        assertEquals(before, after)
+        assertEquals(journal, getJson("/api/v2/matches/${match.id}/events"))
+        assertEquals(matchDetail, getJson("/api/v1/matches/${match.id}"))
+    }
+
+    @Test
+    fun `portable versions two and three preserve effective team with fresh revision`() {
+        for (version in listOf(2, 3)) {
+            createMatch()
+            startPoint()
+            if (version == 3) event("POSSESSION_SET", at.plusSeconds(1), mapOf("participantId" to holder))
+            val id = startCall(2, match.teamIds[0])
+            endCall(id, 5)
+            goal(10)
+            command("/api/v1/matches/${match.id}/end", mapOf("timestamp" to at.plusSeconds(11)), 200)
+            correct(id, mapOf("teamId" to offense, "expectedAttributionRevision" to 0), 200)
+            val exported = command("/api/v1/matches/export", mapOf("matchIds" to listOf(match.id)), 200)
+            assertEquals(version, exported["formatVersion"].asInt())
+            val interval = exported["matches"][0]["announcements"].single()
+            assertEquals(setOf("id", "teamId", "startedAt", "endedAt"), interval.fieldNames().asSequence().toSet())
+            assertEquals(offense.toString(), interval["teamId"].asText())
+            val imported = command("/api/v1/matches/import", exported, 200)
+            val copiedId = imported["matchIds"][match.id.toString()].asText()
+            val copiedTeam = imported["teamIds"][offense.toString()].asText()
+            val copied = getJson("/api/v1/matches/$copiedId/announcements").single()
+            assertEquals(copiedTeam, copied["teamId"].asText())
+            assertEquals(0, copied["attributionRevision"].asInt())
+            assertEquals(id.toString(), copied["id"].asText())
+            assertEquals(interval["startedAt"], copied["startedAt"])
+            assertEquals(interval["endedAt"], copied["endedAt"])
+        }
+    }
+
+    @Test
     fun `match transfer preserves exact interval identity and remaps attribution`() {
         startPoint()
         val exportPath = "/api/v1/matches/export"
@@ -124,14 +181,14 @@ open class AnnouncementStatisticsControllerTest : AnnouncementHttpFixture() {
         val source = command(exportPath, selection, 200) as ObjectNode
         assertEquals(2, source["formatVersion"].asInt())
         val intervals = source["matches"][0]["announcements"]
-        assertEquals(list(), intervals)
+        assertEquals(intervals, portableProjection(list()))
         val shuffled = source.deepCopy()
         (shuffled["matches"][0] as ObjectNode).withArray("announcements").removeAll().addAll(intervals.reversed())
         val result = command("/api/v1/matches/import", shuffled, 200)
         val newMatchId = result["matchIds"][match.id.toString()].asText()
         val newOffense = result["teamIds"][offense.toString()].asText()
         val copy = getJson("/api/v1/matches/$newMatchId/announcements")
-        assertEquals(intervals, copy.deepCopy<JsonNode>().also {
+        assertEquals(intervals, portableProjection(copy).also {
             (it[0] as ObjectNode).put("teamId", offense.toString())
         })
         assertEquals(newOffense, copy[0]["teamId"].asText())
@@ -159,6 +216,10 @@ open class AnnouncementStatisticsControllerTest : AnnouncementHttpFixture() {
             assertEquals("INVALID_REQUEST", command("/api/v1/matches/import", invalid, 400)["code"].asText())
             assertEquals(matchCount, matches.count())
         }
+    }
+
+    private fun portableProjection(list: JsonNode) = list.deepCopy<JsonNode>().also {
+        it.forEach { row -> (row as ObjectNode).remove("attributionRevision") }
     }
 
     private fun startPoint() {

@@ -154,6 +154,8 @@ CREATE TABLE match_announcements (
     started_nano INTEGER NOT NULL CHECK (started_nano BETWEEN 0 AND 999999999),
     ended_second BIGINT,
     ended_nano INTEGER CHECK (ended_nano BETWEEN 0 AND 999999999),
+    original_team_id UUID,
+    attribution_revision BIGINT NOT NULL DEFAULT 0 CHECK (attribution_revision >= 0),
     PRIMARY KEY (match_id, id),
     CHECK ((ended_second IS NULL) = (ended_nano IS NULL)),
     CHECK (ended_second > started_second OR (ended_second = started_second AND ended_nano >= started_nano))

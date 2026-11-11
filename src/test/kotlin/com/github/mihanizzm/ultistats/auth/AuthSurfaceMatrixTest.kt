@@ -103,8 +103,11 @@ class AuthSurfaceMatrixTest {
                     if (expected != 200) assertEquals(true, mapper.readTree(result.response.contentAsString)["requestRejectedBeforeExecution"].asBoolean())
                 }
             }
-            for (path in listOf("/api/v1/matches/$id/announcements", "/api/v1/matches/$id/announcements/$id/end")) {
-                val denied = mvc.perform(request(org.springframework.http.HttpMethod.POST, path)
+            val announcements = "/api/v1/matches/$id/announcements"
+            for ((method, path) in listOf(
+                "POST" to announcements, "POST" to "$announcements/$id/end", "PATCH" to "$announcements/$id/team",
+            )) {
+                val denied = mvc.perform(request(org.springframework.http.HttpMethod.valueOf(method), path)
                     .cookie(Cookie("ULTISTATS_LOOPBACK_SESSION", organizer.credential))
                     .header("X-UltiStats-Installation-Id", organizer.context.installationId)
                     .header("X-UltiStats-Account-Id", organizer.context.account!!.id)
