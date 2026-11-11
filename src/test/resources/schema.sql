@@ -1,10 +1,10 @@
-DROP TABLE IF EXISTS match_point_lineup_entries;
-DROP TABLE IF EXISTS match_point_lineups;
 DROP TABLE IF EXISTS match_announcements;
 DROP TABLE IF EXISTS undo_command_receipts;
 DROP TABLE IF EXISTS obs_scoreboard_profiles;
 DROP TABLE IF EXISTS event_batch_receipts;
 DROP TABLE IF EXISTS events;
+DROP TABLE IF EXISTS match_point_lineup_entries;
+DROP TABLE IF EXISTS match_point_lineups;
 DROP TABLE IF EXISTS match_participants;
 DROP TABLE IF EXISTS match_teams;
 DROP TABLE IF EXISTS team_players;
@@ -193,4 +193,15 @@ CREATE TABLE match_point_lineup_entries (
         (participant_id IS NOT NULL AND slot_id IS NULL AND slot_number IS NULL AND resolved_participant_id IS NULL)
         OR (participant_id IS NULL AND slot_id IS NOT NULL AND slot_number IS NOT NULL)
     )
+);
+
+ALTER TABLE events ADD COLUMN from_slot_id UUID;
+ALTER TABLE events ADD COLUMN to_slot_id UUID;
+ALTER TABLE events ADD CONSTRAINT fk_events_from_slot FOREIGN KEY (match_id, from_slot_id)
+    REFERENCES match_point_lineup_entries(match_id, slot_id);
+ALTER TABLE events ADD CONSTRAINT fk_events_to_slot FOREIGN KEY (match_id, to_slot_id)
+    REFERENCES match_point_lineup_entries(match_id, slot_id);
+ALTER TABLE events ADD CONSTRAINT chk_events_actor_source CHECK (
+    (from_participant_id IS NULL OR from_slot_id IS NULL)
+    AND (to_participant_id IS NULL OR to_slot_id IS NULL)
 );

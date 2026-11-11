@@ -17,6 +17,16 @@ class PointLineupRepository(private val jdbc: JdbcTemplate) {
         "SELECT EXISTS (SELECT 1 FROM match_point_lineups WHERE match_id = ?)", Boolean::class.java, matchId,
     ) == true
 
+    fun slots(matchId: UUID): Map<UUID, PointLineupSlotActor> = jdbc.query(
+        "SELECT slot_id, point_id, team_id FROM match_point_lineup_entries WHERE match_id = ? AND slot_id IS NOT NULL",
+        { row, _ ->
+            requireNotNull(row.uuid("slot_id")) to PointLineupSlotActor(
+                requireNotNull(row.uuid("point_id")), requireNotNull(row.uuid("team_id")),
+            )
+        },
+        matchId,
+    ).toMap()
+
     fun list(matchId: UUID, teamIds: List<UUID>): Map<UUID, PointLineup> = jdbc.query(
         """
         SELECT l.point_id, l.revision, e.team_id, e.participant_id, e.slot_id, e.slot_number, e.resolved_participant_id
@@ -67,3 +77,5 @@ class PointLineupRepository(private val jdbc: JdbcTemplate) {
     private data class LineupRow(val pointId: UUID, val revision: Long, val teamId: UUID?, val entry: PointLineupEntry?)
     private fun ResultSet.uuid(column: String): UUID? = getObject(column, UUID::class.java)
 }
+
+data class PointLineupSlotActor(val pointId: UUID, val teamId: UUID)

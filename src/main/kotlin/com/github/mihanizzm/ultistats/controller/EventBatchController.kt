@@ -49,9 +49,9 @@ class EventBatchController(
         ),
         ApiResponse(responseCode = "404", description = "Match not found: empty body, no Content-Type header", content = [Content()]),
     )
-    fun snapshot(@PathVariable matchId: UUID): ResponseEntity<EventLogResponse> =
-        events.snapshot(matchId)?.let {
-            ResponseEntity.ok().cacheControl(CacheControl.noStore())
+    fun snapshot(@PathVariable matchId: UUID, request: HttpServletRequest): ResponseEntity<EventLogResponse> =
+        events.snapshot(matchId, request.pointLineupCapable())?.let {
+            ResponseEntity.ok().cacheControl(CacheControl.noStore()).varyBy(POINT_LINEUPS_HEADER)
                 .header(POSSESSION_CHANGE_ENABLED_HEADER, possessionChangeWrites.enabled.toString())
                 .body(it)
         } ?: ResponseEntity.notFound().build()
@@ -81,9 +81,9 @@ class EventBatchController(
     ): ResponseEntity<*> {
         // Catch only outside the transactional proxy: a global UUID race has rolled back by this point.
         val result = try {
-            events.appendBatch(matchId, body)
+            events.appendBatch(matchId, body, request.pointLineupCapable())
         } catch (exception: EventIdempotencyConflictException) {
-            val snapshot = events.snapshot(matchId) ?: return ResponseEntity.notFound().build<Void>()
+            val snapshot = events.snapshot(matchId, pointLineupCapable = true) ?: return ResponseEntity.notFound().build<Void>()
             EventBatchResult.Rejected(
                 MatchProblem(MatchProblemCode.EVENT_IDEMPOTENCY_CONFLICT, "Event idempotency conflict", "Event ${exception.eventId} already exists with a different payload"),
                 snapshot.lastSequenceNumber, snapshot.logRevision, exception.eventId,

@@ -134,6 +134,22 @@ class PointLineupService(
         throw PointLineupRejectedException(code, detail)
 }
 
-enum class PointLineupProblemCode { INVALID_REQUEST, EVENT_LOG_STALE, POINT_LINEUP_CONFLICT, POINT_LINEUP_WRITE_DISABLED }
+enum class PointLineupProblemCode {
+    INVALID_REQUEST, EVENT_LOG_STALE, POINT_LINEUP_CONFLICT, POINT_LINEUP_WRITE_DISABLED, POINT_LINEUP_CLIENT_REQUIRED,
+}
 
-class PointLineupRejectedException(val code: PointLineupProblemCode, detail: String) : RuntimeException(detail)
+class PointLineupRejectedException(
+    val code: PointLineupProblemCode,
+    detail: String,
+    val batch: PointLineupBatchPosition? = null,
+) : RuntimeException(detail) {
+    fun forBatch(lastSequenceNumber: Int, logRevision: Long, eventId: UUID? = null, eventIndex: Int? = null) =
+        PointLineupRejectedException(code, message.orEmpty(), PointLineupBatchPosition(lastSequenceNumber, logRevision, eventId, eventIndex))
+}
+
+data class PointLineupBatchPosition(
+    val lastSequenceNumber: Int,
+    val logRevision: Long,
+    val eventId: UUID?,
+    val eventIndex: Int?,
+)

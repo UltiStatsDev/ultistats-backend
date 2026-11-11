@@ -5,6 +5,8 @@ import com.github.mihanizzm.ultistats.validation.query.InvalidQueryParameterExce
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
 import com.github.mihanizzm.ultistats.service.EventIdempotencyConflictException
+import com.github.mihanizzm.ultistats.service.PointLineupProblemCode
+import com.github.mihanizzm.ultistats.service.PointLineupRejectedException
 import com.github.mihanizzm.ultistats.exception.AnnouncementConflictException
 import com.github.mihanizzm.ultistats.exception.InvalidPatchException
 import jakarta.servlet.http.HttpServletRequest
@@ -45,6 +47,26 @@ class ApiExceptionHandler {
             setProperty("code", exception.code.name)
         }
         return ResponseEntity.status(HttpStatus.CONFLICT).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(problem)
+    }
+
+    @ExceptionHandler(PointLineupRejectedException::class)
+    fun rejected(error: PointLineupRejectedException, request: HttpServletRequest): ResponseEntity<ProblemDetail> {
+        val invalid = error.code == PointLineupProblemCode.INVALID_REQUEST
+        val status = if (invalid) HttpStatus.BAD_REQUEST else HttpStatus.CONFLICT
+        val problem = ProblemDetail.forStatusAndDetail(status, error.message.orEmpty()).apply {
+            title = if (invalid) "Invalid point lineup" else "Point lineup conflict"
+            instance = URI.create(request.requestURI)
+            setProperty("code", error.code.name)
+            error.batch?.let { batch ->
+                setProperty("lastSequenceNumber", batch.lastSequenceNumber)
+                setProperty("logRevision", batch.logRevision)
+                batch.eventId?.let { setProperty("eventId", it) }
+                batch.eventIndex?.let { setProperty("eventIndex", it) }
+            }
+        }
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).apply {
+            if (error.code == PointLineupProblemCode.POINT_LINEUP_CLIENT_REQUIRED) varyBy(POINT_LINEUPS_HEADER)
+        }.body(problem)
     }
 
     @ExceptionHandler(EventIdempotencyConflictException::class)

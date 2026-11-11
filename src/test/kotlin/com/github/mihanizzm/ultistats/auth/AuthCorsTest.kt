@@ -25,7 +25,7 @@ class AuthCorsTest {
         val request = MockHttpServletRequest("OPTIONS", "/api/v1/matches").apply {
             addHeader("Origin", origin)
             addHeader("Access-Control-Request-Method", "POST")
-            addHeader("Access-Control-Request-Headers", "X-CSRF-TOKEN,X-UltiStats-Session-Id,Content-Type")
+            addHeader("Access-Control-Request-Headers", "X-CSRF-TOKEN,X-UltiStats-Session-Id,Content-Type,X-UltiStats-Point-Lineups")
         }
         val response = MockHttpServletResponse()
         return DefaultCorsProcessor().processRequest(registry.configuration(), request, response) to response
@@ -36,6 +36,7 @@ class AuthCorsTest {
             assertTrue(allowed)
             assertEquals(origin, response.getHeader("Access-Control-Allow-Origin"))
             assertEquals("true", response.getHeader("Access-Control-Allow-Credentials"))
+            assertTrue(response.getHeader("Access-Control-Allow-Headers").orEmpty().contains("X-UltiStats-Point-Lineups", ignoreCase = true))
         }
     }
     @Test fun `unconfigured and public origins cannot preflight credentialed staff requests`() {

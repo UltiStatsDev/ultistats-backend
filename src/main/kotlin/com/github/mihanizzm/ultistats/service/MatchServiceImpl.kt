@@ -28,6 +28,7 @@ import com.github.mihanizzm.ultistats.validation.match.MatchLifecycleDecision
 import com.github.mihanizzm.ultistats.validation.match.MatchLifecyclePolicy
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
+import com.github.mihanizzm.ultistats.repository.jpa.PointLineupRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataTeamPlayerRepository
 import jakarta.transaction.Transactional
 import org.springframework.stereotype.Service
@@ -48,6 +49,7 @@ class MatchServiceImpl(
     private val sequencePolicy: EventSequencePolicy,
     private val announcements: MatchAnnouncementService,
     private val realtimePublisher: MatchRealtimePublisher,
+    private val pointLineups: PointLineupRepository,
 ) : MatchService {
     override fun get(matchId: UUID): Match? =
         matchRepository.findByIdAndDeletedAtIsNull(matchId)?.hydrate(includeEvents = true)
@@ -163,7 +165,7 @@ class MatchServiceImpl(
         val scores = match.teamIds.associateWith { 0 }.toMutableMap()
         val teamByParticipantId = match.participantsByTeam.flatMap { (teamId, participants) ->
             participants.map { it.participantId to teamId }
-        }.toMap()
+        }.toMap() + pointLineups.slots(matchId).mapValues { it.value.teamId }
         match.events.forEach { event ->
             if (event.type == EventType.GOAL || event.type == EventType.CALLAHAN) {
                 val scoringParticipant = (event as TwoPlayerEvent).toParticipant
