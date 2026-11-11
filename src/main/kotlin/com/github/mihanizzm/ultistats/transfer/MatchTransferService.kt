@@ -25,6 +25,7 @@ class MatchTransferService(
     private val announcementService: MatchAnnouncementService,
     private val possessionChangeWrites: PossessionChangeWrites,
     private val validator: MatchTransferValidator,
+    private val lineups: PointLineupRepository,
 ) {
     /** All queries see one source snapshot, even while an in-progress match changes. */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -34,6 +35,7 @@ class MatchTransferService(
         }
         val portableMatches = matchIds.map { id ->
             val match = matches.findByIdAndDeletedAtIsNull(id) ?: throw ExportMatchNotFoundException(id)
+            if (lineups.exists(id)) throw ExportPointLineupUnsupportedException(id)
             val roster = participants.findAllByMatchId(id)
             PortableMatch(
                 id, match.playersPerTeam, match.plannedStartTimestamp, match.effectiveStartedAt, match.effectiveEndedAt,
@@ -126,3 +128,6 @@ class MatchTransferService(
 }
 
 class TransferWriteDisabledException(val problem: MatchProblem) : RuntimeException(problem.detail)
+
+class ExportPointLineupUnsupportedException(id: UUID) :
+    RuntimeException("Match $id has confirmed point lineups that portable formats 1–3 cannot preserve")
