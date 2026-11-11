@@ -2,11 +2,16 @@ package com.github.mihanizzm.ultistats.transfer
 
 import com.github.mihanizzm.ultistats.model.*
 import com.github.mihanizzm.ultistats.model.events.EventType
+import com.github.mihanizzm.ultistats.model.events.PointTimeline
+import com.github.mihanizzm.ultistats.model.events.StoredEvent
 import com.github.mihanizzm.ultistats.repository.jpa.*
 import com.github.mihanizzm.ultistats.service.MatchAnnouncementService
 import com.github.mihanizzm.ultistats.service.MatchService
+import com.github.mihanizzm.ultistats.service.PointLineupProblemCode
+import com.github.mihanizzm.ultistats.service.PointLineupRejectedException
 import com.github.mihanizzm.ultistats.service.PossessionChangeWrites
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
@@ -26,6 +31,7 @@ class MatchTransferService(
     private val possessionChangeWrites: PossessionChangeWrites,
     private val validator: MatchTransferValidator,
     private val lineups: PointLineupRepository,
+    @Value("\${ultistats.point-lineups.write-enabled:false}") private val pointLineupWritesEnabled: Boolean,
 ) {
     /** All queries see one source snapshot, even while an in-progress match changes. */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -35,22 +41,25 @@ class MatchTransferService(
         }
         val portableMatches = matchIds.map { id ->
             val match = matches.findByIdAndDeletedAtIsNull(id) ?: throw ExportMatchNotFoundException(id)
-            if (lineups.exists(id)) throw ExportPointLineupUnsupportedException(id)
             val roster = participants.findAllByMatchId(id)
+            val snapshotTeams = matchTeams.findAllByMatchIdOrderByPosition(id)
+            val journal = events.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(id)
             PortableMatch(
                 id, match.playersPerTeam, match.plannedStartTimestamp, match.effectiveStartedAt, match.effectiveEndedAt,
-                matchTeams.findAllByMatchIdOrderByPosition(id).map { team ->
+                snapshotTeams.map { team ->
                     PortableMatchTeam(team.teamId, team.teamName,
                         roster.filter { it.teamId == team.teamId }.sortedBy { it.participantId }.map {
                             PortableParticipant(it.participantId, it.kind, it.unknownSlot, it.firstName, it.lastName, it.number)
                         })
                 },
-                events.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(id).map {
-                    PortableEvent(it.id, it.sequenceNumber, it.eventType, it.effectiveOccurredAt, it.fromParticipantId, it.toParticipantId, it.teamId)
+                journal.map {
+                    PortableEvent(it.id, it.sequenceNumber, it.eventType, it.effectiveOccurredAt,
+                        it.fromSlotId ?: it.fromParticipantId, it.toSlotId ?: it.toParticipantId, it.teamId)
                 },
                 announcements.list(id).map {
                     PortableAnnouncement(it.id, it.teamId, it.startedAt, it.endedAt)
                 },
+                exportLineups(match, snapshotTeams.map { it.teamId }, journal),
             )
         }
         val sourceTeams = portableMatches.flatMap { it.teams }.distinctBy { it.teamId }
@@ -76,12 +85,17 @@ class MatchTransferService(
     @Transactional
     fun importPackage(data: MatchTransferPackage): MatchTransferResult {
         validator.validate(data)
-        if (data.formatVersion == 3) {
+        if (data.matches.containsPossessionChanges()) {
             possessionChangeWrites.rejection(EventType.POSSESSION_SET)?.let {
                 throw TransferWriteDisabledException(it)
             }
         }
         if (data.matches.any { it.announcements.isNotEmpty() }) announcementService.requireNewIntervalsEnabled()
+        if (data.formatVersion == 4 && !pointLineupWritesEnabled) {
+            throw PointLineupRejectedException(
+                PointLineupProblemCode.POINT_LINEUP_WRITE_DISABLED, "Point lineup writes are disabled",
+            )
+        }
         val matchIds = freshIds(data.matches.map { it.id })
         val teamIds = freshIds(data.teams.map { it.id })
         val playerIds = freshIds(data.players.map { it.id })
@@ -109,11 +123,20 @@ class MatchTransferService(
                         participant.kind, participant.unknownSlot, participant.firstName, participant.lastName, participant.number)
                 }
             })
-            events.saveAllAndFlush(source.events.map { event ->
-                EventEntity(eventIds.getValue(event.id), id, event.sequenceNumber, event.type, event.occurredAt,
-                    event.fromParticipantId?.let(participantMap::getValue), event.toParticipantId?.let(participantMap::getValue),
-                    event.teamId?.let(teamIds::getValue))
+            val slotMap = freshIds(source.pointLineups.flatMap { lineup ->
+                lineup.teams.flatMap { team -> team.entries.filterIsInstance<PortablePointLineupTemporary>().map { it.slotId } }
             })
+            val actors = participantMap + slotMap
+            val journal = source.events.map { event ->
+                StoredEvent(eventIds.getValue(event.id), event.sequenceNumber, event.copy(
+                    fromParticipantId = event.fromParticipantId?.let(actors::getValue),
+                    toParticipantId = event.toParticipantId?.let(actors::getValue),
+                    teamId = event.teamId?.let(teamIds::getValue),
+                ).toDomain())
+            }
+            insertLineups(source, id, journal, eventIds, teamIds, participantMap, slotMap)
+            val slots = slotMap.values.toSet()
+            events.saveAllAndFlush(journal.map { EventEntity.fromDomain(it.id, id, it.sequenceNumber, it.event, slotIds = slots) })
             for (interval in source.announcements) {
                 announcements.insert(id, MatchAnnouncement(
                     interval.id, interval.teamId?.let(teamIds::getValue), interval.startedAt, interval.endedAt,
@@ -124,10 +147,65 @@ class MatchTransferService(
         return MatchTransferResult(matchIds, teamIds, playerIds, eventIds, participantIds)
     }
 
+    private fun exportLineups(match: Match, teamIds: List<UUID>, journal: List<EventEntity>): List<PortablePointLineup> {
+        val saved = lineups.list(match.id, teamIds)
+        if (saved.isEmpty() && journal.none { it.fromSlotId != null || it.toSlotId != null }) return emptyList()
+        val timeline = PointTimeline.from(match.id, match.status, journal.map { StoredEvent(it.id, it.sequenceNumber, it.toDomain()) })
+        val slotOpenings = mutableMapOf<UUID, UUID?>()
+        val portable = timeline.mapNotNull { point ->
+            val lineup = saved[point.pointId] ?: return@mapNotNull null
+            PortablePointLineup(point.openingEventId, lineup.teams.map { team ->
+                PortablePointLineupTeam(team.teamId, team.entries.map { entry ->
+                    when (entry) {
+                        is PointLineupPlayer -> PortablePointLineupPlayer(entry.participantId)
+                        is PointLineupTemporary -> {
+                            slotOpenings[entry.slotId] = point.openingEventId
+                            PortablePointLineupTemporary(entry.slotId, entry.number, entry.resolvedParticipantId)
+                        }
+                    }
+                })
+            })
+        }
+        val closings = timeline.mapNotNull { it.closingEventId }.toSet()
+        var opening: UUID? = null
+        for (event in journal) {
+            for (slot in listOfNotNull(event.fromSlotId, event.toSlotId)) {
+                if (slot !in slotOpenings || slotOpenings[slot] != opening) {
+                    throw ExportPointLineupUnsupportedException(match.id)
+                }
+            }
+            if (event.id in closings) opening = event.id
+        }
+        return portable
+    }
+
+    private fun insertLineups(
+        source: PortableMatch, matchId: UUID, journal: List<StoredEvent>, eventIds: Map<UUID, UUID>,
+        teamIds: Map<UUID, UUID>, participantIds: Map<UUID, UUID>, slotIds: Map<UUID, UUID>,
+    ) {
+        if (source.pointLineups.isEmpty()) return
+        val points = PointTimeline.from(matchId, source.status, journal).associateBy { it.openingEventId }
+        for (lineup in source.pointLineups) {
+            val point = points.getValue(lineup.openingEventId?.let(eventIds::getValue))
+            val teams = lineup.teams.map { team ->
+                PointLineupTeam(teamIds.getValue(team.teamId), team.entries.map { entry ->
+                    when (entry) {
+                        is PortablePointLineupPlayer -> PointLineupPlayer(participantIds.getValue(entry.participantId))
+                        is PortablePointLineupTemporary -> PointLineupTemporary(
+                            slotIds.getValue(entry.slotId), entry.number, entry.resolvedParticipantId?.let(participantIds::getValue),
+                        )
+                    }
+                })
+            }
+            // The slot rows must exist before importing events that reference them.
+            lineups.insert(matchId, point, PointLineup(revision = 1, teams = teams))
+        }
+    }
+
     private fun freshIds(ids: List<UUID>): Map<UUID, UUID> = ids.associateWith { UUID.randomUUID() }
 }
 
 class TransferWriteDisabledException(val problem: MatchProblem) : RuntimeException(problem.detail)
 
 class ExportPointLineupUnsupportedException(id: UUID) :
-    RuntimeException("Match $id has confirmed point lineups that portable formats 1–3 cannot preserve")
+    RuntimeException("Match $id has a live temporary actor outside its exportable point lineup")

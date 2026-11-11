@@ -1,6 +1,7 @@
 package com.github.mihanizzm.ultistats.transfer
 
 import com.github.mihanizzm.ultistats.model.MatchParticipantKind
+import com.github.mihanizzm.ultistats.model.MatchStatus
 import com.github.mihanizzm.ultistats.model.events.*
 import com.github.mihanizzm.ultistats.validation.event.EventSequenceDecision
 import com.github.mihanizzm.ultistats.validation.event.EventSequencePolicy
@@ -13,7 +14,7 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
     fun validate(data: MatchTransferPackage) {
         val expectedVersion = data.matches.requiredFormatVersion()
         check(data.formatVersion == expectedVersion, "formatVersion",
-            "Expected version $expectedVersion for the included events and standalone announcements")
+            "Expected version $expectedVersion for the included events, announcements and point lineups")
         check(data.matches.isNotEmpty(), "matches", "Select at least one match")
         unique(data.matches.map { it.id }, "matches")
         unique(data.teams.map { it.id }, "teams")
@@ -67,6 +68,8 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
             "$path.endedAt", "End requires a start and cannot precede it")
         check(match.startedAt != null || match.events.isEmpty(), "$path.events", "PLANNED match cannot contain events")
         val teamByParticipant = match.teams.flatMap { team -> team.participants.map { it.participantId to team.teamId } }.toMap()
+        val slots = validateLineupEntries(match, "$path.pointLineups", teamByParticipant.keys)
+        val teamByActor = teamByParticipant + slots
         var lastSequence = 0
         var lastTime = match.startedAt
         match.events.forEachIndexed { e, event ->
@@ -74,14 +77,82 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
             check(event.sequenceNumber > lastSequence, "$eventPath.sequenceNumber", "Sequence numbers must be positive and strictly increasing")
             check(lastTime == null || !event.occurredAt.isBefore(lastTime), "$eventPath.occurredAt", "Event precedes match start or previous event")
             check(match.endedAt == null || !event.occurredAt.isAfter(match.endedAt), "$eventPath.occurredAt", "Event occurs after match end")
-            validateEvent(event, eventPath, teamByParticipant, match.teams.map { it.teamId })
+            validateEvent(event, eventPath, teamByActor, match.teams.map { it.teamId })
             lastSequence = event.sequenceNumber
             lastTime = event.occurredAt
         }
         validateAnnouncements(match, "$path.announcements")
-        val decision = sequencePolicy.validate(match.events.map { it.toDomain() }, requirePointEnded = match.endedAt != null)
+        val storedEvents = match.events.map { StoredEvent(it.id, it.sequenceNumber, it.toDomain()) }
+        val decision = sequencePolicy.validate(storedEvents.map { it.event }, requirePointEnded = match.endedAt != null)
         if (decision is EventSequenceDecision.Rejected) {
             fail("$path.events[${decision.violation.eventIndex}]", "Invalid event sequence in state ${decision.violation.currentState}")
+        }
+        if (match.pointLineups.isNotEmpty()) validateLineupScope(match, path, slots.keys, storedEvents)
+    }
+
+    private fun validateLineupEntries(match: PortableMatch, path: String, rosterIds: Set<UUID>): Map<UUID, UUID> {
+        if (match.pointLineups.isEmpty()) return emptyMap()
+        val playersByTeam = match.teams.associate { team ->
+            team.teamId to team.participants.filter { it.kind == MatchParticipantKind.PLAYER }.map { it.participantId }.toSet()
+        }
+        val slots = mutableMapOf<UUID, UUID>()
+        match.pointLineups.forEachIndexed { pointIndex, lineup ->
+            val pointPath = "$path[$pointIndex]"
+            check(lineup.teams.size == playersByTeam.size && lineup.teams.map { it.teamId }.toSet() == playersByTeam.keys,
+                "$pointPath.teams", "Both match teams must appear once")
+            lineup.teams.forEachIndexed { teamIndex, team ->
+                val teamPath = "$pointPath.teams[$teamIndex]"
+                check(team.entries.size <= match.playersPerTeam, "$teamPath.entries", "Lineup exceeds team capacity")
+                val numbers = mutableSetOf<Int>()
+                val usedPlayers = mutableSetOf<UUID>()
+                val roster = playersByTeam.getValue(team.teamId)
+                team.entries.forEachIndexed { entryIndex, entry ->
+                    val entryPath = "$teamPath.entries[$entryIndex]"
+                    val playerId = when (entry) {
+                        is PortablePointLineupPlayer -> entry.participantId
+                        is PortablePointLineupTemporary -> {
+                            check(entry.slotId !in rosterIds && slots.putIfAbsent(entry.slotId, team.teamId) == null,
+                                "$entryPath.slotId", "Slot ID must be unique and distinct from match participants")
+                            check(entry.number in 1..match.playersPerTeam && numbers.add(entry.number),
+                                "$entryPath.number", "Slot numbers must be unique within the team and within capacity")
+                            entry.resolvedParticipantId
+                        }
+                    }
+                    check(playerId == null || (playerId in roster && usedPlayers.add(playerId)), entryPath,
+                        "Player must be an available PLAYER from the same match team")
+                }
+            }
+        }
+        return slots
+    }
+
+    private fun validateLineupScope(match: PortableMatch, path: String, slots: Set<UUID>, events: List<StoredEvent>) {
+        val timeline = PointTimeline.from(match.id, match.status, events)
+        val canonicalOpenings = timeline.map { it.openingEventId }.toSet()
+        val openings = mutableSetOf<UUID?>()
+        val membersByOpening = match.pointLineups.mapIndexed { index, lineup ->
+            check(lineup.openingEventId in canonicalOpenings && openings.add(lineup.openingEventId),
+                "$path.pointLineups[$index].openingEventId", "Expected a distinct canonical point boundary")
+            lineup.openingEventId to lineup.teams.flatMap { team ->
+                team.entries.map { entry ->
+                    when (entry) {
+                        is PortablePointLineupPlayer -> entry.participantId
+                        is PortablePointLineupTemporary -> entry.slotId
+                    }
+                }
+            }.toSet()
+        }.toMap()
+        val unknowns = match.teams.flatMap { it.participants }
+            .filter { it.kind == MatchParticipantKind.UNKNOWN }.map { it.participantId }.toSet()
+        val closings = timeline.mapNotNull { it.closingEventId }.toSet()
+        var opening: UUID? = null
+        match.events.forEachIndexed { index, event ->
+            val members = membersByOpening[opening]
+            for (actor in listOfNotNull(event.fromParticipantId, event.toParticipantId)) {
+                check(if (members == null) actor !in slots else actor in members || actor in unknowns,
+                    "$path.events[$index]", "Event actor must belong to its point lineup or be a match-wide UNKNOWN participant")
+            }
+            if (event.id in closings) opening = event.id
         }
     }
 
@@ -138,10 +209,21 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
 }
 
 internal fun List<PortableMatch>.requiredFormatVersion() = when {
-    any { match -> match.events.any { it.type == EventType.POSSESSION_SET } } -> 3
+    any { it.pointLineups.isNotEmpty() } -> 4
+    containsPossessionChanges() -> 3
     any { it.announcements.isNotEmpty() } -> 2
     else -> 1
 }
+
+internal fun List<PortableMatch>.containsPossessionChanges() =
+    any { match -> match.events.any { it.type == EventType.POSSESSION_SET } }
+
+internal val PortableMatch.status: MatchStatus
+    get() = when {
+        endedAt != null -> MatchStatus.FINISHED
+        startedAt != null -> MatchStatus.IN_PROGRESS
+        else -> MatchStatus.PLANNED
+    }
 
 internal fun PortableEvent.toDomain(): Event = when (type.category) {
     EventCategory.ONE_PLAYER -> OnePlayerEvent(requireNotNull(fromParticipantId), occurredAt, type)

@@ -9,9 +9,9 @@ import java.util.UUID
 
 data class MatchExportRequest(val matchIds: List<UUID>)
 
-@Schema(description = "Portable selected-match package. Versions 1 and 2 create independent copies. Version 2 includes standalone announcement intervals. Version 3 includes POSSESSION_SET events and may also include standalone intervals.")
+@Schema(description = "Portable selected-match package for creating independent copies. Version 4 includes canonical confirmed point lineups and may also contain POSSESSION_SET events and standalone announcements.")
 data class MatchTransferPackage(
-    @field:Schema(description = "Required format version: 3 with POSSESSION_SET, otherwise 2 with standalone announcements, otherwise 1.", minimum = "1", maximum = "3")
+    @field:Schema(description = "Required format version: 4 with canonical confirmed point lineups, otherwise 3 with POSSESSION_SET, otherwise 2 with standalone announcements, otherwise 1.", minimum = "1", maximum = "4")
     val formatVersion: Int,
     val matches: List<PortableMatch>,
     val teams: List<PortableTeam>,
@@ -33,10 +33,16 @@ data class PortableMatch(
     val events: List<PortableEvent>,
     @get:JsonInclude(JsonInclude.Include.NON_EMPTY)
     @field:Schema(
-        description = "Standalone announcement intervals, omitted when empty. Nonempty intervals require format version 2 or 3.",
+        description = "Standalone announcement intervals, omitted when empty. Nonempty intervals require format version 2, 3 or 4.",
         requiredMode = Schema.RequiredMode.NOT_REQUIRED,
     )
     val announcements: List<PortableAnnouncement> = emptyList(),
+    @get:JsonInclude(JsonInclude.Include.NON_EMPTY)
+    @field:Schema(
+        description = "Canonical confirmed lineups in point order, omitted when empty. Nonempty lineups require format version 4.",
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED,
+    )
+    val pointLineups: List<PortablePointLineup> = emptyList(),
 )
 
 @JsonInclude(JsonInclude.Include.ALWAYS)
@@ -71,9 +77,9 @@ data class PortableEvent(
     val sequenceNumber: Int,
     val type: EventType,
     val occurredAt: Instant,
-    @field:Schema(description = "ONE_PLAYER: acting participant or new holder for POSSESSION_SET. TWO_PLAYER: throwing participant. Absent for TEAM/SYSTEM.")
+    @field:Schema(description = "ONE_PLAYER: acting participant or new holder for POSSESSION_SET. TWO_PLAYER: throwing participant. A V4 actor can be a slot from its point lineup.")
     val fromParticipantId: UUID? = null,
-    @field:Schema(description = "TWO_PLAYER: receiver or defender; absent for other categories.")
+    @field:Schema(description = "TWO_PLAYER: receiver or defender, including a slot from its point lineup in V4. Absent for other categories.")
     val toParticipantId: UUID? = null,
     @field:Schema(description = "Only TEAM events use teamId, belonging to this match.")
     val teamId: UUID? = null,
