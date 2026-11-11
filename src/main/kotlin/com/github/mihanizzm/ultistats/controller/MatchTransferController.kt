@@ -37,11 +37,12 @@ class MatchTransferController(private val service: MatchTransferService) {
 
     @PostMapping("/export", consumes = [MediaType.APPLICATION_JSON_VALUE], produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Export selected matches as portable JSON",
-        description = "Uses version 3 with POSSESSION_SET, otherwise version 2 with standalone announcements or version 1 with neither. Preserves selected order and historical snapshots. All statuses supported; missing/deleted matches return 404. Photos, current memberships, deleted events and idempotency metadata are excluded.")
+        description = "Uses version 3 with POSSESSION_SET, otherwise version 2 with standalone announcements or version 1 with neither. Preserves selected order and historical snapshots. All statuses supported; missing/deleted matches return 404 and matches with confirmed point lineups return 409. Photos, current memberships, deleted events and idempotency metadata are excluded.")
     @ApiResponses(value = [
         ApiResponse(responseCode = "200", description = "Portable package", content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = MatchTransferPackage::class), examples = [ExampleObject(name = "portableMatch", value = MatchTransferExamples.PACKAGE)])]),
         ApiResponse(responseCode = "400", description = "Invalid selection", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class))]),
         ApiResponse(responseCode = "404", description = "A selected match does not exist or is deleted", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class))]),
+        ApiResponse(responseCode = "409", description = "POINT_LINEUP_EXPORT_UNSUPPORTED", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class))]),
     ])
     fun export(
         @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true, content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = MatchExportRequest::class), examples = [ExampleObject(value = MatchTransferExamples.SELECTION)])])
@@ -78,6 +79,10 @@ class MatchTransferController(private val service: MatchTransferService) {
     @ExceptionHandler(ExportMatchNotFoundException::class)
     fun missing(error: ExportMatchNotFoundException, request: HttpServletRequest): ResponseEntity<ProblemDetail> =
         problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "Resource not found", error.message.orEmpty(), request)
+
+    @ExceptionHandler(ExportPointLineupUnsupportedException::class)
+    fun lineupUnsupported(error: ExportPointLineupUnsupportedException, request: HttpServletRequest): ResponseEntity<ProblemDetail> =
+        problem(HttpStatus.CONFLICT, "POINT_LINEUP_EXPORT_UNSUPPORTED", "Point lineup export unsupported", error.message.orEmpty(), request)
 
     @ExceptionHandler(TransferWriteDisabledException::class)
     fun writesDisabled(error: TransferWriteDisabledException, request: HttpServletRequest): ResponseEntity<ProblemDetail> =

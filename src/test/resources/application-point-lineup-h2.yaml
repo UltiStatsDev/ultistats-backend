@@ -1,0 +1,6 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:ultistats-point-lineup-test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+  sql:
+    init:
+      schema-locations: classpath:schema.sql,classpath:db/migration/V11__accounts_and_sessions.sql

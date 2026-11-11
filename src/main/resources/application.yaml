@@ -26,6 +26,8 @@ spring:
     baseline-on-migrate: true
 
 ultistats:
+  point-lineups:
+    write-enabled: ${ULTISTATS_POINT_LINEUPS_WRITE_ENABLED:false}
   announcements:
     write-enabled: ${ULTISTATS_ANNOUNCEMENTS_WRITE_ENABLED:false}
   possession-change:

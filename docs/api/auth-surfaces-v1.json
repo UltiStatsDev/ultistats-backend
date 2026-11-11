@@ -245,6 +245,22 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/matches/{matchId}/point-lineups",
+      "policy": "PUBLIC",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PointLineupController.kt",
+      "line": 42
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/matches/{matchId}/point-lineups/{pointId}",
+      "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PointLineupController.kt",
+      "line": 65
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/matches/{matchId}/announcements",
       "policy": "PUBLIC",
       "owner": "enforcement",
