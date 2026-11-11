@@ -2,6 +2,7 @@ package com.github.mihanizzm.ultistats.controller
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.github.mihanizzm.ultistats.fixture.LegacyDomainHttpSecurity
 import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.model.Team
@@ -21,6 +22,7 @@ import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfig
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -72,6 +74,15 @@ abstract class AnnouncementHttpFixture {
         if (code == 409 && "/announcements" in path) {
             assertEquals(MediaType.APPLICATION_PROBLEM_JSON_VALUE, response.contentType)
         }
+        return mapper.readTree(response.contentAsByteArray)
+    }
+
+    protected fun correct(id: UUID, body: Map<String, Any?>, code: Int): JsonNode {
+        val payload = mapper.valueToTree<ObjectNode>(body)
+        body.filterValues { it == null }.keys.forEach(payload::putNull)
+        val response = mvc.perform(patch("$route/$id/team").contentType(MediaType.APPLICATION_JSON)
+            .content(mapper.writeValueAsBytes(payload))).andExpect(status().`is`(code)).andReturn().response
+        if (code != 200) assertEquals(MediaType.APPLICATION_PROBLEM_JSON_VALUE, response.contentType)
         return mapper.readTree(response.contentAsByteArray)
     }
 
@@ -168,6 +179,62 @@ open class AnnouncementControllerTest : AnnouncementHttpFixture() {
         assertEquals(closed, command("$route/$id/end", mapOf("endedAt" to endedAt), 200))
     }
 
+    @Test
+    fun `revision prevents stale writes even when attribution returns to unknown`() {
+        completePoint()
+        val id = UUID.randomUUID()
+        val start = mapOf("id" to id, "teamId" to null, "startedAt" to at.plusSeconds(1))
+        val end = mapOf("endedAt" to at.plusSeconds(2))
+        command(route, start, 201)
+        val initial = command("$route/$id/end", end, 200)
+        command("/api/v1/matches/${match.id}/end", mapOf("timestamp" to at.plusSeconds(4)), 200)
+
+        val first = correct(id, mapOf("teamId" to match.teamIds[0], "expectedAttributionRevision" to 0), 200)
+        assertEquals(0, initial["attributionRevision"].asInt())
+        assertEquals(match.teamIds[0].toString(), first["teamId"].asText())
+        assertEquals(1, first["attributionRevision"].asInt())
+        assertEquals(first, correct(id, mapOf("teamId" to match.teamIds[0], "expectedAttributionRevision" to 1), 200))
+        assertEquals(first, command(route, start, 200))
+        assertEquals(first, command("$route/$id/end", end, 200))
+        command(route, start + ("teamId" to match.teamIds[0]), 409)
+
+        val second = correct(id, mapOf("teamId" to match.teamIds[1], "expectedAttributionRevision" to 1), 200)
+        assertEquals(match.teamIds[1].toString(), second["teamId"].asText())
+        assertEquals(2, second["attributionRevision"].asInt())
+        val unknown = mapOf("teamId" to null, "expectedAttributionRevision" to 2)
+        val third = correct(id, unknown, 200)
+        assertTrue(third["teamId"].isNull)
+        assertEquals(3, third["attributionRevision"].asInt())
+        assertEquals(initial["startedAt"], third["startedAt"])
+        assertEquals(initial["endedAt"], third["endedAt"])
+        val stale = correct(id, unknown + ("expectedAttributionRevision" to 0), 409)
+        assertEquals("ANNOUNCEMENT_ATTRIBUTION_STALE", stale["code"].asText())
+        assertEquals(third, list().single())
+    }
+
+    @Test
+    fun `rejects wrong target match state or correction payload`() {
+        val id = UUID.randomUUID()
+        val start = mapOf("id" to id, "startedAt" to at, "teamId" to match.teamIds[0])
+        val body = mapOf("teamId" to null, "expectedAttributionRevision" to 0)
+        command(route, start, 201)
+        assertEquals("ANNOUNCEMENT_NOT_CLOSED", correct(id, body, 409)["code"].asText())
+        command("$route/$id/end", mapOf("endedAt" to at.plusSeconds(1)), 200)
+        assertEquals("MATCH_NOT_FINISHED", correct(id, body, 409)["code"].asText())
+        completePoint()
+        command("/api/v1/matches/${match.id}/end", mapOf("timestamp" to at.plusSeconds(4)), 200)
+        assertEquals("RESOURCE_NOT_FOUND", correct(UUID.randomUUID(), body, 404)["code"].asText())
+        val invalid = listOf(body - "teamId", body - "expectedAttributionRevision", body + ("teamId" to UUID.randomUUID()),
+            body + ("teamId" to ""), body + ("teamId" to 1), body + ("expectedAttributionRevision" to null),
+            body + ("expectedAttributionRevision" to 0.5), body + ("expectedAttributionRevision" to "0"),
+            body + ("expectedAttributionRevision" to -1))
+        invalid.forEach { assertEquals("INVALID_REQUEST", correct(id, it, 400)["code"].asText()) }
+        val corrected = correct(id, body, 200)
+        assertEquals(corrected, command(route, start, 200))
+        createMatch()
+        assertEquals("RESOURCE_NOT_FOUND", correct(id, body, 404)["code"].asText())
+    }
+
     private fun log(): JsonNode = mapper.readTree(
         mvc.perform(get("/api/v2/matches/${match.id}/events"))
             .andExpect(status().isOk).andReturn().response.contentAsByteArray,
@@ -177,6 +244,29 @@ open class AnnouncementControllerTest : AnnouncementHttpFixture() {
 @ActiveProfiles("postgres-list")
 @EnabledIfEnvironmentVariable(named = "TEST_POSTGRES_URL", matches = ".+")
 class AnnouncementPostgresTest : AnnouncementControllerTest() {
+    @Test
+    fun `competing corrections at the same revision accept exactly one`() {
+        completePoint()
+        val id = UUID.randomUUID()
+        command(route, mapOf("id" to id, "startedAt" to at), 201)
+        command("/api/v1/matches/${match.id}/end", mapOf("timestamp" to at.plusSeconds(4)), 200)
+        val gate = CountDownLatch(1)
+        val statuses = Executors.newFixedThreadPool(2).use { executor ->
+            val attempts = match.teamIds.map { teamId ->
+                executor.submit<Int> {
+                    val body = mapOf("teamId" to teamId, "expectedAttributionRevision" to 0)
+                    check(gate.await(10, TimeUnit.SECONDS))
+                    mvc.perform(patch("$route/$id/team").contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsBytes(body))).andReturn().response.status
+                }
+            }
+            gate.countDown()
+            attempts.map { it.get(20, TimeUnit.SECONDS) }
+        }
+        assertEquals(listOf(200, 409), statuses.sorted())
+        assertEquals(1, list().single()["attributionRevision"].asInt())
+    }
+
     @Test
     fun `competing starts serialize to one open interval`() {
         val gate = CountDownLatch(1)
@@ -266,6 +356,18 @@ open class AnnouncementWriteDisabledTest : AnnouncementHttpFixture() {
         val rejection = command("/api/v1/matches/import", versionTwo, 409)
         assertEquals("ANNOUNCEMENT_WRITE_DISABLED", rejection["code"].asText())
         assertEquals(before, matches.count())
+    }
+
+    @Test
+    fun `disabled writes reject attribution correction for a finished match`() {
+        val id = UUID.randomUUID()
+        seedOpen(id)
+        completePoint()
+        command("/api/v1/matches/${match.id}/end", mapOf("timestamp" to at.plusSeconds(4)), 200)
+        val baseline = list()
+        val rejected = correct(id, mapOf("teamId" to match.teamIds[0], "expectedAttributionRevision" to 0), 409)
+        assertEquals("ANNOUNCEMENT_WRITE_DISABLED", rejected["code"].asText())
+        assertEquals(baseline, list())
     }
 
     private fun seedOpen(id: UUID) {

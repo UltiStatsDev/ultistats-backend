@@ -249,7 +249,7 @@
       "policy": "PUBLIC",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchAnnouncementController.kt",
-      "line": 42
+      "line": 44
     },
     {
       "method": "POST",
@@ -257,7 +257,7 @@
       "policy": "SPORTS_WRITE",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchAnnouncementController.kt",
-      "line": 65
+      "line": 67
     },
     {
       "method": "POST",
@@ -265,7 +265,15 @@
       "policy": "SPORTS_WRITE",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchAnnouncementController.kt",
-      "line": 93
+      "line": 95
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/matches/{matchId}/announcements/{id}/team",
+      "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchAnnouncementController.kt",
+      "line": 119
     },
     {
       "method": "GET",

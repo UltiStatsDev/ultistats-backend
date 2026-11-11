@@ -37,7 +37,7 @@ class MatchAnnouncementService(
         val match = matches.findByIdForUpdate(matchId) ?: return MatchCommandResult.NotFound
         val intervals = announcements.list(matchId)
         intervals.firstOrNull { it.id == id }?.let { existing ->
-            if (existing.teamId == teamId && existing.startedAt == startedAt) {
+            if (existing.startTeamId == teamId && existing.startedAt == startedAt) {
                 return MatchCommandResult.Success(StartResult(existing, created = false))
             }
             throw AnnouncementConflictException(AnnouncementConflictCode.ANNOUNCEMENT_CONFLICT, "Announcement ID already has a different start")
@@ -70,7 +70,7 @@ class MatchAnnouncementService(
     @Transactional
     fun end(matchId: UUID, id: UUID, endedAt: Instant): MatchCommandResult<MatchAnnouncement> {
         val match = matches.findByIdForUpdate(matchId) ?: return MatchCommandResult.NotFound
-        val existing = announcements.list(matchId).firstOrNull { it.id == id } ?: return MatchCommandResult.NotFound
+        val existing = announcements.find(matchId, id) ?: return MatchCommandResult.NotFound
         if (existing.endedAt == endedAt) return MatchCommandResult.Success(existing)
         if (existing.endedAt != null) {
             throw AnnouncementConflictException(AnnouncementConflictCode.ANNOUNCEMENT_CONFLICT, "Announcement already has a different end")
@@ -82,6 +82,45 @@ class MatchAnnouncementService(
         announcements.end(matchId, id, endedAt)
         realtime.matchChanged(matchId)
         return MatchCommandResult.Success(existing.copy(endedAt = endedAt))
+    }
+
+    @Transactional
+    fun correctTeam(
+        matchId: UUID, id: UUID, teamId: UUID?, expectedAttributionRevision: Long,
+    ): MatchCommandResult<MatchAnnouncement> {
+        val match = matches.findByIdForUpdate(matchId) ?: return MatchCommandResult.NotFound
+        val existing = announcements.find(matchId, id) ?: return MatchCommandResult.NotFound
+        if (!startEnabled) {
+            throw AnnouncementConflictException(
+                AnnouncementConflictCode.ANNOUNCEMENT_WRITE_DISABLED, "Correcting announcement teams is disabled",
+            )
+        }
+        if (existing.endedAt == null) {
+            throw AnnouncementConflictException(
+                AnnouncementConflictCode.ANNOUNCEMENT_NOT_CLOSED, "Only closed announcements can be corrected",
+            )
+        }
+        if (match.status != MatchStatus.FINISHED) {
+            return MatchCommandResult.InvalidState(
+                MatchProblem(MatchProblemCode.MATCH_NOT_FINISHED, "Match state conflict",
+                    "Announcement teams can be corrected only after the match finishes", match.status),
+            )
+        }
+        if (existing.attributionRevision != expectedAttributionRevision) {
+            throw AnnouncementConflictException(
+                AnnouncementConflictCode.ANNOUNCEMENT_ATTRIBUTION_STALE,
+                "Announcement attribution changed. Read the current announcement before trying again",
+            )
+        }
+        if (teamId != null && teams.findAllByMatchIdOrderByPosition(matchId).none { it.teamId == teamId }) {
+            return invalid("Announcement team is not a team in this match")
+        }
+        if (existing.teamId == teamId) return MatchCommandResult.Success(existing)
+        announcements.correctTeam(matchId, id, teamId)
+        realtime.matchChanged(matchId)
+        return MatchCommandResult.Success(existing.copy(
+            teamId = teamId, attributionRevision = existing.attributionRevision + 1, originalTeamId = existing.startTeamId,
+        ))
     }
 
     /** Called only after gameplay finish validation, under the caller's match row lock. */

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.core.JsonToken
 import com.fasterxml.jackson.databind.DeserializationContext
 import com.fasterxml.jackson.databind.JsonDeserializer
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import com.github.mihanizzm.ultistats.model.MatchAnnouncement
 import com.github.mihanizzm.ultistats.service.MatchAnnouncementService
@@ -24,6 +25,7 @@ import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -114,6 +116,40 @@ class MatchAnnouncementController(private val announcements: MatchAnnouncementSe
         else -> rejection(result, servletRequest)
     }
 
+    @PatchMapping("/{id}/team", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(
+        summary = "Correct the team of a closed standalone announcement after the match finishes",
+        description = "Send the current attributionRevision. A current no-op preserves the revision. " +
+            "For ANNOUNCEMENT_ATTRIBUTION_STALE, read the current announcement before making another correction.",
+    )
+    @ApiResponse(responseCode = "200", description = "Current announcement", content = [Content(
+        schema = Schema(implementation = AnnouncementResponse::class),
+    )])
+    @ApiResponse(responseCode = "400", description = "Invalid payload or team outside the match", content = [Content(
+        mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class),
+    )])
+    @ApiResponse(responseCode = "401", description = "Staff session required")
+    @ApiResponse(responseCode = "403", description = "Permission, origin, session context or CSRF check failed")
+    @ApiResponse(responseCode = "404", description = "Match or announcement not found", content = [Content(
+        mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class),
+    )])
+    @ApiResponse(
+        responseCode = "409",
+        description = "ANNOUNCEMENT_ATTRIBUTION_STALE, ANNOUNCEMENT_WRITE_DISABLED, ANNOUNCEMENT_NOT_CLOSED or MATCH_NOT_FINISHED",
+        content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class))],
+    )
+    fun correctAnnouncementTeam(
+        @PathVariable matchId: UUID,
+        @PathVariable id: UUID,
+        @RequestBody request: CorrectAnnouncementTeamRequest,
+        servletRequest: HttpServletRequest,
+    ): ResponseEntity<*> = when (
+        val result = announcements.correctTeam(matchId, id, request.teamId, request.expectedAttributionRevision)
+    ) {
+        is MatchCommandResult.Success -> ResponseEntity.ok(result.value.toResponse())
+        else -> rejection(result, servletRequest)
+    }
+
     private fun rejection(result: MatchCommandResult<*>, request: HttpServletRequest): ResponseEntity<ProblemDetail> {
         val (status, problem) = when (result) {
             MatchCommandResult.NotFound -> HttpStatus.NOT_FOUND to MatchProblem(
@@ -142,6 +178,37 @@ data class EndAnnouncementRequest(
     val endedAt: Instant,
 )
 
+@JsonDeserialize(using = CorrectAnnouncementTeamDeserializer::class)
+data class CorrectAnnouncementTeamRequest(
+    @field:Schema(types = ["string", "null"], format = "uuid", requiredMode = Schema.RequiredMode.REQUIRED)
+    val teamId: UUID?,
+    @field:Schema(type = "integer", format = "int64", minimum = "0", requiredMode = Schema.RequiredMode.REQUIRED)
+    val expectedAttributionRevision: Long,
+)
+
+class CorrectAnnouncementTeamDeserializer : JsonDeserializer<CorrectAnnouncementTeamRequest>() {
+    override fun deserialize(parser: JsonParser, context: DeserializationContext): CorrectAnnouncementTeamRequest {
+        val body = parser.readValueAsTree<JsonNode>()
+        val team = body["teamId"]
+        val revision = body["expectedAttributionRevision"]
+        if (team == null || revision == null || !revision.isIntegralNumber ||
+            !revision.canConvertToLong() || revision.asLong() < 0
+        ) {
+            return context.reportInputMismatch(
+                CorrectAnnouncementTeamRequest::class.java, "teamId and a nonnegative integer expectedAttributionRevision are required",
+            )
+        }
+        val teamId = if (team.isNull) null else {
+            val text = team.textValue()
+            val uuid = text?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+            uuid?.takeIf { it.toString().equals(text, ignoreCase = true) } ?: return context.reportInputMismatch(
+                CorrectAnnouncementTeamRequest::class.java, "teamId must be a UUID or null",
+            )
+        }
+        return CorrectAnnouncementTeamRequest(teamId, revision.asLong())
+    }
+}
+
 class AnnouncementInstantDeserializer : JsonDeserializer<Instant>() {
     override fun deserialize(parser: JsonParser, context: DeserializationContext): Instant {
         if (parser.currentToken == JsonToken.VALUE_STRING) {
@@ -163,6 +230,8 @@ data class AnnouncementResponse(
     val startedAt: Instant,
     @field:Schema(types = ["string", "null"], format = "date-time", requiredMode = Schema.RequiredMode.REQUIRED)
     val endedAt: Instant?,
+    @field:Schema(minimum = "0", requiredMode = Schema.RequiredMode.REQUIRED)
+    val attributionRevision: Long,
 )
 
-private fun MatchAnnouncement.toResponse() = AnnouncementResponse(id, teamId, startedAt, endedAt)
+private fun MatchAnnouncement.toResponse() = AnnouncementResponse(id, teamId, startedAt, endedAt, attributionRevision)
