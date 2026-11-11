@@ -41,7 +41,7 @@ class UndoCommandController(private val events: EventService) {
         ApiResponse(responseCode = "409", description = "Recorded rejection (EVENT_LOG_STALE, UNDO_LOG_EMPTY, existing lifecycle/sequence code), including exact replay: commandResult present. UNDO_COMMAND_CONFLICT for different payload: commandResult absent; recover original using GET.", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = UndoCommandProblem::class))]),
     )
     fun undo(@PathVariable matchId: UUID, @RequestBody body: UndoEventRequest, request: HttpServletRequest): ResponseEntity<*> =
-        when (val result = events.undo(matchId, body)) {
+        when (val result = events.undo(matchId, body, request.pointLineupCapable())) {
             UndoCommandResult.NotFound -> notFound(request, "Match not found")
             is UndoCommandResult.Invalid -> problem(result.problem, HttpStatus.BAD_REQUEST, request)
             is UndoCommandResult.Conflict -> problem(result.problem, HttpStatus.CONFLICT, request)

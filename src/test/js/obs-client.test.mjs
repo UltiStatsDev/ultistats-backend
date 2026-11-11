@@ -32,7 +32,8 @@ function watcher(t,hasVisibleRows,initiallyFinished=false) {
   close(){this.closed=true;}
  }
  globalThis.SharedWorker=class {constructor(){this.port=new Port();}};
- globalThis.fetch=async()=>{
+ globalThis.fetch=async(url,options)=>{
+  state.request={url,options};
   state.reads++;if(state.fail)throw Error('offline');
   return {ok:true,json:async()=>state.snapshot};
  };
@@ -104,4 +105,11 @@ test('urgent invalidation during an in-flight failure survives until retry while
     t.mock.timers.tick(1);await running;assert.deepEqual(values,[2]);}
   } finally {sync.close();}
  }
+});
+
+test('match journal requests negotiate raw point lineup actors',async t=>{
+ const s=watcher(t);
+ s.source.emit('connected');await settle();
+ assert.equal(s.request.url,'/api/v2/matches/match/events');
+ assert.equal(s.request.options.headers['X-UltiStats-Point-Lineups'],'1');
 });

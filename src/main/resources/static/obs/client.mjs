@@ -1,7 +1,7 @@
 import {SharedSource} from './transport.mjs';
 
-export async function readJson(url) {
-    const response=await fetch(url,{cache:'no-store'});
+export async function readJson(url,headers) {
+    const response=await fetch(url,{cache:'no-store',headers});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return response.json();
 }
@@ -53,7 +53,7 @@ export function watchConfig(onConfig,onStatus=()=>{}) {
 }
 
 export function watchMatch(matchId,onSnapshot,onStatus=()=>{},hasVisibleRows=()=>false,initiallyFinished=false) {
-    const reader=new Reconciler(()=>readJson(`/api/v2/matches/${encodeURIComponent(matchId)}/events`),onSnapshot,onStatus);
+    const reader=new Reconciler(()=>readJson(`/api/v2/matches/${encodeURIComponent(matchId)}/events`,{'X-UltiStats-Point-Lineups':'1'}),onSnapshot,onStatus);
     const source=new SharedSource(matchId);
     let terminalTimer=null,disposed=false;
     const stopTerminal=()=>{clearInterval(terminalTimer);terminalTimer=null;reader.close();};

@@ -41,7 +41,11 @@ import kotlin.test.assertTrue
 
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = ["app.auth.ingress.loopback-mode=true", "ultistats.point-lineups.write-enabled=true"],
+    properties = [
+        "app.auth.ingress.loopback-mode=true",
+        "ultistats.point-lineups.write-enabled=true",
+        "ultistats.possession-change.write-enabled=true",
+    ],
 )
 @ActiveProfiles("point-lineup-h2")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -86,7 +90,9 @@ class PointLineupHttpTest {
         assertTrue(saved["lineup"]["teams"][1]["entries"].isEmpty)
         assertEquals(saved, get(fixture.path)["points"].single())
 
-        val pullId = event(fixture, "PULL", fixture.rightPlayers[0])
+        val pullActor = matches.getOrThrow(fixture.id).participantsByTeam.getValue(fixture.teamIds[1])
+            .first { it.kind == MatchParticipantKind.UNKNOWN }.participantId
+        val pullId = event(fixture, "PULL", pullActor, capability = "1")
         val afterResponse = send("GET", fixture.path)
         val after = response(afterResponse, 200)
         val active = after["points"].single()
@@ -105,6 +111,21 @@ class PointLineupHttpTest {
         val api = response(rawSchema, 200)
         val artifactDir = System.getenv("POINT_LINEUP_ARTIFACT_DIR")?.let { Files.createDirectories(Path.of(it)) }
         artifactDir?.let { Files.writeString(it.resolve("openapi.json"), rawSchema.body()) }
+        val schemasByPath = api["paths"]
+        for ((method, path) in listOf(
+            "get" to "/api/v1/matches/{matchId}/events", "post" to "/api/v1/matches/{matchId}/events",
+            "get" to "/api/v2/matches/{matchId}/events", "post" to "/api/v2/matches/{matchId}/events/batch",
+            "post" to "/api/v2/matches/{matchId}/events/undo",
+        )) {
+            val operation = schemasByPath[path][method]
+            val capability = operation["parameters"].single { it["name"].asText() == "X-UltiStats-Point-Lineups" }
+            assertEquals("header", capability["in"].asText())
+            assertEquals("1", capability["schema"]["enum"].single().asText())
+            assertTrue(operation["responses"]["409"]["description"].asText().contains("POINT_LINEUP_CLIENT_REQUIRED"))
+        }
+        assertFalse(api["components"]["schemas"]["UndoCommandRejection"]["properties"]["code"]["enum"].any {
+            it.asText().startsWith("POINT_LINEUP")
+        })
         val getResponseSchema = api["paths"]["/api/v1/matches/{matchId}/point-lineups"]["get"]["responses"]
             .path("200").path("content").path("application/json").path("schema")
         assertEquals("#/components/schemas/PointLineupsResponse", getResponseSchema.path("\$ref").asText())
@@ -211,12 +232,12 @@ class PointLineupHttpTest {
         val slot = temporary()
         val accepted = fixture.selection(scored["logRevision"].asLong(), left = listOf(slot))
         response(send("PUT", "${fixture.path}/$removed", accepted, login), 200)
-        response(send("POST", "${fixture.matchPath}/events/undo", session = login), 200)
+        response(send("POST", "${fixture.matchPath}/events/undo", session = login, capability = "1"), 200)
         val undone = get(fixture.path)["points"].single()
         assertEquals(first, undone["pointId"])
         assertEquals("ACTIVE", undone["status"].asText())
         response(send("PUT", "${fixture.path}/$removed", accepted, login), 409)
-        val callahan = event(fixture, "CALLAHAN", fixture.leftPlayers[0], fixture.rightPlayers[0])
+        val callahan = event(fixture, "CALLAHAN", fixture.leftPlayers[0], fixture.rightPlayers[0], capability = "1")
         val replaced = get(fixture.path)
         assertEquals(callahan.toString(), replaced["points"][0]["closingEventId"].asText())
         val replacement = replaced["points"][1]
@@ -259,9 +280,11 @@ class PointLineupHttpTest {
         val pullRace = fixture()
         val pullPoint = get(pullRace.path)["points"].single()["pointId"].asText()
         val pullId = UUID.randomUUID()
+        val pullActor = matches.getOrThrow(pullRace.id).participantsByTeam.getValue(pullRace.teamIds[1])
+            .first { it.kind == MatchParticipantKind.UNKNOWN }.participantId
         val (confirm, pull) = race(
             { send("PUT", "${pullRace.path}/$pullPoint", pullRace.selection(), session) },
-            { send("POST", "${pullRace.matchPath}/events", eventBody(pullId, "PULL", pullRace.rightPlayers[0]), session) },
+            { send("POST", "${pullRace.matchPath}/events", eventBody(pullId, "PULL", pullActor), session, capability = "1") },
         )
         response(pull, 201)
         val active = get(pullRace.path)["points"].single()
@@ -274,13 +297,205 @@ class PointLineupHttpTest {
         }
     }
 
+    @Test
+    fun `raw slot actions score and keep legacy readers and writers outside the managed journal`() {
+        val fixture = fixture()
+        val journal = "${fixture.matchPath}/events"
+        val v2 = journal.replace("/v1/", "/v2/")
+        val slot = UUID.randomUUID()
+        val left = fixture.leftPlayers[0]
+        val right = fixture.rightPlayers[0]
+        confirm(fixture, listOf(player(left), temporary(slot)), listOf(player(right)))
+        val pull = eventBody(UUID.randomUUID(), "PULL", right)
+        val pickup = eventBody(UUID.randomUUID(), "PICKUP", slot) +
+            ("occurredAt" to startedAt.plusSeconds(2).toString())
+        val goal = eventBody(UUID.randomUUID(), "GOAL", slot, left) +
+            ("occurredAt" to startedAt.plusSeconds(7).toString())
+
+        response(send("POST", journal, pull, login, csrf = false, capability = "1"), 403)
+        assertEquals("POINT_LINEUP_CLIENT_REQUIRED", response(send("POST", journal, pull, login,
+            capability = "true", capture = "managed-invalid-capability-v1-post"), 409)["code"].asText())
+        assertEquals("POINT_LINEUP_CLIENT_REQUIRED", response(send("POST", journal, pull - "eventId", login,
+            capture = "managed-legacy-v1-post"), 409)["code"].asText())
+        val rawPull = response(send("POST", journal, pull, login, capability = "1",
+            capture = "managed-capable-v1-post"), 201)
+        response(send("GET", journal), 200)
+        response(send("GET", v2), 200)
+        val batch = batch(1, 1, pickup, goal)
+        assertEquals("POINT_LINEUP_CLIENT_REQUIRED", response(send("POST", "$v2/batch", batch, login,
+            capture = "managed-legacy-v2-append"), 409)["code"].asText())
+        val appended = response(send("POST", "$v2/batch", batch, login, capability = "1",
+            capture = "managed-capable-v2-append"), 201)
+        assertEquals(slot.toString(), appended["events"][0]["participantId"].asText())
+        assertEquals(slot.toString(), appended["events"][1]["fromParticipantId"].asText())
+        assertEquals(appended, response(send("POST", "$v2/batch", batch, login, capability = "1"), 200))
+
+        for ((path, name) in listOf(journal to "v1-list", "$journal/${pickup["eventId"]}" to "v1-one", v2 to "v2-log")) {
+            assertEquals("POINT_LINEUP_CLIENT_REQUIRED", response(send("GET", path, capture = "managed-legacy-$name"), 409)["code"].asText())
+            response(send("GET", path, capability = "1", capture = "managed-capable-$name"), 200)
+        }
+        val pullPath = "$journal/${rawPull["id"].asText()}"
+        for ((method, path, body) in listOf(
+            Triple("PATCH", pullPath, pull - "occurredAt" - "eventId"),
+            Triple("DELETE", pullPath, null),
+            Triple("POST", "$journal/undo", null),
+            Triple("POST", "$v2/undo", undo(goal, 2)),
+        )) {
+            assertEquals("POINT_LINEUP_CLIENT_REQUIRED", response(send(method, path, body, login), 409)["code"].asText())
+        }
+        val points = get(fixture.path)
+        assertEquals(listOf("COMPLETED", "NEXT"), points["points"].map { it["status"].asText() })
+        assertEquals("POINT_LINEUP_CONFLICT", response(send("POST", journal, pull + ("eventId" to UUID.randomUUID()) +
+            ("occurredAt" to startedAt.plusSeconds(10).toString()), login, capability = "1"), 409)["code"].asText())
+        val match = get(fixture.matchPath)
+        val leftStats = response(send("GET", "${fixture.matchPath}/statistics", session = login), 200)["teams"].single { it["teamId"].asText() == fixture.teamIds[0].toString() }
+        assertEquals(1, leftStats["attack"]["score"].asInt())
+        assertEquals(5000, leftStats["time"]["possessionTimeMs"].asInt())
+        assertTrue(leftStats["participants"].none { it["participantId"].asText() == slot.toString() })
+        assertEquals(2, leftStats["participants"].count { it["kind"].asText() == "UNKNOWN" })
+        assertEquals(1, match["teams"].single { it["teamId"].asText() == fixture.teamIds[0].toString() }["teamScore"].asInt())
+    }
+
+    @Test
+    fun `batch validates each point and rolls back a mixed boundary failure`() {
+        val fixture = fixture()
+        val journal = "${fixture.matchPath}/events"
+        val v2 = journal.replace("/v1/", "/v2/")
+        val left = UUID.randomUUID()
+        val otherLeft = UUID.randomUUID()
+        val right = UUID.randomUUID()
+        val otherRight = UUID.randomUUID()
+        confirm(fixture, listOf(temporary(left), temporary(otherLeft, 2)),
+            listOf(temporary(right), temporary(otherRight, 2)))
+
+        val pull = eventBody(UUID.randomUUID(), "PULL", right)
+        val pickup = eventBody(UUID.randomUUID(), "PICKUP", left)
+        val switch = eventBody(UUID.randomUUID(), "POSSESSION_SET", otherRight)
+        val callahan = eventBody(UUID.randomUUID(), "CALLAHAN", otherRight, otherLeft)
+        val wrongTeam = eventBody(UUID.randomUUID(), "CALLAHAN", otherRight, right)
+        val rollover = eventBody(UUID.randomUUID(), "PULL", right)
+        val unusedPlayer = eventBody(UUID.randomUUID(), "PULL", fixture.rightPlayers[0])
+        assertEquals("POINT_LINEUP_CONFLICT", response(send("POST", journal, unusedPlayer, login, capability = "1"), 409)["code"].asText())
+        response(send("POST", "$v2/batch", batch(0, 0, pull, pickup, switch, wrongTeam), login, capability = "1"), 400)
+        val failed = response(send("POST", "$v2/batch", batch(0, 0, pull, pickup, switch, callahan, rollover),
+            login, capability = "1"), 409)
+        assertEquals("POINT_LINEUP_CONFLICT", failed["code"].asText())
+        assertEquals(4, failed["eventIndex"].asInt())
+        assertEquals(0, failed["logRevision"].asInt())
+        assertTrue(get(v2)["events"].isEmpty)
+        response(send("POST", "$v2/batch", batch(0, 0, pull, pickup, switch, callahan), login, capability = "1"), 201)
+        val nextSlot = UUID.randomUUID()
+        confirm(fixture, listOf(temporary(nextSlot)), emptyList())
+        assertEquals("POINT_LINEUP_CONFLICT", response(send("POST", journal, rollover, login, capability = "1"), 409)["code"].asText())
+        val closing = "$journal/${callahan["eventId"]}"
+        val patch = mapOf("type" to "CALLAHAN", "toParticipantId" to nextSlot)
+        assertEquals("POINT_LINEUP_CONFLICT", response(send("PATCH", closing, patch, login, capability = "1"), 409)["code"].asText())
+        val unknown = matches.getOrThrow(fixture.id).participantsByTeam.getValue(fixture.teamIds[1])
+            .last { it.kind == MatchParticipantKind.UNKNOWN }.participantId
+        val nextPull = eventBody(UUID.randomUUID(), "PULL", unknown)
+        val nextPickup = eventBody(UUID.randomUUID(), "PICKUP", nextSlot)
+        response(send("POST", "$v2/batch", batch(4, 1, nextPull, nextPickup), login, capability = "1"), 201)
+
+        // Removing the closing boundary would move an active second-point slot to point one.
+        assertEquals("POINT_LINEUP_CONFLICT", response(send("DELETE", closing, session = login,
+            capability = "1"), 409)["code"].asText())
+        val undo = undo(nextPickup, 2)
+        val outcome = response(send("POST", "$v2/undo", undo, login, capability = "1"), 200)
+        assertEquals("APPLIED", outcome["outcome"].asText())
+        assertEquals(outcome, response(send("GET", "$v2/undo/${undo["commandId"]}", session = login), 200))
+        val stats = response(send("GET", "${fixture.matchPath}/statistics", session = login), 200)
+        val leftStats = stats["teams"].single { it["teamId"].asText() == fixture.teamIds[0].toString() }
+        assertEquals(1, leftStats["attack"]["score"].asInt())
+        assertEquals(1, leftStats["defense"]["callahans"].asInt())
+    }
+
+    @Test
+    fun `ordinary legacy journals retain original reads and mutations`() {
+        val fixture = fixture()
+        val journal = "${fixture.matchPath}/events"
+        val v2 = journal.replace("/v1/", "/v2/")
+        val pull = eventBody(UUID.randomUUID(), "PULL", fixture.rightPlayers[0])
+        val pickup = eventBody(UUID.randomUUID(), "PICKUP", fixture.leftPlayers[0])
+        response(send("POST", journal, pull - "eventId", login, capture = "ordinary-legacy-v1-post"), 201)
+        response(send("POST", "$v2/batch", batch(1, 1, pickup), login, capture = "ordinary-legacy-v2-append"), 201)
+        response(send("GET", fixture.matchPath, capture = "ordinary-legacy-match"), 200)
+        val v1 = response(send("GET", journal, capture = "ordinary-legacy-v1-list"), 200)
+        val v2Log = response(send("GET", v2, capture = "ordinary-legacy-v2-log"), 200)
+        assertEquals(v1, v2Log["events"])
+        assertEquals("APPLIED", response(send("POST", "$v2/undo", undo(pickup, 2), login,
+            capture = "ordinary-legacy-v2-undo"), 200)["outcome"].asText())
+        response(send("POST", "$journal/undo", session = login, capture = "ordinary-legacy-v1-undo"), 200)
+        assertTrue(get(v2)["events"].isEmpty)
+    }
+
+    private fun confirm(fixture: Fixture, left: List<Any>, right: List<Any>): JsonNode {
+        val snapshot = get(fixture.path)
+        val pointId = snapshot["points"].last()["pointId"].asText()
+        return response(send("PUT", "${fixture.path}/$pointId",
+            fixture.selection(snapshot["logRevision"].asLong(), left, right), login), 200)
+    }
+
+    private fun batch(sequence: Int, revision: Long, vararg events: Map<String, Any>) =
+        mapOf("expectedLastSequenceNumber" to sequence, "expectedLogRevision" to revision, "events" to events)
+
+    private fun undo(event: Map<String, Any>, revision: Long) =
+        mapOf("commandId" to UUID.randomUUID(), "expectedLastEventId" to event.getValue("eventId"), "expectedLogRevision" to revision)
+
+    protected fun verifyFreshProcessGameplay() {
+        val fixture = fixture()
+        val journal = "${fixture.matchPath}/events"
+        val v2 = journal.replace("/v1/", "/v2/")
+        val leftSlot = UUID.randomUUID()
+        val rightSlot = UUID.randomUUID()
+        confirm(fixture, listOf(temporary(leftSlot), player(fixture.leftPlayers[0])), listOf(temporary(rightSlot)))
+        val pull = eventBody(UUID.randomUUID(), "PULL", rightSlot)
+        val pickup = eventBody(UUID.randomUUID(), "PICKUP", leftSlot) + ("occurredAt" to startedAt.plusSeconds(3).toString())
+        val goal = eventBody(UUID.randomUUID(), "GOAL", leftSlot, fixture.leftPlayers[0]) +
+            ("occurredAt" to startedAt.plusSeconds(9).toString())
+        val batch = batch(1, 1, pickup, goal)
+        val first = response(send("POST", journal, pull, login, capability = "1"), 201)
+        val committed = response(send("POST", "$v2/batch", batch, login, capability = "1"), 201)
+        val original = response(send("GET", v2, capability = "1"), 200)
+        val stats = "${fixture.matchPath}/statistics"
+        val originalStats = response(send("GET", stats, session = login, capture = "rollback-enabled-statistics"), 200)
+        val originalMatch = get(fixture.matchPath)
+        val nextSlot = UUID.randomUUID()
+        confirm(fixture, listOf(temporary(nextSlot)), emptyList())
+        val fresh = eventBody(UUID.randomUUID(), "PULL", nextSlot) +
+            ("occurredAt" to startedAt.plusSeconds(10).toString())
+
+        SpringApplicationBuilder(UltistatsApplication::class.java).profiles("postgres-list").run(
+            "--server.port=0", "--app.auth.ingress.loopback-mode=true", "--app.auth.ingress.private-port=0",
+        ).use { app ->
+            val restartedPort = (app as ServletWebServerApplicationContext).webServer.port
+            assertEquals(original, response(send("GET", v2, targetPort = restartedPort, capability = "1",
+                capture = "rollback-disabled-capable-v2-log"), 200))
+            assertEquals(original["events"], response(send("GET", journal, targetPort = restartedPort, capability = "1",
+                capture = "rollback-disabled-capable-v1-list"), 200))
+            assertEquals(originalStats, response(send("GET", stats, session = login, targetPort = restartedPort,
+                capture = "rollback-disabled-statistics"), 200))
+            assertEquals(originalMatch, response(send("GET", fixture.matchPath, targetPort = restartedPort), 200))
+            assertEquals(first, response(send("POST", journal, pull, login, targetPort = restartedPort, capability = "1",
+                capture = "rollback-disabled-v1-retry"), 200))
+            assertEquals(committed, response(send("POST", "$v2/batch", batch, login, targetPort = restartedPort, capability = "1",
+                capture = "rollback-disabled-v2-retry"), 200))
+            assertEquals("POINT_LINEUP_WRITE_DISABLED", response(send("POST", "$v2/batch", batch(3, 2, fresh), login,
+                targetPort = restartedPort, capability = "1", capture = "rollback-disabled-v2-fresh"), 409)["code"].asText())
+            assertEquals("POINT_LINEUP_WRITE_DISABLED", response(send("POST", journal, fresh, login,
+                targetPort = restartedPort, capability = "1", capture = "rollback-disabled-v1-fresh"), 409)["code"].asText())
+            assertEquals("APPLIED", response(send("POST", "$v2/undo", undo(goal, 2), login, targetPort = restartedPort,
+                capability = "1", capture = "rollback-disabled-safe-undo"), 200)["outcome"].asText())
+            assertEquals(2, response(send("GET", v2, targetPort = restartedPort, capability = "1"), 200)["events"].size())
+        }
+    }
+
     protected fun verifyFreshProcessConfiguration() {
         val fixture = fixture()
         val pointId = get(fixture.path)["points"].single()["pointId"].asText()
         val path = "${fixture.path}/$pointId"
-        val body = fixture.selection(left = listOf(temporary()))
+        val body = fixture.selection(left = listOf(temporary()), right = listOf(player(fixture.rightPlayers[0])))
         val saved = response(send("PUT", path, body, login), 200)
-        event(fixture, "PULL", fixture.rightPlayers[0])
+        event(fixture, "PULL", fixture.rightPlayers[0], capability = "1")
         val anotherMatch = fixture()
         val nextId = get(anotherMatch.path)["points"].single()["pointId"].asText()
 
@@ -332,9 +547,9 @@ class PointLineupHttpTest {
         mapOf("type" to type, "eventId" to id, "occurredAt" to startedAt.toString()) +
             if (to == null) mapOf("participantId" to from) else mapOf("fromParticipantId" to from, "toParticipantId" to to)
 
-    private fun event(fixture: Fixture, type: String, from: UUID, to: UUID? = null): UUID {
+    private fun event(fixture: Fixture, type: String, from: UUID, to: UUID? = null, capability: String? = null): UUID {
         val id = UUID.randomUUID()
-        response(send("POST", "${fixture.matchPath}/events", eventBody(id, type, from, to), login), 201)
+        response(send("POST", "${fixture.matchPath}/events", eventBody(id, type, from, to), login, capability = capability), 201)
         return id
     }
 
@@ -346,8 +561,10 @@ class PointLineupHttpTest {
     }
 
     private fun send(method: String, path: String, body: Any? = null, session: AuthLoginResult? = null,
-                     csrf: Boolean = true, targetPort: Int = port): HttpResponse<String> {
+                     csrf: Boolean = true, targetPort: Int = port, capability: String? = null,
+                     capture: String? = null): HttpResponse<String> {
         val request = HttpRequest.newBuilder(URI("http://127.0.0.1:$targetPort$path")).timeout(Duration.ofSeconds(15))
+        capability?.let { request.header("X-UltiStats-Point-Lineups", it) }
         val cookies = mutableListOf<String>()
         if (session != null) {
             val context = session.context
@@ -366,7 +583,20 @@ class PointLineupHttpTest {
             request.header("Content-Type", "application/json")
             HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body))
         }
-        return client.send(request.method(method, publisher).build(), HttpResponse.BodyHandlers.ofString())
+        val result = client.send(request.method(method, publisher).build(), HttpResponse.BodyHandlers.ofString())
+        if (capture != null) System.getenv("POINT_LINEUP_EVENT_ARTIFACT_DIR")?.let { directory ->
+            val dir = Files.createDirectories(Path.of(directory))
+            Files.writeString(dir.resolve("$capture.json"), result.body())
+            Files.writeString(dir.resolve("$capture.headers"), buildString {
+                appendLine("$method $path")
+                capability?.let { appendLine("X-UltiStats-Point-Lineups: $it") }
+                appendLine("HTTP ${result.statusCode()}")
+                result.headers().map().filterKeys { !it.equals("Set-Cookie", ignoreCase = true) }
+                    .forEach { (key, values) -> values.forEach { appendLine("$key: $it") } }
+            })
+            body?.let { Files.writeString(dir.resolve("$capture.request.json"), mapper.writeValueAsString(it)) }
+        }
+        return result
     }
 
     private fun race(first: () -> HttpResponse<String>, second: () -> HttpResponse<String>) =
@@ -389,4 +619,8 @@ class PointLineupPostgresTest : PointLineupHttpTest() {
     @Test
     fun `fresh default-off application reads and replays accepted confirmation on same PostgreSQL data`() =
         verifyFreshProcessConfiguration()
+
+    @Test
+    fun `fresh default-off application preserves slot log score and stats and permits exact retries and safe undo`() =
+        verifyFreshProcessGameplay()
 }

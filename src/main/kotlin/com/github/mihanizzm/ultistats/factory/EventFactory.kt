@@ -14,6 +14,7 @@ import com.github.mihanizzm.ultistats.model.events.OnePlayerEvent
 import com.github.mihanizzm.ultistats.model.events.SystemEvent
 import com.github.mihanizzm.ultistats.model.events.TeamEvent
 import com.github.mihanizzm.ultistats.model.events.TwoPlayerEvent
+import com.github.mihanizzm.ultistats.repository.jpa.PointLineupRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchParticipantRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchTeamRepository
 import org.springframework.stereotype.Component
@@ -23,6 +24,7 @@ import java.util.UUID
 class EventFactory(
     private val matchParticipantRepository: SpringDataMatchParticipantRepository,
     private val matchTeamRepository: SpringDataMatchTeamRepository,
+    private val pointLineups: PointLineupRepository,
 ) {
     fun createFromRequest(request: CreateEventRequest, matchId: UUID): Event? =
         when (val result = createValidatedFromRequest(request, matchId)) {
@@ -30,9 +32,15 @@ class EventFactory(
             is EventCreationResult.Invalid -> null
         }
 
-    fun createValidatedFromRequest(request: CreateEventRequest, matchId: UUID): EventCreationResult {
-        val teamByParticipantId = matchParticipantRepository.findAllByMatchId(matchId)
-            .associate { it.participantId to it.teamId }
+    fun actorTeams(matchId: UUID): Map<UUID, UUID> =
+        matchParticipantRepository.findAllByMatchId(matchId).associate { it.participantId to it.teamId } +
+            pointLineups.slots(matchId).mapValues { it.value.teamId }
+
+    fun createValidatedFromRequest(
+        request: CreateEventRequest,
+        matchId: UUID,
+        teamByParticipantId: Map<UUID, UUID> = actorTeams(matchId),
+    ): EventCreationResult {
         return when (request) {
             is OnePlayerEventRequest -> {
                 if (request.type.category != EventCategory.ONE_PLAYER) {

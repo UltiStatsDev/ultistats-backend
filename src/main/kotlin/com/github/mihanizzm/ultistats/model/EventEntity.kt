@@ -58,6 +58,12 @@ data class EventEntity(
     // Null for pre-V10 rows and inserts made by an older binary. Never backfill lost nanos.
     @Column(name = "original_occurred_at", length = 40)
     val originalOccurredAt: String? = occurredAt.toString(),
+
+    @Column(name = "from_slot_id")
+    val fromSlotId: UUID? = null,
+
+    @Column(name = "to_slot_id")
+    val toSlotId: UUID? = null,
 ) {
     /** Trust precision metadata only while it agrees with the physical timestamp.
      * Older binaries keep occurrence time immutable on PATCH. An out-of-band timestamp
@@ -68,12 +74,12 @@ data class EventEntity(
 
     fun toDomain(): Event = when (eventType.category) {
         com.github.mihanizzm.ultistats.model.events.EventCategory.ONE_PLAYER -> {
-            OnePlayerEvent(requireNotNull(fromParticipantId), effectiveOccurredAt, eventType)
+            OnePlayerEvent(requireNotNull(fromSlotId ?: fromParticipantId), effectiveOccurredAt, eventType)
         }
         com.github.mihanizzm.ultistats.model.events.EventCategory.TWO_PLAYER -> {
             TwoPlayerEvent(
-                requireNotNull(fromParticipantId),
-                requireNotNull(toParticipantId),
+                requireNotNull(fromSlotId ?: fromParticipantId),
+                requireNotNull(toSlotId ?: toParticipantId),
                 effectiveOccurredAt,
                 eventType,
             )
@@ -93,16 +99,20 @@ data class EventEntity(
             sequenceNumber: Int,
             event: Event,
             creationFingerprint: String? = null,
+            slotIds: Set<UUID> = emptySet(),
         ): EventEntity = when (event) {
             is OnePlayerEvent -> EventEntity(
                 id, matchId, sequenceNumber, event.type, event.occurredAt,
-                fromParticipantId = event.participant,
+                fromParticipantId = event.participant.takeUnless(slotIds::contains),
+                fromSlotId = event.participant.takeIf(slotIds::contains),
                 creationFingerprint = creationFingerprint,
             )
             is TwoPlayerEvent -> EventEntity(
                 id, matchId, sequenceNumber, event.type, event.occurredAt,
-                fromParticipantId = event.fromParticipant,
-                toParticipantId = event.toParticipant,
+                fromParticipantId = event.fromParticipant.takeUnless(slotIds::contains),
+                toParticipantId = event.toParticipant.takeUnless(slotIds::contains),
+                fromSlotId = event.fromParticipant.takeIf(slotIds::contains),
+                toSlotId = event.toParticipant.takeIf(slotIds::contains),
                 creationFingerprint = creationFingerprint,
             )
             is TeamEvent -> EventEntity(

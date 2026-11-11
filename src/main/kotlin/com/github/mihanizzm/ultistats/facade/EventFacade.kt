@@ -19,7 +19,6 @@ import com.github.mihanizzm.ultistats.model.events.StoredEvent
 import com.github.mihanizzm.ultistats.model.events.SystemEvent
 import com.github.mihanizzm.ultistats.model.events.TeamEvent
 import com.github.mihanizzm.ultistats.model.events.TwoPlayerEvent
-import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchParticipantRepository
 import com.github.mihanizzm.ultistats.service.EventService
 import com.github.mihanizzm.ultistats.service.MatchService
 import com.github.mihanizzm.ultistats.service.result.EventCommandResult
@@ -44,31 +43,25 @@ class EventFacade(
     private val eventService: EventService,
     private val matchService: MatchService,
     private val eventFactory: EventFactory,
-    private val matchParticipantRepository: SpringDataMatchParticipantRepository,
 ) {
-    fun getAll(matchId: UUID): EventResult {
+    fun getAll(matchId: UUID, pointLineupCapable: Boolean): EventResult {
         if (matchService.get(matchId) == null) return EventResult.NotFound
-        return EventResult.EventList(eventService.getAllEventsOfMatch(matchId).map(EventResponse::from))
+        return EventResult.EventList(eventService.getAllEventsOfMatch(matchId, pointLineupCapable).map(EventResponse::from))
     }
 
-    fun get(matchId: UUID, eventId: UUID): EventResult {
+    fun get(matchId: UUID, eventId: UUID, pointLineupCapable: Boolean): EventResult {
         if (matchService.get(matchId) == null) return EventResult.NotFound
-        return eventService.get(eventId, matchId)?.let { EventResult.Success(EventResponse.from(it)) }
+        return eventService.get(eventId, matchId, pointLineupCapable)?.let { EventResult.Success(EventResponse.from(it)) }
             ?: EventResult.NotFound
     }
 
-    fun create(matchId: UUID, request: CreateEventRequest): EventResult {
-        if (matchService.get(matchId) == null) return EventResult.NotFound
-        return when (val creation = eventFactory.createValidatedFromRequest(request, matchId)) {
-            is EventCreationResult.Success -> eventService.create(creation.event, matchId, request.eventId).toFacadeResult()
-            is EventCreationResult.Invalid -> badRequest(creation.detail)
-        }
-    }
+    fun create(matchId: UUID, request: CreateEventRequest, pointLineupCapable: Boolean): EventResult =
+        eventService.create(matchId, request, pointLineupCapable).toFacadeResult()
 
-    fun edit(matchId: UUID, eventId: UUID, request: UpdateEventRequest): EventResult {
+    fun edit(matchId: UUID, eventId: UUID, request: UpdateEventRequest, pointLineupCapable: Boolean): EventResult {
         if (matchService.get(matchId) == null) return EventResult.NotFound
         return try {
-            eventService.update(eventId, matchId) { stored -> mergeUpdate(stored, request, matchId) }.toFacadeResult()
+            eventService.update(eventId, matchId, pointLineupCapable) { stored -> mergeUpdate(stored, request, matchId) }.toFacadeResult()
         } catch (exception: InvalidEventUpdateException) {
             badRequest(requireNotNull(exception.message))
         } catch (_: UnsupportedEventUpdateException) {
@@ -99,17 +92,18 @@ class EventFacade(
             stored.event is SystemEvent || stored.event is AnnouncementStartEvent -> throw UnsupportedEventUpdateException()
             else -> throw InvalidEventUpdateException("Event patch shape does not match the stored event")
         }
-        return when (val creation = eventFactory.createValidatedFromRequest(merged, matchId)) {
+        val actorTeams = eventFactory.actorTeams(matchId)
+        return when (val creation = eventFactory.createValidatedFromRequest(merged, matchId, actorTeams)) {
             is EventCreationResult.Success -> creation.event.also {
                 if (it.type != EventType.POSSESSION_SET) {
-                    validateOriginalParticipantTeams(stored.event, it, matchId)
+                    validateOriginalParticipantTeams(stored.event, it, actorTeams)
                 }
             }
             is EventCreationResult.Invalid -> throw InvalidEventUpdateException(creation.detail)
         }
     }
 
-    private fun validateOriginalParticipantTeams(original: Event, updated: Event, matchId: UUID) {
+    private fun validateOriginalParticipantTeams(original: Event, updated: Event, actorTeams: Map<UUID, UUID>) {
         val replacements = when {
             original is OnePlayerEvent && updated is OnePlayerEvent ->
                 listOf(original.participant to updated.participant)
@@ -119,28 +113,28 @@ class EventFacade(
             )
             else -> return
         }
-        val teamByParticipantId = matchParticipantRepository.findAllByMatchId(matchId)
-            .associate { it.participantId to it.teamId }
         replacements.forEach { (originalId, replacementId) ->
-            val originalTeam = teamByParticipantId[originalId]
-                ?: throw InvalidEventUpdateException("Participant $originalId is not part of match $matchId")
-            if (teamByParticipantId[replacementId] != originalTeam) {
+            val originalTeam = actorTeams[originalId]
+                ?: throw InvalidEventUpdateException("Participant $originalId is not part of this match")
+            if (actorTeams[replacementId] != originalTeam) {
                 throw InvalidEventUpdateException("Replacement participant $replacementId must belong to the original participant's match team")
             }
         }
     }
 
-    fun delete(matchId: UUID, eventId: UUID): EventResult {
+    fun delete(matchId: UUID, eventId: UUID, pointLineupCapable: Boolean): EventResult {
         if (matchService.get(matchId) == null) return EventResult.NotFound
-        return eventService.remove(eventId, matchId).toFacadeResult()
+        return eventService.remove(eventId, matchId, pointLineupCapable).toFacadeResult()
     }
 
-    fun undoLast(matchId: UUID): EventResult = eventService.undoLast(matchId).toFacadeResult()
+    fun undoLast(matchId: UUID, pointLineupCapable: Boolean): EventResult =
+        eventService.undoLast(matchId, pointLineupCapable).toFacadeResult()
 
     private fun EventCommandResult.toFacadeResult(): EventResult = when (this) {
         is EventCommandResult.Success -> EventResult.Success(EventResponse.from(event), replayed)
         EventCommandResult.Deleted -> EventResult.Deleted
         EventCommandResult.NotFound -> EventResult.NotFound
+        is EventCommandResult.BadRequest -> EventResult.BadRequest(problem)
         is EventCommandResult.InvalidState -> EventResult.InvalidState(problem)
         is EventCommandResult.Conflict -> EventResult.Conflict(problem)
     }

@@ -33,9 +33,9 @@ class EventController(
 ) {
     @GetMapping
     @Operation(summary = "Получить все события матча")
-    fun getAll(@PathVariable matchId: UUID): ResponseEntity<List<EventResponse>> =
-        when (val result = eventFacade.getAll(matchId)) {
-            is EventResult.EventList -> ResponseEntity.ok(result.events)
+    fun getAll(@PathVariable matchId: UUID, request: HttpServletRequest): ResponseEntity<List<EventResponse>> =
+        when (val result = eventFacade.getAll(matchId, request.pointLineupCapable())) {
+            is EventResult.EventList -> ResponseEntity.ok().varyBy(POINT_LINEUPS_HEADER).body(result.events)
             else -> ResponseEntity.notFound().build()
         }
 
@@ -44,8 +44,9 @@ class EventController(
     fun get(
         @PathVariable matchId: UUID,
         @PathVariable eventId: UUID,
-    ): ResponseEntity<EventResponse> = when (val result = eventFacade.get(matchId, eventId)) {
-        is EventResult.Success -> ResponseEntity.ok(result.response)
+        request: HttpServletRequest,
+    ): ResponseEntity<EventResponse> = when (val result = eventFacade.get(matchId, eventId, request.pointLineupCapable())) {
+        is EventResult.Success -> ResponseEntity.ok().varyBy(POINT_LINEUPS_HEADER).body(result.response)
         else -> ResponseEntity.notFound().build()
     }
 
@@ -225,7 +226,7 @@ class EventController(
         @RequestBody request: CreateEventRequest,
         servletRequest: HttpServletRequest,
     ): ResponseEntity<*> =
-        when (val result = eventFacade.create(matchId, request)) {
+        when (val result = eventFacade.create(matchId, request, servletRequest.pointLineupCapable())) {
             is EventResult.Success -> if (result.replayed) {
                 ResponseEntity.ok(result.response)
             } else {
@@ -323,7 +324,7 @@ class EventController(
         @RequestBody request: UpdateEventRequest,
         servletRequest: HttpServletRequest,
     ): ResponseEntity<*> =
-        when (val result = eventFacade.edit(matchId, eventId, request)) {
+        when (val result = eventFacade.edit(matchId, eventId, request, servletRequest.pointLineupCapable())) {
             is EventResult.Success -> ResponseEntity.ok(result.response)
             is EventResult.NotFound -> notFound(matchId, eventId, servletRequest)
             is EventResult.BadRequest -> badRequest(result.problem, servletRequest)
@@ -375,7 +376,7 @@ class EventController(
     fun undoLast(
         @PathVariable matchId: UUID,
         servletRequest: HttpServletRequest,
-    ): ResponseEntity<*> = when (val result = eventFacade.undoLast(matchId)) {
+    ): ResponseEntity<*> = when (val result = eventFacade.undoLast(matchId, servletRequest.pointLineupCapable())) {
         is EventResult.Success -> ResponseEntity.ok(result.response)
         is EventResult.NotFound -> notFound("Match $matchId not found or has no active events", servletRequest)
         is EventResult.InvalidState -> conflict(result.problem, servletRequest)
@@ -390,7 +391,7 @@ class EventController(
         @PathVariable eventId: UUID,
         servletRequest: HttpServletRequest,
     ): ResponseEntity<*> =
-        when (val result = eventFacade.delete(matchId, eventId)) {
+        when (val result = eventFacade.delete(matchId, eventId, servletRequest.pointLineupCapable())) {
             is EventResult.Deleted -> ResponseEntity.noContent().build<Any>()
             is EventResult.NotFound -> notFound(matchId, eventId, servletRequest)
             is EventResult.InvalidState -> conflict(result.problem, servletRequest)
