@@ -46,6 +46,7 @@ class MatchServiceImpl(
     private val teamRepository: SpringDataTeamRepository,
     private val lifecyclePolicy: MatchLifecyclePolicy,
     private val sequencePolicy: EventSequencePolicy,
+    private val announcements: MatchAnnouncementService,
     private val realtimePublisher: MatchRealtimePublisher,
 ) : MatchService {
     override fun get(matchId: UUID): Match? =
@@ -203,6 +204,7 @@ class MatchServiceImpl(
             )
         }
 
+        announcements.closeAtFinish(matchId, timestamp)
         matchRepository.save(match.copy(endedAt = timestamp, originalEndedAtSecond = timestamp.epochSecond, originalEndedAtNano = timestamp.nano))
         val finished = readHydratedForUpdate(matchId)
         realtimePublisher.matchFinished(matchId)

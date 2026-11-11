@@ -103,6 +103,15 @@ class AuthSurfaceMatrixTest {
                     if (expected != 200) assertEquals(true, mapper.readTree(result.response.contentAsString)["requestRejectedBeforeExecution"].asBoolean())
                 }
             }
+            for (path in listOf("/api/v1/matches/$id/announcements", "/api/v1/matches/$id/announcements/$id/end")) {
+                val denied = mvc.perform(request(org.springframework.http.HttpMethod.POST, path)
+                    .cookie(Cookie("ULTISTATS_LOOPBACK_SESSION", organizer.credential))
+                    .header("X-UltiStats-Installation-Id", organizer.context.installationId)
+                    .header("X-UltiStats-Account-Id", organizer.context.account!!.id)
+                    .header("X-UltiStats-Session-Id", organizer.context.sessionId)).andReturn()
+                assertEquals(403, denied.response.status, path)
+                assertEquals("CSRF_INVALID", mapper.readTree(denied.response.contentAsString)["code"].asText(), path)
+            }
             // These barriers run before CSRF can create a cookie or MVC can bind malformed JSON.
             for (row in rows.filter { it["method"].asText() !in setOf("GET", "HEAD") }) {
                 val method = row["method"].asText()
