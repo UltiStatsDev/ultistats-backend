@@ -1,6 +1,7 @@
 package com.github.mihanizzm.ultistats.config
 
 import com.github.mihanizzm.ultistats.auth.ingress.AuthOriginConfiguration
+import com.github.mihanizzm.ultistats.controller.ANNOUNCEMENT_START_ENABLED_HEADER
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Bean
 import org.springframework.beans.factory.ObjectProvider
@@ -29,6 +30,7 @@ class WebConfig(
             .allowedMethods("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
             .allowedHeaders("Content-Type", "Accept", "X-CSRF-TOKEN",
                 "X-UltiStats-Installation-Id", "X-UltiStats-Account-Id", "X-UltiStats-Session-Id")
+            .exposedHeaders(ANNOUNCEMENT_START_ENABLED_HEADER)
             .maxAge(3600)
     }
 

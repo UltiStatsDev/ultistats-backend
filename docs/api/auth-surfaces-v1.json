@@ -245,6 +245,30 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/matches/{matchId}/announcements",
+      "policy": "PUBLIC",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchAnnouncementController.kt",
+      "line": 42
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/matches/{matchId}/announcements",
+      "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchAnnouncementController.kt",
+      "line": 65
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/matches/{matchId}/announcements/{id}/end",
+      "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchAnnouncementController.kt",
+      "line": 93
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/matches/{matchId}/events/stream",
       "policy": "PUBLIC",
       "owner": "enforcement",

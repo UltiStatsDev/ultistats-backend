@@ -5,9 +5,11 @@ import com.github.mihanizzm.ultistats.validation.query.InvalidQueryParameterExce
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
 import com.github.mihanizzm.ultistats.service.EventIdempotencyConflictException
+import com.github.mihanizzm.ultistats.exception.AnnouncementConflictException
 import com.github.mihanizzm.ultistats.exception.InvalidPatchException
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
@@ -30,6 +32,19 @@ class ApiExceptionHandler {
         )
         return ResponseEntity.badRequest()
             .body(problem.toProblemDetail(HttpStatus.BAD_REQUEST, URI.create(request.requestURI)))
+    }
+
+    @ExceptionHandler(AnnouncementConflictException::class)
+    fun handleAnnouncementConflict(
+        exception: AnnouncementConflictException,
+        request: HttpServletRequest,
+    ): ResponseEntity<ProblemDetail> {
+        val problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.detail).apply {
+            title = "Announcement conflict"
+            instance = URI.create(request.requestURI)
+            setProperty("code", exception.code.name)
+        }
+        return ResponseEntity.status(HttpStatus.CONFLICT).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(problem)
     }
 
     @ExceptionHandler(EventIdempotencyConflictException::class)

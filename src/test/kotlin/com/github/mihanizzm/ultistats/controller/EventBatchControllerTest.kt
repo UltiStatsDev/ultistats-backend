@@ -55,7 +55,7 @@ open class EventBatchControllerTest {
         match = Match(UUID.randomUUID(), listOf(one.id, two.id))
         matches.create(match)
         matches.startMatch(match.id, at)
-        participant = matches.getOrThrow(match.id).participantsByTeam.values.first().first().participantId
+        participant = matches.getOrThrow(match.id).participantsByTeam.getValue(one.id).first().participantId
     }
 
     private fun event(type: String, id: UUID = UUID.randomUUID(), time: Instant = at) =
@@ -249,7 +249,7 @@ open class EventBatchControllerTest {
         }
         patchParticipant(participant) // no-op PATCH still invalidates immutable retry binding
         send(body, 409)
-        val teammate = matches.getOrThrow(match.id).participantsByTeam.values.first()[1].participantId
+        val teammate = matches.getOrThrow(match.id).participantsByTeam.getValue(match.teamIds.first())[1].participantId
         patchParticipant(teammate)
         assertEquals(original.toString(), snapshot()["events"][0]["occurredAt"].asText())
         send(batch(listOf(event("PICKUP", time = original)), 1, 3))
@@ -259,7 +259,7 @@ open class EventBatchControllerTest {
     @Test
     fun `finish uses original event time and rejects one nanosecond earlier`() {
         val original = at.plusNanos(123456123)
-        val teammate = matches.getOrThrow(match.id).participantsByTeam.values.first()[1].participantId
+        val teammate = matches.getOrThrow(match.id).participantsByTeam.getValue(match.teamIds.first())[1].participantId
         val goal = mapOf("eventId" to UUID.randomUUID(), "type" to "GOAL", "occurredAt" to original.toString(),
             "fromParticipantId" to participant, "toParticipantId" to teammate)
         send(batch(listOf(event("PULL", time = original), event("PICKUP", time = original), goal)))
@@ -433,7 +433,7 @@ open class EventBatchControllerTest {
 
     @Test
     fun `batch score is updated from all committed events and retry does not score twice`() {
-        val teammate = matches.getOrThrow(match.id).participantsByTeam.values.first()[1].participantId
+        val teammate = matches.getOrThrow(match.id).participantsByTeam.getValue(match.teamIds.first())[1].participantId
         val goal = mapOf("eventId" to UUID.randomUUID(), "type" to "GOAL", "occurredAt" to at.toString(),
             "fromParticipantId" to participant, "toParticipantId" to teammate)
         val body = batch(listOf(event("PULL"), event("PICKUP"), goal))
@@ -448,7 +448,7 @@ open class EventBatchControllerTest {
 
     @Test
     fun `retry succeeds after match finishes while new append is rejected`() {
-        val teammate = matches.getOrThrow(match.id).participantsByTeam.values.first()[1].participantId
+        val teammate = matches.getOrThrow(match.id).participantsByTeam.getValue(match.teamIds.first())[1].participantId
         val goal = mapOf("eventId" to UUID.randomUUID(), "type" to "GOAL", "occurredAt" to at.toString(),
             "fromParticipantId" to participant, "toParticipantId" to teammate)
         val body = batch(listOf(event("PULL"), event("PICKUP"), goal))

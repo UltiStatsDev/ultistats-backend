@@ -25,6 +25,10 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
 
+ultistats:
+  announcements:
+    write-enabled: ${ULTISTATS_ANNOUNCEMENTS_WRITE_ENABLED:false}
+
 server:
   tomcat:
     max-http-form-post-size: 12MB
