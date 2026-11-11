@@ -21,6 +21,7 @@ import java.util.UUID
         DiscriminatorMapping(value = "PULL", schema = OnePlayerEventResponse::class),
         DiscriminatorMapping(value = "BRICK", schema = OnePlayerEventResponse::class),
         DiscriminatorMapping(value = "PICKUP", schema = OnePlayerEventResponse::class),
+        DiscriminatorMapping(value = "POSSESSION_SET", schema = OnePlayerEventResponse::class),
         DiscriminatorMapping(value = "PASS", schema = TwoPlayerEventResponse::class),
         DiscriminatorMapping(value = "GOAL", schema = TwoPlayerEventResponse::class),
         DiscriminatorMapping(value = "BLOCK", schema = TwoPlayerEventResponse::class),

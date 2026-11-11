@@ -148,6 +148,12 @@ class EventController(
                         value = """{"eventId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","type":"PICKUP","occurredAt":"2026-07-28T12:30:00Z","participantId":"11111111-1111-1111-1111-111111111111"}""",
                     ),
                     ExampleObject(
+                        name = "POSSESSION_SET",
+                        summary = "POSSESSION_SET — Смена владельца диска",
+                        description = "Устанавливает фактического владельца из любой команды снимка в активном поинте после пулла, включая свободный диск. Обычные счётчики действий не меняются.",
+                        value = """{"eventId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","type":"POSSESSION_SET","occurredAt":"2026-07-28T12:30:00Z","participantId":"11111111-1111-1111-1111-111111111111"}""",
+                    ),
+                    ExampleObject(
                         name = "BLOCK",
                         summary = "BLOCK — Блок без уточнения позиции",
                         description = "fromParticipantId — бросающий, toParticipantId — блокирующий защитник противоположной команды. Позиция защитника не уточнена. Диск свободен до PICKUP.",
@@ -241,6 +247,7 @@ class EventController(
             "В событии с двумя участниками fromParticipantId и toParticipantId необязательны: " +
             "отсутствие или null сохраняет прежнее значение; можно передать только type для уточнения блока. " +
             "Роли участников и ограничения команд совпадают с POST. " +
+            "POSSESSION_SET можно исправить только при разрешённой записи этого типа. " +
             "occurredAt неизменяем и не входит в PATCH; идентификатор и sequenceNumber также сохраняются. " +
             "Границы HALFTIME_START, HALFTIME_END, ANNOUNCEMENT_START и ANNOUNCEMENT_END не редактируются: " +
             "PATCH с их сохранённым type возвращает 405 Method Not Allowed. " +

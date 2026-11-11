@@ -11,9 +11,9 @@ import java.util.UUID
 @Component
 class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
     fun validate(data: MatchTransferPackage) {
-        val expectedVersion = if (data.matches.any { it.announcements.isNotEmpty() }) 2 else 1
+        val expectedVersion = data.matches.requiredFormatVersion()
         check(data.formatVersion == expectedVersion, "formatVersion",
-            "Expected version $expectedVersion for the included standalone announcements")
+            "Expected version $expectedVersion for the included events and standalone announcements")
         check(data.matches.isNotEmpty(), "matches", "Select at least one match")
         unique(data.matches.map { it.id }, "matches")
         unique(data.teams.map { it.id }, "teams")
@@ -135,6 +135,12 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
         path, "Nonblank text of at most $max characters is required")
     private fun check(valid: Boolean, path: String, detail: String) { if (!valid) fail(path, detail) }
     private fun fail(path: String, detail: String): Nothing = throw InvalidMatchTransferException(path, detail)
+}
+
+internal fun List<PortableMatch>.requiredFormatVersion() = when {
+    any { match -> match.events.any { it.type == EventType.POSSESSION_SET } } -> 3
+    any { it.announcements.isNotEmpty() } -> 2
+    else -> 1
 }
 
 internal fun PortableEvent.toDomain(): Event = when (type.category) {
