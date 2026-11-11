@@ -20,6 +20,7 @@ class PointLineupOpenApiConfig {
         val schemas = api.components.schemas
         flattenDiscriminatedLeaves(schemas, "ConfirmPointLineupEntry")
         flattenDiscriminatedLeaves(schemas, "PointLineupEntry")
+        flattenDiscriminatedLeaves(schemas, "PortablePointLineupEntry")
         // An OpenAPI 3.1 $ref with a nullable sibling still requires the referenced object.
         schemas["PointLineupResponse"]?.properties?.set("lineup", ComposedSchema().apply {
             addAnyOfItem(Schema<Any>().`$ref`("#/components/schemas/PointLineup"))

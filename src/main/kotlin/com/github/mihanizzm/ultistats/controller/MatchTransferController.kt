@@ -37,7 +37,7 @@ class MatchTransferController(private val service: MatchTransferService) {
 
     @PostMapping("/export", consumes = [MediaType.APPLICATION_JSON_VALUE], produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Export selected matches as portable JSON",
-        description = "Uses version 3 with POSSESSION_SET, otherwise version 2 with standalone announcements or version 1 with neither. Preserves selected order and historical snapshots. All statuses supported; missing/deleted matches return 404 and matches with confirmed point lineups return 409. Photos, current memberships, deleted events and idempotency metadata are excluded.")
+        description = "Uses version 4 with canonical confirmed point lineups, otherwise version 3 with POSSESSION_SET, version 2 with standalone announcements, or version 1. Preserves selected order, historical snapshots and active events. Missing or deleted matches return 404. An active temporary reference without an exportable point returns 409. Unreachable lineups and deleted events are excluded.")
     @ApiResponses(value = [
         ApiResponse(responseCode = "200", description = "Portable package", content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = MatchTransferPackage::class), examples = [ExampleObject(name = "portableMatch", value = MatchTransferExamples.PACKAGE)])]),
         ApiResponse(responseCode = "400", description = "Invalid selection", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class))]),
@@ -53,11 +53,11 @@ class MatchTransferController(private val service: MatchTransferService) {
 
     @PostMapping("/import", consumes = [MediaType.APPLICATION_JSON_VALUE], produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Import a portable package as independent copies",
-        description = "Version 3 remaps POSSESSION_SET participants when possession change writes are enabled. Versions 2 and 3 preserve standalone interval IDs and remap their team IDs when new announcement intervals are enabled. New IDs are generated for every match/team/player/event and UNKNOWN participant; shared player/team identity is preserved within the package. Existing data is never overwritten. Repeat import creates another copy. Entire package is validated and committed atomically. Cards are active, without photos or current memberships. Status/timestamps/snapshots/event order are preserved and scores recalculated.")
+        description = "Version 4 copies canonical confirmed lineups with fresh point and slot IDs and revision 1, retaining current identification. Point lineup writes must be enabled. Included POSSESSION_SET events and standalone intervals require their respective independent write flags in every version. Existing data is never overwritten. Repeat import creates another copy. The entire package is validated and committed atomically. Status, timestamps, snapshots and event order are preserved and scores recalculated.")
     @ApiResponses(value = [
         ApiResponse(responseCode = "200", description = "Source-to-created identity maps", content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = MatchTransferResult::class), examples = [ExampleObject(value = MatchTransferExamples.RESULT)])]),
         ApiResponse(responseCode = "400", description = "Malformed, unsupported or inconsistent package; nothing imported", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class))]),
-        ApiResponse(responseCode = "409", description = "New announcement intervals or possession changes are disabled; nothing imported", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class))]),
+        ApiResponse(responseCode = "409", description = "Included point lineups, standalone announcements or possession changes are disabled; nothing imported", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class))]),
     ])
     fun importPackage(
         @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true, content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = MatchTransferPackage::class), examples = [ExampleObject(name = "portableMatch", value = MatchTransferExamples.PACKAGE)])])
