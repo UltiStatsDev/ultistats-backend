@@ -2,6 +2,8 @@ package com.github.mihanizzm.ultistats.controller
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.NullNode
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.github.mihanizzm.ultistats.UltistatsApplication
 import com.github.mihanizzm.ultistats.auth.model.AuthLoginResult
 import com.github.mihanizzm.ultistats.auth.service.AuthService
@@ -21,6 +23,7 @@ import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.ActiveProfiles
 import java.net.URI
 import java.net.http.HttpClient
@@ -57,6 +60,7 @@ class PointLineupHttpTest {
     @Autowired private lateinit var teams: TeamService
     @Autowired private lateinit var players: PlayerService
     @Autowired private lateinit var memberships: TeamPlayerService
+    @Autowired private lateinit var jdbc: JdbcTemplate
     private val client = HttpClient.newHttpClient()
     private val startedAt = Instant.parse("2026-10-15T09:00:00Z")
     private val login by lazy {
@@ -136,6 +140,19 @@ class PointLineupHttpTest {
         assertTrue(pointSchema["properties"]["lineup"]["anyOf"].any { it["type"]?.asText() == "null" })
         assertTrue(temporarySchema["required"].any { it.asText() == "resolvedParticipantId" })
         assertTrue(temporarySchema.path("properties").path("resolvedParticipantId").path("type").any { it.asText() == "null" })
+        val patch = schemasByPath.path("/api/v1/matches/{matchId}/point-lineups/{pointId}/slots/{slotId}").path("patch")
+        assertFalse(patch.isMissingNode, "The slot PATCH operation is missing from OpenAPI")
+        assertEquals("#/components/schemas/PointLineupResponse",
+            patch["responses"]["200"]["content"]["application/json"]["schema"]["\$ref"].asText())
+        val identify = schemas["IdentifyPointLineupSlotRequest"]
+        assertEquals(setOf("participantId", "expectedLineupRevision", "expectedClosingEventId"),
+            identify["required"].map { it.asText() }.toSet())
+        val candidateSchema = identify["properties"]["participantId"]
+        assertEquals(setOf("string", "null"), candidateSchema["type"].map { it.asText() }.toSet())
+        assertEquals("uuid", candidateSchema["format"].asText())
+        val revisionSchema = identify["properties"]["expectedLineupRevision"]
+        assertEquals("integer", revisionSchema["type"].asText())
+        assertEquals(0, revisionSchema["minimum"].asInt())
         for (prefix in listOf("PointLineup", "ConfirmPointLineup")) {
             val schema = schemas["${prefix}Entry"]
             assertEquals(2, schema["oneOf"].size())
@@ -428,6 +445,254 @@ class PointLineupHttpTest {
         assertTrue(get(v2)["events"].isEmpty)
     }
 
+    @Test
+    fun `identification and explicit null undo only change personal attribution`() {
+        val fixture = fixture()
+        val direct = fixture.leftPlayers[0]
+        val candidate = fixture.leftPlayers[1]
+        val slot = UUID.randomUUID()
+        val right = fixture.rightPlayers[0]
+        val first = confirm(fixture, listOf(temporary(slot), player(direct)), listOf(player(right)))
+        val pull = eventBody(UUID.randomUUID(), "PULL", right)
+        val pickup = eventBody(UUID.randomUUID(), "PICKUP", slot).at(2)
+        val goal = eventBody(UUID.randomUUID(), "GOAL", slot, direct).at(7)
+        val journal = "${fixture.matchPath}/events".replace("/v1/", "/v2/")
+        val append = batch(0, 0, pull, pickup, goal)
+        val receipt = response(send("POST", "$journal/batch", append, login, capability = "1"), 201)
+
+        confirm(fixture, listOf(player(candidate), player(direct)), listOf(player(right)))
+        response(send("POST", "$journal/batch", batch(3, 1, pull.withNewId().at(10),
+            eventBody(UUID.randomUUID(), "PICKUP", candidate).at(12),
+            eventBody(UUID.randomUUID(), "GOAL", candidate, direct).at(15)), login, capability = "1"), 201)
+
+        val path = slotPath(fixture, first, slot)
+        val closing = goal.getValue("eventId")
+        val body = identification(candidate, 1, closing)
+        val points = get(fixture.path)
+        val match = get(fixture.matchPath)
+        val raw = response(send("GET", journal, capability = "1", capture = "identification-journal-before"), 200)
+        val database = journalRows(fixture)
+        val statsPath = "${fixture.matchPath}/statistics"
+        val beforeResponse = send("GET", statsPath, session = login, capture = "identification-stats-before")
+        val before = response(beforeResponse, 200)
+        val beforePlayer = participant(before, candidate)
+        assertEquals(3000, beforePlayer["time"]["possessionTimeMs"].asInt())
+        assertEquals(1, beforePlayer["attack"]["assists"].asInt())
+
+        response(send("PATCH", path, body), 401)
+        assertEquals("CSRF_INVALID", response(send("PATCH", path, body, login, csrf = false), 403)["code"].asText())
+        val identified = response(send("PATCH", path, body, login, capture = "identification-success"), 200)
+        assertEquals(candidate.toString(), resolution(identified))
+        assertEquals(2, identified["lineup"]["revision"].asInt())
+        assertEquals(closing.toString(), identified["closingEventId"].asText())
+        val refreshed = response(send("GET", fixture.path, capture = "identification-point-after"), 200)
+        assertEquals(identified, refreshed["points"].first())
+        assertEquals(points["points"].drop(1), refreshed["points"].drop(1))
+        assertEquals(points["logRevision"], refreshed["logRevision"])
+
+        val afterResponse = send("GET", statsPath, session = login, capture = "identification-stats-after")
+        val after = response(afterResponse, 200)
+        assertEquals(beforeResponse.headers().firstValue(ANNOUNCEMENT_STATISTICS_HEADER),
+            afterResponse.headers().firstValue(ANNOUNCEMENT_STATISTICS_HEADER))
+        val afterPlayer = participant(after, candidate)
+        assertEquals("PLAYER", afterPlayer["kind"].asText())
+        assertEquals(8000, afterPlayer["time"]["possessionTimeMs"].asInt())
+        assertEquals(4000, afterPlayer["time"]["averagePossessionTimeMs"].asInt())
+        assertEquals(2, afterPlayer["attack"]["assists"].asInt())
+        assertEquals(2, afterPlayer["attack"]["discPossessions"].asInt())
+        assertEquals(before, after.deepCopy<JsonNode>().also { copy ->
+            val participants = copy["teams"].flatMap { it["participants"] }
+            (participants.single { it["participantId"].asText() == candidate.toString() } as ObjectNode)
+                .setAll<ObjectNode>(beforePlayer as ObjectNode)
+        })
+
+        assertEquals(raw, response(send("GET", journal, capability = "1", capture = "identification-journal-bound"), 200))
+        assertEquals(database, journalRows(fixture))
+        assertEquals(match, get(fixture.matchPath))
+        assertEquals(identified, response(send("PATCH", path, identification(candidate, 2, closing), login), 200))
+        assertConflict(send("PATCH", path, body, login, capture = "identification-stale"))
+        val undone = response(send("PATCH", path, identification(null, 2, closing), login, capture = "identification-undo"), 200)
+        assertEquals(null, resolution(undone))
+        assertEquals(3, undone["lineup"]["revision"].asInt())
+        assertConflict(send("PATCH", path, body, login))
+        assertEquals(undone, response(send("PATCH", path, identification(null, 3, closing), login), 200))
+        assertEquals(undone, get(fixture.path)["points"].first())
+        assertEquals(before, response(send("GET", statsPath, session = login, capture = "identification-stats-undone"), 200))
+        assertEquals(raw, response(send("GET", journal, capability = "1", capture = "identification-journal-after"), 200))
+        assertEquals(database, journalRows(fixture))
+        val replay = response(send("POST", "$journal/batch", append, login, capability = "1"), 200)
+        assertEquals(receipt["events"], replay["events"])
+        assertEquals(points["logRevision"], replay["logRevision"])
+        assertEquals(match, get(fixture.matchPath))
+    }
+
+    @Test
+    fun `identification validates request state and match team and serializes competing assignments`() {
+        val fixture = fixture()
+        val firstSlot = UUID.randomUUID()
+        val secondSlot = UUID.randomUUID()
+        val right = fixture.rightPlayers[0]
+        val candidate = fixture.leftPlayers[0]
+        val first = confirm(fixture, listOf(temporary(firstSlot), temporary(secondSlot, 2)), listOf(player(right)))
+        val path = slotPath(fixture, first, firstSlot)
+        val secondPath = slotPath(fixture, first, secondSlot)
+        val goalId = UUID.randomUUID()
+        val body = identification(candidate, 1, goalId)
+        assertConflict(send("PATCH", path, body, login))
+        event(fixture, "PULL", right, capability = "1")
+        assertConflict(send("PATCH", path, body, login))
+        event(fixture, "PICKUP", firstSlot, capability = "1")
+        response(send("POST", "${fixture.matchPath}/events", eventBody(goalId, "GOAL", firstSlot, secondSlot),
+            login, capability = "1"), 201)
+        val completed = get(fixture.path)["points"].first()
+        val nextSlot = UUID.randomUUID()
+        val next = confirm(fixture, emptyList(), listOf(temporary(nextSlot)))
+        for (badBody in listOf(
+            body - "participantId", body - "expectedLineupRevision", body - "expectedClosingEventId",
+            body + ("expectedLineupRevision" to NullNode.instance), body + ("expectedClosingEventId" to NullNode.instance),
+            body + ("participantId" to ""), body + ("expectedClosingEventId" to ""),
+            body + ("expectedLineupRevision" to "1"), body + ("expectedLineupRevision" to -1),
+            body + ("expectedLineupRevision" to 1.0), body + ("expectedLineupRevision" to true),
+        )) response(send("PATCH", path, badBody, login), 400)
+
+        val unknown = matches.getOrThrow(fixture.id).participantsByTeam.getValue(fixture.teamIds[0])
+            .first { it.kind == MatchParticipantKind.UNKNOWN }.participantId
+        for (ineligible in listOf(unknown, UUID.randomUUID(), fixture.rightPlayers[1])) {
+            assertConflict(send("PATCH", path, identification(ineligible, 1, goalId), login))
+        }
+        for (invalidPath in listOf(slotPath(fixture, first, UUID.randomUUID()), slotPath(fixture, first, nextSlot),
+            slotPath(fixture, next, firstSlot), "${fixture.path}/${UUID.randomUUID()}/slots/$firstSlot")) {
+            assertConflict(send("PATCH", invalidPath, body, login))
+        }
+        assertConflict(send("PATCH", path, identification(candidate, 1, UUID.randomUUID()), login))
+        assertEquals(completed, get(fixture.path)["points"].first())
+        val results = race({ send("PATCH", path, body, login) }, { send("PATCH", secondPath, body, login) })
+        assertEquals(listOf(200, 409), results.map { it.statusCode() }.sorted())
+        assertConflict(results.single { it.statusCode() == 409 })
+        val winner = response(results.single { it.statusCode() == 200 }, 200)
+        assertEquals(2, winner["lineup"]["revision"].asInt())
+        val entries = winner["lineup"]["teams"][0]["entries"]
+        val unoccupied = UUID.fromString(entries.single { it["resolvedParticipantId"].isNull }["slotId"].asText())
+        assertConflict(send("PATCH", slotPath(fixture, winner, unoccupied), identification(candidate, 2, goalId), login))
+        assertEquals(winner, get(fixture.path)["points"].first())
+    }
+
+    @Test
+    fun `old closing event conflicts after gameplay undo and recompletion and finished points can be corrected`() {
+        val fixture = fixture()
+        val slot = UUID.randomUUID()
+        val direct = fixture.leftPlayers[0]
+        val candidate = fixture.leftPlayers[1]
+        val right = fixture.rightPlayers[0]
+        val rightSlot = UUID.randomUUID()
+        val first = confirm(fixture, listOf(temporary(slot), player(direct)), listOf(temporary(rightSlot), player(right)))
+        val path = slotPath(fixture, first, slot)
+        val rightPath = slotPath(fixture, first, rightSlot)
+        val journal = "${fixture.matchPath}/events"
+        val v2 = journal.replace("/v1/", "/v2/")
+        val goal = eventBody(UUID.randomUUID(), "GOAL", slot, direct).at(7)
+        val priorClosing = goal.getValue("eventId")
+        response(send("POST", "$v2/batch", batch(0, 0, eventBody(UUID.randomUUID(), "PULL", rightSlot),
+            eventBody(UUID.randomUUID(), "PICKUP", slot).at(2), goal), login, capability = "1"), 201)
+        assertConflict(send("PATCH", path, identification(direct, 1, priorClosing), login))
+        assertConflict(send("PATCH", rightPath, identification(right, 1, priorClosing), login))
+        val undo = undo(goal, 1)
+        val undoReceipt = response(send("POST", "$v2/undo", undo, login, capability = "1"), 200)
+        assertEquals("APPLIED", undoReceipt["outcome"].asText())
+        assertConflict(send("PATCH", path, identification(candidate, 1, priorClosing), login))
+        val newGoal = goal.withNewId()
+        val closing = newGoal.getValue("eventId")
+        response(send("POST", journal, newGoal, login, capability = "1"), 201)
+        assertEquals(first["pointId"], get(fixture.path)["points"].first()["pointId"])
+        assertConflict(send("PATCH", path, identification(candidate, 1, priorClosing), login,
+            capture = "identification-stale-closing"))
+        response(send("POST", "${fixture.matchPath}/end", mapOf("timestamp" to startedAt.plusSeconds(10)), login), 200)
+        assertEquals("FINISHED", get(fixture.matchPath)["status"].asText())
+        val journalBefore = journalRows(fixture)
+        assertEquals(candidate.toString(), resolution(response(send("PATCH", path, identification(candidate, 1, closing), login), 200)))
+        val rightCandidate = fixture.rightPlayers[1]
+        val rightIdentified = response(send("PATCH", rightPath, identification(rightCandidate, 2, closing), login), 200)
+        assertEquals(rightCandidate.toString(), rightIdentified["lineup"]["teams"][1]["entries"][0]["resolvedParticipantId"].asText())
+        assertEquals(1, participant(get("${fixture.matchPath}/statistics"), rightCandidate)["attack"]["pulls"].asInt())
+        assertEquals(rightIdentified, get(fixture.path)["points"].single())
+        assertEquals(journalBefore, journalRows(fixture))
+        assertEquals(undoReceipt, response(send("GET", "$v2/undo/${undo["commandId"]}", session = login), 200))
+    }
+
+    protected fun verifyFreshProcessIdentification() {
+        val fixture = fixture()
+        val slot = UUID.randomUUID()
+        val candidate = fixture.leftPlayers[1]
+        val direct = fixture.leftPlayers[0]
+        val right = fixture.rightPlayers[0]
+        val first = confirm(fixture, listOf(temporary(slot), player(direct)), listOf(player(right)))
+        val path = slotPath(fixture, first, slot)
+        val journal = "${fixture.matchPath}/events".replace("/v1/", "/v2/")
+        val statsPath = "${fixture.matchPath}/statistics"
+        val goal = eventBody(UUID.randomUUID(), "GOAL", slot, direct).at(7)
+        val closing = goal.getValue("eventId")
+        val batch = batch(0, 0, eventBody(UUID.randomUUID(), "PULL", right),
+            eventBody(UUID.randomUUID(), "PICKUP", slot).at(2), goal)
+        val receipt = response(send("POST", "$journal/batch", batch, login, capability = "1"), 201)
+        val before = participant(response(send("GET", statsPath, session = login), 200), candidate)
+        assertEquals(0, before["time"]["possessionTimeMs"].asInt())
+        assertEquals(0, before["attack"]["assists"].asInt())
+        val identified = response(send("PATCH", path, identification(candidate, 1, closing), login), 200)
+        val stats = response(send("GET", statsPath, session = login), 200)
+        assertEquals(5000, participant(stats, candidate)["time"]["possessionTimeMs"].asInt())
+        assertEquals(1, participant(stats, candidate)["attack"]["assists"].asInt())
+        val raw = response(send("GET", journal, capability = "1"), 200)
+        val database = journalRows(fixture)
+
+        SpringApplicationBuilder(UltistatsApplication::class.java).profiles("postgres-list").run(
+            "--server.port=0", "--app.auth.ingress.loopback-mode=true", "--app.auth.ingress.private-port=0",
+            "--ultistats.point-lineups.write-enabled=false",
+        ).use { app ->
+            val restartedPort = (app as ServletWebServerApplicationContext).webServer.port
+            for ((label, value) in listOf("undo" to null, "replacement" to direct, "no-op" to candidate)) {
+                val rejected = response(send("PATCH", path, identification(value, 2, closing), login,
+                    targetPort = restartedPort, capture = "identification-off-$label"), 409)
+                assertEquals("POINT_LINEUP_WRITE_DISABLED", rejected["code"].asText())
+            }
+            val reloaded = response(send("GET", fixture.path, targetPort = restartedPort, capture = "identification-off-points"), 200)
+            assertFalse(reloaded["writesEnabled"].asBoolean())
+            assertEquals(identified, reloaded["points"].first())
+            assertEquals(stats, response(send("GET", statsPath, session = login, targetPort = restartedPort,
+                capture = "identification-off-stats"), 200))
+            assertEquals(raw, response(send("GET", journal, capability = "1", targetPort = restartedPort), 200))
+            assertEquals(receipt, response(send("POST", "$journal/batch", batch, login, capability = "1", targetPort = restartedPort), 200))
+            assertEquals(database, journalRows(fixture))
+            val safeUndo = response(send("POST", "$journal/undo", undo(goal, 1), login, capability = "1",
+                targetPort = restartedPort, capture = "identification-off-gameplay-undo"), 200)
+            assertEquals("APPLIED", safeUndo["outcome"].asText())
+        }
+    }
+
+    private fun slotPath(fixture: Fixture, point: JsonNode, slot: UUID) =
+        "${fixture.path}/${point["pointId"].asText()}/slots/$slot"
+
+    private fun identification(candidate: UUID?, revision: Long, closing: Any) =
+        mapOf("participantId" to (candidate ?: NullNode.instance), "expectedLineupRevision" to revision, "expectedClosingEventId" to closing)
+
+    private fun resolution(point: JsonNode) =
+        point["lineup"]["teams"][0]["entries"][0]["resolvedParticipantId"].let { if (it.isNull) null else it.asText() }
+
+    private fun participant(stats: JsonNode, id: UUID) =
+        stats["teams"].flatMap { it["participants"] }.single { it["participantId"].asText() == id.toString() }
+
+    private fun assertConflict(result: HttpResponse<String>) =
+        assertEquals("POINT_LINEUP_CONFLICT", response(result, 409)["code"].asText())
+
+    private fun Map<String, Any>.at(seconds: Long) = this + ("occurredAt" to startedAt.plusSeconds(seconds).toString())
+
+    private fun Map<String, Any>.withNewId() = this + ("eventId" to UUID.randomUUID())
+
+    private fun journalRows(fixture: Fixture) = listOf("events", "event_batch_receipts", "undo_command_receipts").map { table ->
+        jdbc.queryForList("SELECT * FROM $table WHERE match_id = ? ORDER BY id", fixture.id).map { row ->
+            row.mapValues { (_, value) -> value?.toString() }
+        }
+    }
+
     private fun confirm(fixture: Fixture, left: List<Any>, right: List<Any>): JsonNode {
         val snapshot = get(fixture.path)
         val pointId = snapshot["points"].last()["pointId"].asText()
@@ -619,6 +884,10 @@ class PointLineupPostgresTest : PointLineupHttpTest() {
     @Test
     fun `fresh default-off application reads and replays accepted confirmation on same PostgreSQL data`() =
         verifyFreshProcessConfiguration()
+
+    @Test
+    fun `fresh default-off application preserves identification and statistics on same PostgreSQL data`() =
+        verifyFreshProcessIdentification()
 
     @Test
     fun `fresh default-off application preserves slot log score and stats and permits exact retries and safe undo`() =

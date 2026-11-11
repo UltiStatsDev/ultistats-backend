@@ -1,6 +1,7 @@
 package com.github.mihanizzm.ultistats.controller
 
 import com.github.mihanizzm.ultistats.dto.request.ConfirmPointLineupRequest
+import com.github.mihanizzm.ultistats.dto.request.IdentifyPointLineupSlotRequest
 import com.github.mihanizzm.ultistats.dto.response.PointLineupResponse
 import com.github.mihanizzm.ultistats.dto.response.PointLineupsResponse
 import com.github.mihanizzm.ultistats.service.PointLineupService
@@ -14,6 +15,7 @@ import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -62,5 +64,36 @@ class PointLineupController(private val lineups: PointLineupService) {
         @RequestBody body: ConfirmPointLineupRequest,
     ): ResponseEntity<PointLineupResponse> =
         lineups.confirm(matchId, pointId, body)?.let { ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(it) }
+            ?: ResponseEntity.notFound().build()
+
+    @PatchMapping("/{pointId}/slots/{slotId}", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Identify a temporary slot on a completed point or undo its identification",
+        description = "Requires SPORTS_WRITE, CSRF and enabled point lineup writes. Supply the current lineup revision " +
+            "and closing event ID. Explicit null clears the binding. A same-value request at the current revision is a no-op.")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "Canonical completed point", content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+            schema = Schema(implementation = PointLineupResponse::class))]),
+        ApiResponse(responseCode = "400", description = "Invalid identification request", content = [Content(
+            mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class),
+        )]),
+        ApiResponse(responseCode = "401", description = "Session required", content = [Content(
+            mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class),
+        )]),
+        ApiResponse(responseCode = "403", description = "Session permission, identity, transport or CSRF rejected", content = [Content(
+            mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class),
+        )]),
+        ApiResponse(responseCode = "404", description = "Match not found", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "POINT_LINEUP_CONFLICT for stale, mismatched or ineligible requests, " +
+            "or POINT_LINEUP_WRITE_DISABLED when writes are disabled", content = [Content(
+            mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class),
+        )]),
+    )
+    fun identify(
+        @PathVariable matchId: UUID,
+        @PathVariable pointId: UUID,
+        @PathVariable slotId: UUID,
+        @RequestBody body: IdentifyPointLineupSlotRequest,
+    ): ResponseEntity<PointLineupResponse> =
+        lineups.identify(matchId, pointId, slotId, body)?.let { ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(it) }
             ?: ResponseEntity.notFound().build()
 }

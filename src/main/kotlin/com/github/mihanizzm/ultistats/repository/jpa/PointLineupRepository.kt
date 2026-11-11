@@ -18,10 +18,11 @@ class PointLineupRepository(private val jdbc: JdbcTemplate) {
     ) == true
 
     fun slots(matchId: UUID): Map<UUID, PointLineupSlotActor> = jdbc.query(
-        "SELECT slot_id, point_id, team_id FROM match_point_lineup_entries WHERE match_id = ? AND slot_id IS NOT NULL",
+        """SELECT slot_id, point_id, team_id, resolved_participant_id FROM match_point_lineup_entries
+            WHERE match_id = ? AND slot_id IS NOT NULL""",
         { row, _ ->
             requireNotNull(row.uuid("slot_id")) to PointLineupSlotActor(
-                requireNotNull(row.uuid("point_id")), requireNotNull(row.uuid("team_id")),
+                requireNotNull(row.uuid("point_id")), requireNotNull(row.uuid("team_id")), row.uuid("resolved_participant_id"),
             )
         },
         matchId,
@@ -74,8 +75,22 @@ class PointLineupRepository(private val jdbc: JdbcTemplate) {
         )
     }
 
+    /** The caller holds the match lock and updates the slot and revision in one transaction. */
+    fun identifySlot(matchId: UUID, pointId: UUID, slotId: UUID, participantId: UUID?) {
+        val updatedSlot = jdbc.update(
+            "UPDATE match_point_lineup_entries SET resolved_participant_id = ? WHERE match_id = ? AND point_id = ? AND slot_id = ?",
+            participantId, matchId, pointId, slotId,
+        )
+        check(updatedSlot == 1)
+        val updatedLineup = jdbc.update(
+            "UPDATE match_point_lineups SET revision = revision + 1 WHERE match_id = ? AND point_id = ?",
+            matchId, pointId,
+        )
+        check(updatedLineup == 1)
+    }
+
     private data class LineupRow(val pointId: UUID, val revision: Long, val teamId: UUID?, val entry: PointLineupEntry?)
     private fun ResultSet.uuid(column: String): UUID? = getObject(column, UUID::class.java)
 }
 
-data class PointLineupSlotActor(val pointId: UUID, val teamId: UUID)
+data class PointLineupSlotActor(val pointId: UUID, val teamId: UUID, val resolvedParticipantId: UUID?)
