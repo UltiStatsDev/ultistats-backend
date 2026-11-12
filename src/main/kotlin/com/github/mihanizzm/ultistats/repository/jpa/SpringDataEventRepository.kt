@@ -1,6 +1,7 @@
 package com.github.mihanizzm.ultistats.repository.jpa
 
 import com.github.mihanizzm.ultistats.model.EventEntity
+import com.github.mihanizzm.ultistats.model.events.EventType
 import org.springframework.data.jpa.repository.JpaRepository
 import java.util.UUID
 
@@ -11,4 +12,5 @@ interface SpringDataEventRepository : JpaRepository<EventEntity, UUID>, EventIns
     fun findAllByMatchIdAndDeletedAtIsNull(matchId: UUID): List<EventEntity>
     fun findByIdAndMatchIdAndDeletedAtIsNull(id: UUID, matchId: UUID): EventEntity?
     fun countByMatchIdAndDeletedAtIsNull(matchId: UUID): Long
+    fun existsByMatchIdAndEventTypeAndDeletedAtIsNull(matchId: UUID, eventType: EventType): Boolean
 }

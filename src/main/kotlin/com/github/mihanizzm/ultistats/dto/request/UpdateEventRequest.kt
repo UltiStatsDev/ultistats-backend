@@ -21,6 +21,7 @@ import java.util.UUID
     JsonSubTypes.Type(TwoPlayerEventPatchRequest::class, name = "BLOCK_FIELD"),
     JsonSubTypes.Type(TwoPlayerEventPatchRequest::class, name = "INTERCEPTION"),
     JsonSubTypes.Type(TwoPlayerEventPatchRequest::class, name = "CALLAHAN"),
+    JsonSubTypes.Type(TwoPlayerEventPatchRequest::class, name = "PLAYER_SUBSTITUTION"),
     JsonSubTypes.Type(TeamEventPatchRequest::class, name = "TIMEOUT_START"),
     JsonSubTypes.Type(TeamEventPatchRequest::class, name = "TIMEOUT_END"),
     JsonSubTypes.Type(SystemEventPatchRequest::class, name = "HALFTIME_START"),

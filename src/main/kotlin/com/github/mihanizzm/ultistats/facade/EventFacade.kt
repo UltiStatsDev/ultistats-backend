@@ -21,6 +21,8 @@ import com.github.mihanizzm.ultistats.model.events.TeamEvent
 import com.github.mihanizzm.ultistats.model.events.TwoPlayerEvent
 import com.github.mihanizzm.ultistats.service.EventService
 import com.github.mihanizzm.ultistats.service.MatchService
+import com.github.mihanizzm.ultistats.service.PointLineupClient
+import com.github.mihanizzm.ultistats.service.substitutionConflict
 import com.github.mihanizzm.ultistats.service.result.EventCommandResult
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
@@ -44,24 +46,24 @@ class EventFacade(
     private val matchService: MatchService,
     private val eventFactory: EventFactory,
 ) {
-    fun getAll(matchId: UUID, pointLineupCapable: Boolean): EventResult {
+    fun getAll(matchId: UUID, client: PointLineupClient): EventResult {
         if (matchService.get(matchId) == null) return EventResult.NotFound
-        return EventResult.EventList(eventService.getAllEventsOfMatch(matchId, pointLineupCapable).map(EventResponse::from))
+        return EventResult.EventList(eventService.getAllEventsOfMatch(matchId, client).map(EventResponse::from))
     }
 
-    fun get(matchId: UUID, eventId: UUID, pointLineupCapable: Boolean): EventResult {
+    fun get(matchId: UUID, eventId: UUID, client: PointLineupClient): EventResult {
         if (matchService.get(matchId) == null) return EventResult.NotFound
-        return eventService.get(eventId, matchId, pointLineupCapable)?.let { EventResult.Success(EventResponse.from(it)) }
+        return eventService.get(eventId, matchId, client)?.let { EventResult.Success(EventResponse.from(it)) }
             ?: EventResult.NotFound
     }
 
-    fun create(matchId: UUID, request: CreateEventRequest, pointLineupCapable: Boolean): EventResult =
-        eventService.create(matchId, request, pointLineupCapable).toFacadeResult()
+    fun create(matchId: UUID, request: CreateEventRequest, client: PointLineupClient): EventResult =
+        eventService.create(matchId, request, client).toFacadeResult()
 
-    fun edit(matchId: UUID, eventId: UUID, request: UpdateEventRequest, pointLineupCapable: Boolean): EventResult {
+    fun edit(matchId: UUID, eventId: UUID, request: UpdateEventRequest, client: PointLineupClient): EventResult {
         if (matchService.get(matchId) == null) return EventResult.NotFound
         return try {
-            eventService.update(eventId, matchId, pointLineupCapable) { stored -> mergeUpdate(stored, request, matchId) }.toFacadeResult()
+            eventService.update(eventId, matchId, client) { stored -> mergeUpdate(stored, request, matchId) }.toFacadeResult()
         } catch (exception: InvalidEventUpdateException) {
             badRequest(requireNotNull(exception.message))
         } catch (_: UnsupportedEventUpdateException) {
@@ -74,6 +76,7 @@ class EventFacade(
         request: UpdateEventRequest,
         matchId: UUID,
     ): Event {
+        if (request.type == EventType.PLAYER_SUBSTITUTION) substitutionConflict("A journal edit cannot create a substitution")
         if (!request.type.canReplace(stored.event.type)) {
             throw InvalidEventUpdateException("Event type ${request.type} cannot replace ${stored.event.type}")
         }
@@ -122,13 +125,13 @@ class EventFacade(
         }
     }
 
-    fun delete(matchId: UUID, eventId: UUID, pointLineupCapable: Boolean): EventResult {
+    fun delete(matchId: UUID, eventId: UUID, client: PointLineupClient): EventResult {
         if (matchService.get(matchId) == null) return EventResult.NotFound
-        return eventService.remove(eventId, matchId, pointLineupCapable).toFacadeResult()
+        return eventService.remove(eventId, matchId, client).toFacadeResult()
     }
 
-    fun undoLast(matchId: UUID, pointLineupCapable: Boolean): EventResult =
-        eventService.undoLast(matchId, pointLineupCapable).toFacadeResult()
+    fun undoLast(matchId: UUID, client: PointLineupClient): EventResult =
+        eventService.undoLast(matchId, client).toFacadeResult()
 
     private fun EventCommandResult.toFacadeResult(): EventResult = when (this) {
         is EventCommandResult.Success -> EventResult.Success(EventResponse.from(event), replayed)

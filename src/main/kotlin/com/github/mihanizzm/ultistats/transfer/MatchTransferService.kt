@@ -44,6 +44,7 @@ class MatchTransferService(
             val roster = participants.findAllByMatchId(id)
             val snapshotTeams = matchTeams.findAllByMatchIdOrderByPosition(id)
             val journal = events.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(id)
+            if (journal.any { it.eventType == EventType.PLAYER_SUBSTITUTION }) throw substitutionTransferUnsupported()
             PortableMatch(
                 id, match.playersPerTeam, match.plannedStartTimestamp, match.effectiveStartedAt, match.effectiveEndedAt,
                 snapshotTeams.map { team ->
@@ -84,6 +85,9 @@ class MatchTransferService(
 
     @Transactional
     fun importPackage(data: MatchTransferPackage): MatchTransferResult {
+        if (data.matches.any { match -> match.events.any { it.type == EventType.PLAYER_SUBSTITUTION } }) {
+            throw substitutionTransferUnsupported()
+        }
         validator.validate(data)
         if (data.matches.containsPossessionChanges()) {
             possessionChangeWrites.rejection(EventType.POSSESSION_SET)?.let {
@@ -209,3 +213,8 @@ class TransferWriteDisabledException(val problem: MatchProblem) : RuntimeExcepti
 
 class ExportPointLineupUnsupportedException(id: UUID) :
     RuntimeException("Match $id has a live temporary actor outside its exportable point lineup")
+
+private fun substitutionTransferUnsupported() = PointLineupRejectedException(
+    PointLineupProblemCode.POINT_SUBSTITUTION_TRANSFER_UNSUPPORTED,
+    "Portable formats 1–4 do not support point substitutions",
+)

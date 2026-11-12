@@ -2,6 +2,7 @@ package com.github.mihanizzm.ultistats.dto.response
 
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.github.mihanizzm.ultistats.model.PointLineup
+import com.github.mihanizzm.ultistats.model.PointLineupTeam
 import com.github.mihanizzm.ultistats.model.events.PointStatus
 import io.swagger.v3.oas.annotations.media.Schema
 import java.util.UUID
@@ -9,6 +10,7 @@ import java.util.UUID
 data class PointLineupsResponse(
     val logRevision: Long,
     val writesEnabled: Boolean,
+    val substitutionsWriteEnabled: Boolean,
     val points: List<PointLineupResponse>,
 )
 
@@ -23,4 +25,9 @@ data class PointLineupResponse(
     val closingEventId: UUID?,
     @field:Schema(requiredMode = Schema.RequiredMode.REQUIRED)
     val lineup: PointLineup?,
+    @field:Schema(
+        description = "Teams after replaying this point's substitutions in journal order. Null until confirmation.",
+        requiredMode = Schema.RequiredMode.REQUIRED,
+    )
+    val effectiveTeams: List<PointLineupTeam>?,
 )

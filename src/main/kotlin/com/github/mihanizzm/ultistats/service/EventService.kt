@@ -13,17 +13,17 @@ import com.github.mihanizzm.ultistats.service.result.EventCommandResult
 import java.util.UUID
 
 interface EventService {
-    fun undo(matchId: UUID, request: UndoEventRequest, pointLineupCapable: Boolean = false): UndoCommandResult
+    fun undo(matchId: UUID, request: UndoEventRequest, client: PointLineupClient = PointLineupClient.LEGACY): UndoCommandResult
     fun undoOutcome(matchId: UUID, commandId: UUID): UndoCommandResponse?
 
-    fun appendBatch(matchId: UUID, request: CreateEventBatchRequest, pointLineupCapable: Boolean = false): EventBatchResult
-    fun snapshot(matchId: UUID, pointLineupCapable: Boolean = false): EventLogResponse?
+    fun appendBatch(matchId: UUID, request: CreateEventBatchRequest, client: PointLineupClient = PointLineupClient.LEGACY): EventBatchResult
+    fun snapshot(matchId: UUID, client: PointLineupClient = PointLineupClient.LEGACY): EventLogResponse?
 
     fun create(event: Event, matchId: UUID, eventId: UUID? = null): EventCommandResult
-    fun create(matchId: UUID, request: CreateEventRequest, pointLineupCapable: Boolean): EventCommandResult
-    fun get(eventId: UUID, matchId: UUID, pointLineupCapable: Boolean = false): StoredEvent?
-    fun update(eventId: UUID, matchId: UUID, pointLineupCapable: Boolean = false, update: (StoredEvent) -> Event): EventCommandResult
-    fun remove(eventId: UUID, matchId: UUID, pointLineupCapable: Boolean = false): EventCommandResult
-    fun undoLast(matchId: UUID, pointLineupCapable: Boolean = false): EventCommandResult
-    fun getAllEventsOfMatch(matchId: UUID, pointLineupCapable: Boolean = false): List<StoredEvent>
+    fun create(matchId: UUID, request: CreateEventRequest, client: PointLineupClient): EventCommandResult
+    fun get(eventId: UUID, matchId: UUID, client: PointLineupClient = PointLineupClient.LEGACY): StoredEvent?
+    fun update(eventId: UUID, matchId: UUID, client: PointLineupClient = PointLineupClient.LEGACY, update: (StoredEvent) -> Event): EventCommandResult
+    fun remove(eventId: UUID, matchId: UUID, client: PointLineupClient = PointLineupClient.LEGACY): EventCommandResult
+    fun undoLast(matchId: UUID, client: PointLineupClient = PointLineupClient.LEGACY): EventCommandResult
+    fun getAllEventsOfMatch(matchId: UUID, client: PointLineupClient = PointLineupClient.LEGACY): List<StoredEvent>
 }

@@ -649,7 +649,8 @@ class EventControllerTest {
         mockMvc.perform(get("/v3/api-docs"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.propertyName").value("type"))
-            .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.length()").value(18))
+            .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.length()").value(EventType.entries.size))
+            .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.PLAYER_SUBSTITUTION").value("#/components/schemas/TwoPlayerEventResponse"))
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.PICKUP").value("#/components/schemas/OnePlayerEventResponse"))
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.POSSESSION_SET").value("#/components/schemas/OnePlayerEventResponse"))
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.BLOCK").value("#/components/schemas/TwoPlayerEventResponse"))
@@ -699,7 +700,7 @@ class EventControllerTest {
             "ANNOUNCEMENT_END" to commonFields,
         )
 
-        assertEquals(EventType.values().map { it.name }.toSet(), expectedFields.keys)
+        assertEquals(EventType.entries.filterNot { it == EventType.PLAYER_SUBSTITUTION }.map { it.name }.toSet(), expectedFields.keys)
         assertEquals(expectedFields.keys, examples.fieldNames().asSequence().toSet())
         expectedFields.forEach { (type, fields) ->
             val example = examples[type]["value"]

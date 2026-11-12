@@ -50,7 +50,7 @@ class IncrementalStatisticsAggregator : StatisticsAggregator {
             EventType.CALLAHAN -> applyCallahan(stats, event as TwoPlayerEvent, teamByParticipantId)
             EventType.TIMEOUT_START, EventType.TIMEOUT_END,
             EventType.HALFTIME_START, EventType.HALFTIME_END,
-            EventType.ANNOUNCEMENT_START, EventType.ANNOUNCEMENT_END, EventType.POSSESSION_SET -> stats
+            EventType.ANNOUNCEMENT_START, EventType.ANNOUNCEMENT_END, EventType.POSSESSION_SET, EventType.PLAYER_SUBSTITUTION -> stats
         }
     }
 

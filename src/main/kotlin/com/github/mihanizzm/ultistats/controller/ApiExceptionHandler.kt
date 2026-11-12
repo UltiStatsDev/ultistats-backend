@@ -10,6 +10,7 @@ import com.github.mihanizzm.ultistats.service.PointLineupRejectedException
 import com.github.mihanizzm.ultistats.exception.AnnouncementConflictException
 import com.github.mihanizzm.ultistats.exception.InvalidPatchException
 import jakarta.servlet.http.HttpServletRequest
+import org.springframework.http.CacheControl
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
@@ -54,7 +55,12 @@ class ApiExceptionHandler {
         val invalid = error.code == PointLineupProblemCode.INVALID_REQUEST
         val status = if (invalid) HttpStatus.BAD_REQUEST else HttpStatus.CONFLICT
         val problem = ProblemDetail.forStatusAndDetail(status, error.message.orEmpty()).apply {
-            title = if (invalid) "Invalid point lineup" else "Point lineup conflict"
+            title = when (error.code) {
+                PointLineupProblemCode.INVALID_REQUEST -> "Invalid point lineup"
+                PointLineupProblemCode.POINT_SUBSTITUTION_CONFLICT, PointLineupProblemCode.POINT_SUBSTITUTION_WRITE_DISABLED,
+                PointLineupProblemCode.POINT_SUBSTITUTION_TRANSFER_UNSUPPORTED -> "Point substitution conflict"
+                else -> "Point lineup conflict"
+            }
             instance = URI.create(request.requestURI)
             setProperty("code", error.code.name)
             error.batch?.let { batch ->
@@ -65,7 +71,10 @@ class ApiExceptionHandler {
             }
         }
         return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON).apply {
-            if (error.code == PointLineupProblemCode.POINT_LINEUP_CLIENT_REQUIRED) varyBy(POINT_LINEUPS_HEADER)
+            if (error.code == PointLineupProblemCode.POINT_LINEUP_CLIENT_REQUIRED) {
+                cacheControl(CacheControl.noStore())
+                varyBy(POINT_LINEUPS_HEADER)
+            }
         }.body(problem)
     }
 

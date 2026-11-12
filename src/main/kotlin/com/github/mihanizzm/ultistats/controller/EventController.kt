@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.parameters.RequestBody as OpenApiRequestBod
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
+import org.springframework.http.CacheControl
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
@@ -34,8 +35,8 @@ class EventController(
     @GetMapping
     @Operation(summary = "Получить все события матча")
     fun getAll(@PathVariable matchId: UUID, request: HttpServletRequest): ResponseEntity<List<EventResponse>> =
-        when (val result = eventFacade.getAll(matchId, request.pointLineupCapable())) {
-            is EventResult.EventList -> ResponseEntity.ok().varyBy(POINT_LINEUPS_HEADER).body(result.events)
+        when (val result = eventFacade.getAll(matchId, request.pointLineupClient())) {
+            is EventResult.EventList -> ResponseEntity.ok().cacheControl(CacheControl.noStore()).varyBy(POINT_LINEUPS_HEADER).body(result.events)
             else -> ResponseEntity.notFound().build()
         }
 
@@ -45,8 +46,8 @@ class EventController(
         @PathVariable matchId: UUID,
         @PathVariable eventId: UUID,
         request: HttpServletRequest,
-    ): ResponseEntity<EventResponse> = when (val result = eventFacade.get(matchId, eventId, request.pointLineupCapable())) {
-        is EventResult.Success -> ResponseEntity.ok().varyBy(POINT_LINEUPS_HEADER).body(result.response)
+    ): ResponseEntity<EventResponse> = when (val result = eventFacade.get(matchId, eventId, request.pointLineupClient())) {
+        is EventResult.Success -> ResponseEntity.ok().cacheControl(CacheControl.noStore()).varyBy(POINT_LINEUPS_HEADER).body(result.response)
         else -> ResponseEntity.notFound().build()
     }
 
@@ -64,7 +65,8 @@ class EventController(
             "После PATCH или DELETE этот eventId больше нельзя повторно использовать: POST вернёт 409. " +
             "Без eventId сервер сохраняет прежнее поведение и генерирует UUID самостоятельно. " +
             "occurredAt передаётся в ISO-8601 UTC, не раньше начала матча и последнего активного события; " +
-            "одинаковое время допустимо. Недопустимая последовательность событий возвращает 409." +
+            "одинаковое время допустимо. Недопустимая последовательность событий возвращает 409. " +
+            "PLAYER_SUBSTITUTION записывается только защищённым v2 batch." +
             "\n\n" + EventOpenApiDocumentation.CREATE_PAYLOAD_TABLE,
     )
     @ApiResponses(
@@ -226,7 +228,7 @@ class EventController(
         @RequestBody request: CreateEventRequest,
         servletRequest: HttpServletRequest,
     ): ResponseEntity<*> =
-        when (val result = eventFacade.create(matchId, request, servletRequest.pointLineupCapable())) {
+        when (val result = eventFacade.create(matchId, request, servletRequest.pointLineupClient())) {
             is EventResult.Success -> if (result.replayed) {
                 ResponseEntity.ok(result.response)
             } else {
@@ -324,7 +326,7 @@ class EventController(
         @RequestBody request: UpdateEventRequest,
         servletRequest: HttpServletRequest,
     ): ResponseEntity<*> =
-        when (val result = eventFacade.edit(matchId, eventId, request, servletRequest.pointLineupCapable())) {
+        when (val result = eventFacade.edit(matchId, eventId, request, servletRequest.pointLineupClient())) {
             is EventResult.Success -> ResponseEntity.ok(result.response)
             is EventResult.NotFound -> notFound(matchId, eventId, servletRequest)
             is EventResult.BadRequest -> badRequest(result.problem, servletRequest)
@@ -376,7 +378,7 @@ class EventController(
     fun undoLast(
         @PathVariable matchId: UUID,
         servletRequest: HttpServletRequest,
-    ): ResponseEntity<*> = when (val result = eventFacade.undoLast(matchId, servletRequest.pointLineupCapable())) {
+    ): ResponseEntity<*> = when (val result = eventFacade.undoLast(matchId, servletRequest.pointLineupClient())) {
         is EventResult.Success -> ResponseEntity.ok(result.response)
         is EventResult.NotFound -> notFound("Match $matchId not found or has no active events", servletRequest)
         is EventResult.InvalidState -> conflict(result.problem, servletRequest)
@@ -391,7 +393,7 @@ class EventController(
         @PathVariable eventId: UUID,
         servletRequest: HttpServletRequest,
     ): ResponseEntity<*> =
-        when (val result = eventFacade.delete(matchId, eventId, servletRequest.pointLineupCapable())) {
+        when (val result = eventFacade.delete(matchId, eventId, servletRequest.pointLineupClient())) {
             is EventResult.Deleted -> ResponseEntity.noContent().build<Any>()
             is EventResult.NotFound -> notFound(matchId, eventId, servletRequest)
             is EventResult.InvalidState -> conflict(result.problem, servletRequest)

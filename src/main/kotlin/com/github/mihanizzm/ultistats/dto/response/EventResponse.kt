@@ -29,6 +29,7 @@ import java.util.UUID
         DiscriminatorMapping(value = "BLOCK_FIELD", schema = TwoPlayerEventResponse::class),
         DiscriminatorMapping(value = "INTERCEPTION", schema = TwoPlayerEventResponse::class),
         DiscriminatorMapping(value = "CALLAHAN", schema = TwoPlayerEventResponse::class),
+        DiscriminatorMapping(value = "PLAYER_SUBSTITUTION", schema = TwoPlayerEventResponse::class),
         DiscriminatorMapping(value = "TIMEOUT_START", schema = TeamEventResponse::class),
         DiscriminatorMapping(value = "TIMEOUT_END", schema = TeamEventResponse::class),
         DiscriminatorMapping(value = "HALFTIME_START", schema = SystemEventResponse::class),

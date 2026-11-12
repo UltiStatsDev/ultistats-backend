@@ -62,7 +62,7 @@ class EventFactory(
                     ?: return invalid("Participant ${request.fromParticipantId} is not part of match $matchId")
                 val toTeam = teamByParticipantId[request.toParticipantId]
                     ?: return invalid("Participant ${request.toParticipantId} is not part of match $matchId")
-                val sameTeamRequired = request.type == EventType.PASS || request.type == EventType.GOAL
+                val sameTeamRequired = request.type in SAME_TEAM_TYPES
                 if (sameTeamRequired != (fromTeam == toTeam)) {
                     val relation = if (sameTeamRequired) "the same match team" else "opposing match teams"
                     return invalid("${request.type} requires participants from $relation")
@@ -104,4 +104,8 @@ class EventFactory(
         matchTeamRepository.findAllByMatchIdOrderByPosition(matchId).any { it.teamId == teamId }
 
     private fun invalid(detail: String) = EventCreationResult.Invalid(detail)
+
+    private companion object {
+        val SAME_TEAM_TYPES = setOf(EventType.PASS, EventType.GOAL, EventType.PLAYER_SUBSTITUTION)
+    }
 }
