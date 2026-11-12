@@ -53,7 +53,7 @@ export function watchConfig(onConfig,onStatus=()=>{}) {
 }
 
 export function watchMatch(matchId,onSnapshot,onStatus=()=>{},hasVisibleRows=()=>false,initiallyFinished=false) {
-    const reader=new Reconciler(()=>readJson(`/api/v2/matches/${encodeURIComponent(matchId)}/events`,{'X-UltiStats-Point-Lineups':'1'}),onSnapshot,onStatus);
+    const reader=new Reconciler(()=>readJson(`/api/v2/matches/${encodeURIComponent(matchId)}/events`,{'X-UltiStats-Point-Lineups':'2'}),onSnapshot,onStatus);
     const source=new SharedSource(matchId);
     let terminalTimer=null,disposed=false;
     const stopTerminal=()=>{clearInterval(terminalTimer);terminalTimer=null;reader.close();};

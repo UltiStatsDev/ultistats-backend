@@ -22,6 +22,7 @@ import com.github.mihanizzm.ultistats.model.EventEntity
 import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.model.MatchStatus
 import com.github.mihanizzm.ultistats.model.events.Event
+import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.model.events.StoredEvent
 import com.github.mihanizzm.ultistats.realtime.MatchRealtimePublisher
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataEventRepository
@@ -36,6 +37,8 @@ import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
 import jakarta.transaction.Transactional
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Isolation
+import org.springframework.transaction.annotation.Transactional as ReadTransaction
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.time.Instant
@@ -59,20 +62,26 @@ class EventServiceImpl(
     @Transactional
     override fun create(event: Event, matchId: UUID, eventId: UUID?): EventCommandResult {
         val match = matchService.getForUpdate(matchId) ?: return EventCommandResult.NotFound
-        pointLineups.requireWriteClient(matchId, capable = false)
+        pointLineups.requireWriteClient(matchId, PointLineupClient.LEGACY)
+        requireDirectCreateSupported(event.type)
         return createLocked(match, event, eventId)
     }
 
     @Transactional
-    override fun create(matchId: UUID, request: CreateEventRequest, pointLineupCapable: Boolean): EventCommandResult {
+    override fun create(matchId: UUID, request: CreateEventRequest, client: PointLineupClient): EventCommandResult {
         val match = matchService.getForUpdate(matchId) ?: return EventCommandResult.NotFound
-        pointLineups.requireWriteClient(matchId, pointLineupCapable)
+        pointLineups.requireWriteClient(matchId, client)
+        requireDirectCreateSupported(request.type)
         return when (val created = eventFactory.createValidatedFromRequest(request, matchId)) {
             is EventCreationResult.Success -> createLocked(match, created.event, request.eventId)
             is EventCreationResult.Invalid -> EventCommandResult.BadRequest(
                 MatchProblem(MatchProblemCode.INVALID_REQUEST, "Invalid event request", created.detail),
             )
         }
+    }
+
+    private fun requireDirectCreateSupported(type: EventType) {
+        if (type == EventType.PLAYER_SUBSTITUTION) substitutionConflict("Use the guarded v2 event batch to record a substitution")
     }
 
     private fun createLocked(match: Match, event: Event, eventId: UUID?): EventCommandResult {
@@ -99,19 +108,19 @@ class EventServiceImpl(
     }
 
     @Transactional
-    override fun snapshot(matchId: UUID, pointLineupCapable: Boolean): EventLogResponse? {
+    override fun snapshot(matchId: UUID, client: PointLineupClient): EventLogResponse? {
         val match = matchService.getForUpdate(matchId) ?: return null
         val active = activeEvents(matchId)
-        pointLineups.requireReadClient(active, pointLineupCapable)
+        pointLineups.requireReadClient(active, client)
         return logResponse(match, active.map { it.toStored() })
     }
 
     @Transactional
-    override fun appendBatch(matchId: UUID, request: CreateEventBatchRequest, pointLineupCapable: Boolean): EventBatchResult {
+    override fun appendBatch(matchId: UUID, request: CreateEventBatchRequest, client: PointLineupClient): EventBatchResult {
         val match = matchService.getForUpdate(matchId) ?: return EventBatchResult.NotFound
         val lastSequence = lastSequence(matchId)
         try {
-            pointLineups.requireWriteClient(matchId, pointLineupCapable)
+            pointLineups.requireWriteClient(matchId, client)
         } catch (rejection: PointLineupRejectedException) {
             throw rejection.forBatch(lastSequence, match.eventLogRevision)
         }
@@ -133,6 +142,12 @@ class EventServiceImpl(
             if (event?.eventId == null || !seen.add(requireNotNull(event.eventId))) {
                 return reject(MatchProblem(MatchProblemCode.INVALID_REQUEST, "Invalid event batch", "Every event requires a unique client eventId"), index, true)
             }
+        }
+        val substitutionIndex = request.events.indexOfFirst { it?.type == EventType.PLAYER_SUBSTITUTION }
+        if (substitutionIndex >= 0 && client != PointLineupClient.SUBSTITUTIONS) {
+            throw pointLineups.substitutionClientRequired().forBatch(
+                lastSequence, match.eventLogRevision, request.events[substitutionIndex]?.eventId, substitutionIndex,
+            )
         }
         val actorTeams = eventFactory.actorTeams(matchId)
         val pending = request.events.filterNotNull().mapIndexed { index, requestEvent ->
@@ -205,14 +220,24 @@ class EventServiceImpl(
         val last = lastSequence(match.id)
         require(last.toLong() + pending.size <= Int.MAX_VALUE) { "Event sequence capacity exceeded" }
         pending.forEachIndexed { index, command ->
+            val isSubstitution = command.event.type == EventType.PLAYER_SUBSTITUTION
+            if (isSubstitution && !pointLineups.substitutionsWriteEnabled) {
+                return AppendResult.LineupRejected(PointLineupRejectedException(
+                    PointLineupProblemCode.POINT_SUBSTITUTION_WRITE_DISABLED, "Point substitution writes are disabled",
+                ), index)
+            }
             possessionChangeWrites.rejection(command.event.type)?.let {
                 return AppendResult.Rejected(EventCommandResult.Conflict(it), index)
             }
             lifecyclePolicy.validateEventCreation(policyMatch, command.event.occurredAt).toCommandRejection()
                 ?.let { return AppendResult.Rejected(it, index) }
-            validateSequence(policyMatch.events + command.event)
-                ?.let { return AppendResult.Rejected(it, index) }
+            val sequenceError = validateSequence(policyMatch.events + command.event)
+            if (sequenceError != null && !isSubstitution) return AppendResult.Rejected(sequenceError, index)
             try {
+                if (isSubstitution) {
+                    if (sequenceError != null) substitutionConflict(sequenceError.problem.detail)
+                    if (lineup == null) substitutionConflict("Confirm the active point before substituting")
+                }
                 lineup?.validateWrite(match, prefix, command.event, append = true)
             } catch (problem: PointLineupRejectedException) {
                 return AppendResult.LineupRejected(problem, index)
@@ -248,34 +273,37 @@ class EventServiceImpl(
         events.map(EventResponse::from), lastSequence(match.id), match.eventLogRevision,
     )
 
-    override fun get(eventId: UUID, matchId: UUID, pointLineupCapable: Boolean): StoredEvent? {
+    @ReadTransaction(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    override fun get(eventId: UUID, matchId: UUID, client: PointLineupClient): StoredEvent? {
         matchService.getOrThrow(matchId)
+        pointLineups.requireSubstitutionReadClient(matchId, client)
         val entity = eventRepository.findByIdAndMatchIdAndDeletedAtIsNull(eventId, matchId) ?: return null
-        pointLineups.requireReadClient(listOf(entity), pointLineupCapable)
+        pointLineups.requireReadClient(listOf(entity), client)
         return entity.toStored()
     }
 
     @Transactional
     override fun update(
-        eventId: UUID, matchId: UUID, pointLineupCapable: Boolean, update: (StoredEvent) -> Event,
+        eventId: UUID, matchId: UUID, client: PointLineupClient, update: (StoredEvent) -> Event,
     ): EventCommandResult {
         val match = matchService.getForUpdate(matchId) ?: return EventCommandResult.NotFound
-        pointLineups.requireWriteClient(matchId, pointLineupCapable)
+        pointLineups.requireWriteClient(matchId, client)
         val existing = eventRepository.findByIdAndMatchIdAndDeletedAtIsNull(eventId, matchId)
             ?: return EventCommandResult.NotFound
+        if (existing.eventType == EventType.PLAYER_SUBSTITUTION) substitutionConflict("A recorded substitution cannot be edited")
         val event = update(existing.toStored())
+        if (event.type == EventType.PLAYER_SUBSTITUTION) substitutionConflict("A journal edit cannot create a substitution")
         lifecyclePolicy.validateEventUpdate(match).toCommandRejection()?.let { return it }
 
         require(event.type.canReplace(existing.eventType)) { "Event type can only be refined within the block family" }
         require(event.occurredAt == existing.effectiveOccurredAt) { "Event occurrence time is immutable" }
         possessionChangeWrites.rejection(event.type)?.let { return EventCommandResult.Conflict(it) }
-        val active = activeEvents(matchId)
+        val active = activeEvents(matchId).map { it.toStored() }
         val lineup = pointLineups.journal(matchId)
-        lineup?.validateWrite(match, active.takeWhile { it.id != eventId }.map { it.toStored() }, event, append = false)
-        val proposedEvents = active.map { entity ->
-            if (entity.id == eventId) event else entity.toDomain()
-        }
-        validateSequence(proposedEvents, requirePointEnded = match.status == MatchStatus.FINISHED)?.let { return it }
+        lineup?.validateWrite(match, active.takeWhile { it.id != eventId }, event, append = false)
+        val proposed = active.map { if (it.id == eventId) it.copy(event = event) else it }
+        lineup?.validateSubstitutionEdit(match, active, proposed)
+        validateSequence(proposed.map { it.event }, requirePointEnded = match.status == MatchStatus.FINISHED)?.let { return it }
 
         val updated = EventEntity.fromDomain(
             existing.id,
@@ -294,18 +322,18 @@ class EventServiceImpl(
     }
 
     @Transactional
-    override fun remove(eventId: UUID, matchId: UUID, pointLineupCapable: Boolean): EventCommandResult {
+    override fun remove(eventId: UUID, matchId: UUID, client: PointLineupClient): EventCommandResult {
         val match = matchService.getForUpdate(matchId) ?: return EventCommandResult.NotFound
-        pointLineups.requireWriteClient(matchId, pointLineupCapable)
+        pointLineups.requireWriteClient(matchId, client)
         val existing = eventRepository.findByIdAndMatchIdAndDeletedAtIsNull(eventId, matchId)
             ?: return EventCommandResult.NotFound
         return removeLocked(match, existing)
     }
 
     @Transactional
-    override fun undoLast(matchId: UUID, pointLineupCapable: Boolean): EventCommandResult {
+    override fun undoLast(matchId: UUID, client: PointLineupClient): EventCommandResult {
         val match = matchService.getForUpdate(matchId) ?: return EventCommandResult.NotFound
-        pointLineups.requireWriteClient(matchId, pointLineupCapable)
+        pointLineups.requireWriteClient(matchId, client)
         val existing = eventRepository.findFirstByMatchIdAndDeletedAtIsNullOrderBySequenceNumberDesc(matchId)
             ?: return EventCommandResult.NotFound
         return when (val result = removeLocked(match, existing)) {
@@ -324,7 +352,7 @@ class EventServiceImpl(
     // Jackson receipt encoding can throw checked JsonProcessingException after removeLocked.
     // Any failure must roll back the mutation and the durable outcome together.
     @Transactional(rollbackOn = [Exception::class])
-    override fun undo(matchId: UUID, request: UndoEventRequest, pointLineupCapable: Boolean): UndoCommandResult {
+    override fun undo(matchId: UUID, request: UndoEventRequest, client: PointLineupClient): UndoCommandResult {
         val commandId = request.commandId
         val expectedTail = request.expectedLastEventId
         val expectedRevision = request.expectedLogRevision
@@ -335,7 +363,7 @@ class EventServiceImpl(
             ))
         }
         val match = matchService.getForUpdate(matchId) ?: return UndoCommandResult.NotFound
-        pointLineups.requireWriteClient(matchId, pointLineupCapable)
+        pointLineups.requireWriteClient(matchId, client)
         undoReceipts.findByMatchIdAndCommandId(matchId, commandId)?.let { receipt ->
             return if (receipt.expectedLastEventId == expectedTail && receipt.expectedLogRevision == expectedRevision) {
                 UndoCommandResult.Recorded(receipt.outcome())
@@ -383,8 +411,12 @@ class EventServiceImpl(
     private fun removeLocked(match: Match, existing: EventEntity): EventCommandResult {
         val matchId = match.id
         lifecyclePolicy.validateEventDeletion(match).toCommandRejection()?.let { return it }
-        val proposed = activeEvents(matchId).filterNot { it.id == existing.id }.map { it.toStored() }
-        pointLineups.journal(matchId)?.validateRemainingSlots(match, proposed)
+        val active = activeEvents(matchId).map { it.toStored() }
+        val proposed = active.filterNot { it.id == existing.id }
+        pointLineups.journal(matchId)?.let { lineup ->
+            lineup.validateSubstitutionEdit(match, active, proposed)
+            lineup.validateRemainingSlots(match, proposed)
+        }
         validateSequence(proposed.map { it.event }, requirePointEnded = match.status == MatchStatus.FINISHED)?.let { return it }
 
         eventRepository.save(existing.copy(deletedAt = Instant.now()))
@@ -395,10 +427,10 @@ class EventServiceImpl(
         return EventCommandResult.Deleted
     }
 
-    override fun getAllEventsOfMatch(matchId: UUID, pointLineupCapable: Boolean): List<StoredEvent> {
+    override fun getAllEventsOfMatch(matchId: UUID, client: PointLineupClient): List<StoredEvent> {
         matchService.getOrThrow(matchId)
         val active = activeEvents(matchId)
-        pointLineups.requireReadClient(active, pointLineupCapable)
+        pointLineups.requireReadClient(active, client)
         return active.map { it.toStored() }
     }
 

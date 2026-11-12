@@ -5,6 +5,7 @@ import com.github.mihanizzm.ultistats.dto.response.EventLogResponse
 import com.github.mihanizzm.ultistats.service.EventIdempotencyConflictException
 import com.github.mihanizzm.ultistats.service.EventService
 import com.github.mihanizzm.ultistats.service.PossessionChangeWrites
+import com.github.mihanizzm.ultistats.service.PointLineupClient
 import com.github.mihanizzm.ultistats.service.result.EventBatchResult
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
@@ -50,7 +51,7 @@ class EventBatchController(
         ApiResponse(responseCode = "404", description = "Match not found: empty body, no Content-Type header", content = [Content()]),
     )
     fun snapshot(@PathVariable matchId: UUID, request: HttpServletRequest): ResponseEntity<EventLogResponse> =
-        events.snapshot(matchId, request.pointLineupCapable())?.let {
+        events.snapshot(matchId, request.pointLineupClient())?.let {
             ResponseEntity.ok().cacheControl(CacheControl.noStore()).varyBy(POINT_LINEUPS_HEADER)
                 .header(POSSESSION_CHANGE_ENABLED_HEADER, possessionChangeWrites.enabled.toString())
                 .body(it)
@@ -61,7 +62,9 @@ class EventBatchController(
         description = "Server assigns consecutive sequence numbers in request order. Both expected bases are required. " +
             "The entire batch commits or nothing commits; lifecycle, participants, timestamps and EventSequencePolicy match v1. " +
             "POSSESSION_SET requires participantId from either team and an active point after PULL. " +
-            "Its write gate does not affect canonical reads, exact retries or Undo. " +
+            "PLAYER_SUBSTITUTION requires capability 2 and a confirmed active point after PULL. " +
+            "The outgoing actor can be a roster player or temporary slot. The incoming actor must be an off-field roster player on the same team. " +
+            "Write gates do not affect canonical reads, exact retries or Undo. " +
             "Equal timestamps are allowed; backwards timestamps are rejected. Score is recalculated once. " +
             "201 confirms a new batch; 200 replays the exact original batch (same bases, UUIDs, payloads and order), even after later appends. " +
             "PATCH/DELETE/undo through either API invalidate earlier batch retries. Partial, reordered and subset retries are 409. " +
@@ -72,7 +75,7 @@ class EventBatchController(
         ApiResponse(responseCode = "200", description = "Exact retry, no writes or repeated notifications", content = [Content(schema = Schema(implementation = EventLogResponse::class))]),
         ApiResponse(responseCode = "400", description = "Invalid body, bases, batch size, missing/repeated UUID or invalid event participants", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = EventBatchProblem::class))]),
         ApiResponse(responseCode = "404", description = "Match not found"),
-        ApiResponse(responseCode = "409", description = "EVENT_LOG_STALE, EVENT_BATCH_CONFLICT, EVENT_IDEMPOTENCY_CONFLICT, EVENT_SEQUENCE_VIOLATION, POSSESSION_CHANGE_WRITE_DISABLED or existing lifecycle/timestamp code. No writes. Includes current position and offending eventId/eventIndex when applicable (zero-based index).", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = EventBatchProblem::class))]),
+        ApiResponse(responseCode = "409", description = "EVENT_LOG_STALE, EVENT_BATCH_CONFLICT, EVENT_IDEMPOTENCY_CONFLICT, EVENT_SEQUENCE_VIOLATION, POSSESSION_CHANGE_WRITE_DISABLED, POINT_SUBSTITUTION_WRITE_DISABLED, POINT_SUBSTITUTION_CONFLICT or existing lifecycle/timestamp code. No writes. Includes current position and offending eventId/eventIndex when applicable (zero-based index).", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = EventBatchProblem::class))]),
     )
     fun append(
         @PathVariable matchId: UUID,
@@ -81,9 +84,9 @@ class EventBatchController(
     ): ResponseEntity<*> {
         // Catch only outside the transactional proxy: a global UUID race has rolled back by this point.
         val result = try {
-            events.appendBatch(matchId, body, request.pointLineupCapable())
+            events.appendBatch(matchId, body, request.pointLineupClient())
         } catch (exception: EventIdempotencyConflictException) {
-            val snapshot = events.snapshot(matchId, pointLineupCapable = true) ?: return ResponseEntity.notFound().build<Void>()
+            val snapshot = events.snapshot(matchId, PointLineupClient.SUBSTITUTIONS) ?: return ResponseEntity.notFound().build<Void>()
             EventBatchResult.Rejected(
                 MatchProblem(MatchProblemCode.EVENT_IDEMPOTENCY_CONFLICT, "Event idempotency conflict", "Event ${exception.eventId} already exists with a different payload"),
                 snapshot.lastSequenceNumber, snapshot.logRevision, exception.eventId,

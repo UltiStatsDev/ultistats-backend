@@ -2,6 +2,7 @@ package com.github.mihanizzm.ultistats.controller
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.databind.node.NullNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.github.mihanizzm.ultistats.UltistatsApplication
@@ -47,6 +48,7 @@ import kotlin.test.assertTrue
     properties = [
         "app.auth.ingress.loopback-mode=true",
         "ultistats.point-lineups.write-enabled=true",
+        "ultistats.point-substitutions.write-enabled=true",
         "ultistats.possession-change.write-enabled=true",
         "ultistats.announcements.write-enabled=true",
     ],
@@ -128,12 +130,17 @@ class PointLineupHttpTest {
             val operation = schemasByPath[path][method]
             val capability = operation["parameters"].single { it["name"].asText() == "X-UltiStats-Point-Lineups" }
             assertEquals("header", capability["in"].asText())
-            assertEquals("1", capability["schema"]["enum"].single().asText())
+            assertEquals(listOf("1", "2"), capability["schema"]["enum"].map { it.asText() })
             assertTrue(operation["responses"]["409"]["description"].asText().contains("POINT_LINEUP_CLIENT_REQUIRED"))
         }
         assertFalse(api["components"]["schemas"]["UndoCommandRejection"]["properties"]["code"]["enum"].any {
             it.asText().startsWith("POINT_LINEUP")
         })
+        val batchDiscriminator = api["components"]["schemas"]["BatchEventRequest"]["discriminator"]["mapping"]
+        assertEquals("#/components/schemas/PlayerSubstitutionBatchEvent", batchDiscriminator["PLAYER_SUBSTITUTION"].asText())
+        assertFalse(api["components"]["schemas"]["CreateEventRequest"]["discriminator"]["mapping"].has("PLAYER_SUBSTITUTION"))
+        assertEquals(setOf("type", "eventId", "occurredAt", "fromParticipantId", "toParticipantId"),
+            api["components"]["schemas"]["PlayerSubstitutionBatchEvent"]["required"].map { it.asText() }.toSet())
         val getResponseSchema = api["paths"]["/api/v1/matches/{matchId}/point-lineups"]["get"]["responses"]
             .path("200").path("content").path("application/json").path("schema")
         assertEquals("#/components/schemas/PointLineupsResponse", getResponseSchema.path("\$ref").asText())
@@ -148,6 +155,7 @@ class PointLineupHttpTest {
         assertFalse(patch.isMissingNode, "The slot PATCH operation is missing from OpenAPI")
         assertEquals("#/components/schemas/PointLineupResponse",
             patch["responses"]["200"]["content"]["application/json"]["schema"]["\$ref"].asText())
+        assertFalse(schemas["PortableEvent"]["properties"]["type"]["enum"].any { it.asText() == "PLAYER_SUBSTITUTION" })
         val portableMatch = schemas["PortableMatch"]
         assertFalse(portableMatch["required"].any { it.asText() == "pointLineups" })
         assertEquals("#/components/schemas/PortablePointLineup",
@@ -455,10 +463,17 @@ class PointLineupHttpTest {
         val v1 = response(send("GET", journal, capture = "ordinary-legacy-v1-list"), 200)
         val v2Log = response(send("GET", v2, capture = "ordinary-legacy-v2-log"), 200)
         assertEquals(v1, v2Log["events"])
+        assertEquals(v2Log, response(send("GET", v2, capability = "1", capture = "ordinary-v1-header-v2-log"), 200))
+        assertEquals(v2Log["events"], response(send("GET", journal, capability = "1", capture = "ordinary-v1-header-v1-list"), 200))
+        assertEquals(v2Log["events"].last(), response(send("POST", "$v2/batch", batch(1, 1, pickup), login,
+            capability = "1", capture = "ordinary-v1-header-v2-replay"), 200)["events"].single())
         assertEquals("APPLIED", response(send("POST", "$v2/undo", undo(pickup, 2), login,
             capture = "ordinary-legacy-v2-undo"), 200)["outcome"].asText())
         response(send("POST", "$journal/undo", session = login, capture = "ordinary-legacy-v1-undo"), 200)
         assertTrue(get(v2)["events"].isEmpty)
+        response(send("POST", journal, pull - "eventId", login, capability = "1", capture = "ordinary-v1-header-v1-post"), 201)
+        response(send("POST", "$v2/batch", batch(3, 5, pickup.withNewId()), login,
+            capability = "1", capture = "ordinary-v1-header-v2-append"), 201)
     }
 
     @Test
@@ -977,6 +992,214 @@ class PointLineupHttpTest {
     private fun undo(event: Map<String, Any>, revision: Long) =
         mapOf("commandId" to UUID.randomUUID(), "expectedLastEventId" to event.getValue("eventId"), "expectedLogRevision" to revision)
 
+    @Test
+    fun `substitution replaces a temporary holder and protects journal across clients and undo`() {
+        val fixture = fixture()
+        val journal = "${fixture.matchPath}/events"
+        val v2 = journal.replace("/v1/", "/v2/")
+        val slot = UUID.randomUUID()
+        val incoming = fixture.leftPlayers[1]
+        val initial = confirm(fixture, listOf(temporary(slot), player(fixture.leftPlayers[0])),
+            listOf(player(fixture.rightPlayers[0])))["lineup"]["teams"]
+        val pull = eventBody(UUID.randomUUID(), "PULL", fixture.rightPlayers[0])
+        val pickup = eventBody(UUID.randomUUID(), "PICKUP", slot).at(2)
+        response(send("POST", "$v2/batch", batch(0, 0, pull, pickup), login, capability = "1"), 201)
+        val replacement = eventBody(UUID.randomUUID(), "PLAYER_SUBSTITUTION", slot, incoming).at(5)
+        val body = batch(2, 1, replacement)
+        val applied = response(send("POST", "$v2/batch", body, login, capability = "2", capture = "substitution-append"), 201)
+        assertEquals(slot.toString(), applied["events"].single()["fromParticipantId"].asText())
+        assertEquals(applied, response(send("POST", "$v2/batch", body, login, capability = "2", capture = "substitution-replay"), 200))
+
+        val lineup = response(send("GET", fixture.path, session = login, capture = "substitution-discover-staff"), 200)
+        assertTrue(lineup["substitutionsWriteEnabled"].asBoolean())
+        val point = lineup["points"].single()
+        assertEquals(initial, point["lineup"]["teams"])
+        assertEquals(incoming.toString(), point["effectiveTeams"][0]["entries"][0]["participantId"].asText())
+        val pass = eventBody(UUID.randomUUID(), "PASS", incoming, fixture.leftPlayers[0]).at(9)
+        for ((label, version) in listOf("legacy" to null, "v1-header" to "1")) {
+            for ((name, path) in listOf("v1-list" to journal, "v1-detail" to "$journal/${pull["eventId"]}", "v2-log" to v2)) {
+                assertEquals("POINT_LINEUP_CLIENT_REQUIRED",
+                    response(send("GET", path, capability = version, capture = "substitution-$label-$name"), 409)["code"].asText())
+            }
+            assertEquals("POINT_LINEUP_CLIENT_REQUIRED", response(send("POST", journal, pass - "eventId", login,
+                capability = version, capture = "substitution-$label-v1-post"), 409)["code"].asText())
+            assertEquals("POINT_LINEUP_CLIENT_REQUIRED", response(send("POST", "$v2/batch", batch(3, 2, pass), login,
+                capability = version, capture = "substitution-$label-v2-batch"), 409)["code"].asText())
+            assertEquals("POINT_LINEUP_CLIENT_REQUIRED", response(send("POST", "$v2/undo", undo(replacement, 2), login,
+                capability = version, capture = "substitution-$label-v2-undo"), 409)["code"].asText())
+        }
+        response(send("GET", v2, capability = "2", capture = "substitution-capable-v2-log"), 200)
+        assertEquals("POINT_SUBSTITUTION_CONFLICT", response(send("PATCH", "$journal/${replacement["eventId"]}",
+            mapOf("type" to "PLAYER_SUBSTITUTION"), login, capability = "2"), 409)["code"].asText())
+        assertEquals("POINT_SUBSTITUTION_CONFLICT", response(send("POST", journal, replacement,
+            login, capability = "2"), 409)["code"].asText())
+        assertEquals("POINT_SUBSTITUTION_CONFLICT", response(send("DELETE", "$journal/${pull["eventId"]}",
+            session = login, capability = "2"), 409)["code"].asText())
+        response(send("POST", "$v2/batch", batch(3, 2, pass), login, capability = "2"), 201)
+        assertEquals("POINT_SUBSTITUTION_CONFLICT", response(send("DELETE", "$journal/${replacement["eventId"]}",
+            session = login, capability = "2", capture = "substitution-delete-dependent"), 409)["code"].asText())
+        val stats = response(send("GET", "${fixture.matchPath}/statistics", session = login, capture = "substitution-stats"), 200)
+        assertEquals(7000, stats["teams"].first()["time"]["possessionTimeMs"].asInt())
+        assertEquals(4000, participant(stats, incoming)["time"]["possessionTimeMs"].asInt())
+        assertEquals(1, participant(stats, incoming)["attack"]["passes"].asInt())
+        assertEquals(0, participant(stats, incoming)["attack"]["discPossessions"].asInt())
+
+        response(send("POST", "$v2/undo", undo(pass, 3), login, capability = "2"), 200)
+        response(send("POST", "$v2/undo", undo(replacement, 4), login, capability = "2", capture = "substitution-undo"), 200)
+        assertEquals(initial, get(fixture.path)["points"].single()["effectiveTeams"])
+        assertEquals(2, response(send("GET", v2, capability = "1"), 200)["events"].size())
+    }
+
+    @Test
+    fun `substitution validates both teams and preserves pause durations and gameplay counters`() {
+        val fixture = fixture()
+        val v2 = "${fixture.matchPath}/events".replace("/v1/", "/v2/")
+        val left = fixture.leftPlayers
+        val right = fixture.rightPlayers
+        val slot = UUID.randomUUID()
+        val puller = UUID.randomUUID()
+        confirm(fixture, listOf(temporary(slot), player(left[0])), listOf(temporary(puller)))
+        fun action(type: String, from: UUID, time: Long, to: UUID? = null) =
+            eventBody(UUID.randomUUID(), type, from, to).at(time)
+        fun replace(from: UUID, to: UUID, time: Long) = action("PLAYER_SUBSTITUTION", from, time, to)
+        fun command(sequence: Int, revision: Long, vararg events: Map<String, Any>, capture: String? = null) =
+            send("POST", "$v2/batch", batch(sequence, revision, *events), login, capability = "2", capture = capture)
+        fun reject(code: String, result: HttpResponse<String>, status: Int = 409) =
+            assertEquals(code, response(result, status)["code"].asText())
+
+        reject("POINT_SUBSTITUTION_CONFLICT", command(0, 0, replace(puller, right[1], 1)))
+        response(command(0, 0, action("PULL", puller, 0)), 201)
+        reject("EVENT_LOG_STALE", command(0, 0, replace(puller, right[1], 1), capture = "substitution-stale"))
+        reject("INVALID_REQUEST", command(1, 1, replace(puller, left[1], 1), capture = "substitution-cross-team"), 400)
+        reject("POINT_SUBSTITUTION_CONFLICT", command(1, 1, replace(slot, left[0], 1), capture = "substitution-incoming-on-field"))
+        val unknown = matches.getOrThrow(fixture.id).participantsByTeam.getValue(fixture.teamIds[0])
+            .first { it.kind == MatchParticipantKind.UNKNOWN }.participantId
+        val before = journalRows(fixture)
+        reject("EVENT_BEFORE_START", command(1, 1, replace(puller, right[1], -1)))
+        reject("POINT_SUBSTITUTION_CONFLICT", command(1, 1, replace(puller, right[1], 1),
+            replace(slot, unknown, 1), capture = "substitution-atomic-rejection"))
+        assertEquals(before, journalRows(fixture))
+
+        val timeout = fixture.teamIds[0]
+        fun pause(type: String, time: Long) =
+            mapOf("type" to type, "eventId" to UUID.randomUUID(), "teamId" to timeout).at(time)
+        val openAnnouncement = pause("ANNOUNCEMENT_START", 9)
+        val closeAnnouncement = pause("ANNOUNCEMENT_END", 11) - "teamId"
+        response(command(1, 1,
+            replace(puller, right[1], 1), // No holder after PULL.
+            action("BRICK", puller, 1), // The brick attributes the original pull, including an exited slot.
+            action("PICKUP", left[0], 2),
+            replace(right[1], right[0], 3), // Other team holds the disc.
+            pause("TIMEOUT_START", 4),
+            replace(left[0], left[1], 6), // The timeout stays open while the holder changes.
+            pause("TIMEOUT_END", 8),
+            openAnnouncement,
+            replace(right[0], right[1], 10),
+            closeAnnouncement,
+            action("GOAL", left[1], 12, slot),
+            capture = "substitution-pause-and-response"), 201)
+        val stats = response(send("GET", "${fixture.matchPath}/statistics", session = login, capture = "substitution-pause-stats"), 200)
+        val leftStats = stats["teams"].first()
+        assertEquals(4000, leftStats["time"]["possessionTimeMs"].asInt())
+        assertEquals(4000, leftStats["time"]["timeoutTimeMs"].asInt())
+        assertEquals(2000, stats["announcements"]["durationMs"].asInt())
+        assertEquals(6000, stats["time"]["pureGameTimeMs"].asInt())
+        assertEquals(1, stats["teams"][1]["attack"]["bricks"].asInt())
+        assertEquals(1, leftStats["attack"]["possessions"].asInt())
+        assertEquals(1, leftStats["attack"]["score"].asInt())
+        assertEquals(2000, participant(stats, left[0])["time"]["possessionTimeMs"].asInt())
+        assertEquals(2000, participant(stats, left[1])["time"]["possessionTimeMs"].asInt())
+        assertEquals(1, participant(stats, left[1])["attack"]["assists"].asInt())
+        assertEquals(0, participant(stats, left[1])["attack"]["discPossessions"].asInt())
+
+        matches.endMatch(fixture.id, startedAt.plusSeconds(13))
+        val finished = response(send("GET", fixture.path, capture = "substitution-discover-public-finished"), 200)
+        assertTrue(finished["substitutionsWriteEnabled"].asBoolean())
+        val point = finished["points"].single()
+        assertEquals("COMPLETED", point["status"].asText())
+        assertEquals(left[1].toString(), point["effectiveTeams"][0]["entries"][1]["participantId"].asText())
+        assertEquals(right[1].toString(), point["effectiveTeams"][1]["entries"][0]["participantId"].asText())
+        val stream = send("GET", "${fixture.matchPath}/events/stream", capture = "substitution-public-sse-finished")
+        assertEquals(200, stream.statusCode())
+        assertTrue(stream.body().contains("event:connected"))
+        assertTrue(stream.body().contains("event:match-finished"))
+        assertFalse(stream.body().contains("PLAYER_SUBSTITUTION"))
+    }
+
+    @Test
+    fun `substituted slot stays identifiable in history without aliasing the replacement`() {
+        val fixture = fixture(rosterSize = 3)
+        val slot = UUID.randomUUID()
+        val left = fixture.leftPlayers
+        val point = confirm(fixture, listOf(temporary(slot), player(left[0])), listOf(player(fixture.rightPlayers[0])))
+        val portable = export(fixture.id)
+        val pull = eventBody(UUID.randomUUID(), "PULL", fixture.rightPlayers[0])
+        val pickup = eventBody(UUID.randomUUID(), "PICKUP", slot).at(2)
+        val replacement = eventBody(UUID.randomUUID(), "PLAYER_SUBSTITUTION", slot, left[1]).at(5)
+        val goal = eventBody(UUID.randomUUID(), "GOAL", left[1], left[0]).at(9)
+        val v2 = "${fixture.matchPath}/events".replace("/v1/", "/v2/")
+        response(send("POST", "$v2/batch", batch(0, 0, pull, pickup, replacement, goal), login, capability = "2"), 201)
+        val before = response(send("GET", v2, capability = "2"), 200)
+        assertConflict(send("PATCH", slotPath(fixture, point, slot), identification(left[1], 1, goal.getValue("eventId")),
+            login, capability = "2", capture = "substitution-identify-incoming-rejected"))
+        val identified = response(send("PATCH", slotPath(fixture, point, slot), identification(left[2], 1, goal.getValue("eventId")),
+            login, capability = "2", capture = "substitution-identify-previous-slot"), 200)
+        assertEquals(left[2].toString(), resolution(identified))
+        assertEquals(left[1].toString(), identified["effectiveTeams"][0]["entries"][0]["participantId"].asText())
+        val stats = response(send("GET", "${fixture.matchPath}/statistics", session = login, capture = "substitution-identified-stats"), 200)
+        assertEquals(3000, participant(stats, left[2])["time"]["possessionTimeMs"].asInt())
+        assertEquals(4000, participant(stats, left[1])["time"]["possessionTimeMs"].asInt())
+        assertEquals(before, response(send("GET", v2, capability = "2"), 200))
+
+        val exportPath = "/api/v1/matches/export"
+        val importPath = "/api/v1/matches/import"
+        assertEquals("POINT_SUBSTITUTION_TRANSFER_UNSUPPORTED", response(send("POST", exportPath,
+            mapOf("matchIds" to listOf(fixture.id)), login, capture = "substitution-export-blocked"), 409)["code"].asText())
+        val events = portable["matches"].single()["events"] as ArrayNode
+        events.add(mapper.valueToTree<JsonNode>((replacement - "eventId") + mapOf("id" to replacement.getValue("eventId"), "sequenceNumber" to 1)))
+        val counts = transferCounts()
+        assertEquals("POINT_SUBSTITUTION_TRANSFER_UNSUPPORTED", response(send("POST", importPath, portable,
+            login, capture = "substitution-import-blocked"), 409)["code"].asText())
+        assertEquals(counts, transferCounts())
+    }
+
+    protected fun verifyFreshProcessSubstitution() {
+        val fixture = fixture()
+        val journal = "${fixture.matchPath}/events".replace("/v1/", "/v2/")
+        val from = fixture.leftPlayers[0]
+        val to = fixture.leftPlayers[1]
+        confirm(fixture, listOf(player(from)), listOf(player(fixture.rightPlayers[0])))
+        val pull = eventBody(UUID.randomUUID(), "PULL", fixture.rightPlayers[0])
+        val pickup = eventBody(UUID.randomUUID(), "PICKUP", from).at(2)
+        val replacement = eventBody(UUID.randomUUID(), "PLAYER_SUBSTITUTION", from, to).at(5)
+        val append = batch(0, 0, pull, pickup, replacement)
+        val committed = response(send("POST", "$journal/batch", append, login, capability = "2"), 201)
+        val reverse = eventBody(UUID.randomUUID(), "PLAYER_SUBSTITUTION", to, from).at(6)
+
+        SpringApplicationBuilder(UltistatsApplication::class.java).profiles("postgres-list").run(
+            "--server.port=0", "--app.auth.ingress.loopback-mode=true", "--app.auth.ingress.private-port=0",
+        ).use { app ->
+            val target = (app as ServletWebServerApplicationContext).webServer.port
+            val snapshot = response(send("GET", fixture.path, targetPort = target, capture = "substitution-discover-default-off"), 200)
+            assertFalse(snapshot["writesEnabled"].asBoolean())
+            assertFalse(snapshot["substitutionsWriteEnabled"].asBoolean())
+            assertEquals(to.toString(), snapshot["points"].single()["effectiveTeams"][0]["entries"][0]["participantId"].asText())
+            assertEquals(committed, response(send("GET", journal, targetPort = target,
+                capability = "2", capture = "substitution-default-off-log"), 200))
+            assertEquals(committed, response(send("POST", "$journal/batch", append, login, targetPort = target,
+                capability = "2", capture = "substitution-default-off-replay"), 200))
+            assertEquals("POINT_SUBSTITUTION_WRITE_DISABLED", response(send("POST", "$journal/batch", batch(3, 1, reverse), login,
+                targetPort = target, capability = "2", capture = "substitution-default-off-fresh"), 409)["code"].asText())
+            val undo = undo(replacement, 1)
+            val result = response(send("POST", "$journal/undo", undo, login, targetPort = target, capability = "2",
+                capture = "substitution-default-off-undo"), 200)
+            assertEquals("APPLIED", result["outcome"].asText())
+            assertEquals(result, response(send("GET", "$journal/undo/${undo["commandId"]}", session = login, targetPort = target), 200))
+            val restored = response(send("GET", fixture.path, targetPort = target, capture = "substitution-default-off-restored"), 200)
+            assertEquals(from.toString(), restored["points"].single()["effectiveTeams"][0]["entries"][0]["participantId"].asText())
+        }
+    }
+
     protected fun verifyFreshProcessGameplay() {
         val fixture = fixture()
         val journal = "${fixture.matchPath}/events"
@@ -1061,10 +1284,10 @@ class PointLineupHttpTest {
             })
     }
 
-    private fun fixture(start: Boolean = true): Fixture {
+    private fun fixture(start: Boolean = true, rosterSize: Int = 2): Fixture {
         val teamIds = List(2) { UUID.randomUUID() }.onEach { teams.create(Team(it, "Point lineup team")) }
         val roster = teamIds.map { team ->
-            List(2) { UUID.randomUUID() }.onEach {
+            List(rosterSize) { UUID.randomUUID() }.onEach {
                 players.create(Player(it, "Fixture", "Player"))
                 memberships.add(team, it, null)
             }
@@ -1152,6 +1375,10 @@ class PointLineupHttpTest {
 @ActiveProfiles("postgres-list", inheritProfiles = false)
 @EnabledIfEnvironmentVariable(named = "TEST_POSTGRES_URL", matches = ".+")
 class PointLineupPostgresTest : PointLineupHttpTest() {
+    @Test
+    fun `default-off successor preserves substitutions and permits replay and ordered undo`() = verifyFreshProcessSubstitution()
+
+
     @Test
     fun `portable versions and independent write gates work against migrated PostgreSQL`() = verifyPortableWriteGates()
 

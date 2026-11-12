@@ -42,6 +42,18 @@ object PointTimeline {
         }
     }
 
+    /** Assign scoring events to the point they close. An opening score belongs to the previous point. */
+    fun eventsByPoint(points: List<PointBoundary>, events: List<StoredEvent>): Map<UUID, List<StoredEvent>> {
+        var pointId = points.firstOrNull()?.pointId ?: return emptyMap()
+        val successorByScore = points.drop(1).associate { it.openingEventId to it.pointId }
+        val groups = mutableMapOf<UUID, MutableList<StoredEvent>>()
+        for (event in events) {
+            groups.getOrPut(pointId) { mutableListOf() }.add(event)
+            pointId = successorByScore[event.id] ?: pointId
+        }
+        return groups
+    }
+
     private fun open(matchId: UUID, number: Int, openingEventId: UUID?): PointBoundary {
         val key = "ultistats:point:v1:$matchId:${openingEventId ?: "first"}"
         return PointBoundary(UUID.nameUUIDFromBytes(key.toByteArray(UTF_8)), number, openingEventId)

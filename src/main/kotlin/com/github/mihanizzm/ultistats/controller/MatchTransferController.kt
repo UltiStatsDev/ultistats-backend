@@ -42,7 +42,7 @@ class MatchTransferController(private val service: MatchTransferService) {
         ApiResponse(responseCode = "200", description = "Portable package", content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = MatchTransferPackage::class), examples = [ExampleObject(name = "portableMatch", value = MatchTransferExamples.PACKAGE)])]),
         ApiResponse(responseCode = "400", description = "Invalid selection", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class))]),
         ApiResponse(responseCode = "404", description = "A selected match does not exist or is deleted", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class))]),
-        ApiResponse(responseCode = "409", description = "POINT_LINEUP_EXPORT_UNSUPPORTED", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class))]),
+        ApiResponse(responseCode = "409", description = "POINT_LINEUP_EXPORT_UNSUPPORTED or POINT_SUBSTITUTION_TRANSFER_UNSUPPORTED", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class))]),
     ])
     fun export(
         @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true, content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = MatchExportRequest::class), examples = [ExampleObject(value = MatchTransferExamples.SELECTION)])])
@@ -57,7 +57,7 @@ class MatchTransferController(private val service: MatchTransferService) {
     @ApiResponses(value = [
         ApiResponse(responseCode = "200", description = "Source-to-created identity maps", content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = MatchTransferResult::class), examples = [ExampleObject(value = MatchTransferExamples.RESULT)])]),
         ApiResponse(responseCode = "400", description = "Malformed, unsupported or inconsistent package; nothing imported", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class))]),
-        ApiResponse(responseCode = "409", description = "Included point lineups, standalone announcements or possession changes are disabled; nothing imported", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class))]),
+        ApiResponse(responseCode = "409", description = "Included point lineups, standalone announcements or possession changes are disabled, or POINT_SUBSTITUTION_TRANSFER_UNSUPPORTED; nothing imported", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class))]),
     ])
     fun importPackage(
         @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true, content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = MatchTransferPackage::class), examples = [ExampleObject(name = "portableMatch", value = MatchTransferExamples.PACKAGE)])])

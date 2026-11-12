@@ -111,5 +111,5 @@ test('match journal requests negotiate raw point lineup actors',async t=>{
  const s=watcher(t);
  s.source.emit('connected');await settle();
  assert.equal(s.request.url,'/api/v2/matches/match/events');
- assert.equal(s.request.options.headers['X-UltiStats-Point-Lineups'],'1');
+ assert.equal(s.request.options.headers['X-UltiStats-Point-Lineups'],'2');
 });

@@ -17,16 +17,19 @@ import com.github.mihanizzm.ultistats.model.events.PointBoundary
 import com.github.mihanizzm.ultistats.model.events.PointStatus
 import com.github.mihanizzm.ultistats.model.events.PointTimeline
 import com.github.mihanizzm.ultistats.model.events.StoredEvent
+import com.github.mihanizzm.ultistats.model.events.TwoPlayerEvent
+import com.github.mihanizzm.ultistats.model.events.afterSubstitution
+import com.github.mihanizzm.ultistats.model.events.substitutions
 import com.github.mihanizzm.ultistats.repository.jpa.PointLineupRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataEventRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchParticipantRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchTeamRepository
+import java.util.UUID
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
-import java.util.UUID
 
 @Service
 class PointLineupService(
@@ -35,21 +38,32 @@ class PointLineupService(
     private val participants: SpringDataMatchParticipantRepository,
     private val events: SpringDataEventRepository,
     private val lineups: PointLineupRepository,
+    private val policy: PointLineupEventPolicy,
     @Value("\${ultistats.point-lineups.write-enabled:false}") private val writesEnabled: Boolean,
 ) {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     fun read(matchId: UUID): PointLineupsResponse? {
         val match = matches.findByIdAndDeletedAtIsNull(matchId) ?: return null
         val saved = lineups.list(matchId, teamIds(matchId))
-        return PointLineupsResponse(match.eventLogRevision, writesEnabled, timeline(match).map { it.toResponse(saved[it.pointId]) })
+        val journal = journal(matchId)
+        val points = PointTimeline.from(match.id, match.status, journal)
+        val byPoint = PointTimeline.eventsByPoint(points, journal)
+        return PointLineupsResponse(match.eventLogRevision, writesEnabled, policy.substitutionsWriteEnabled, points.map {
+            it.toResponse(saved[it.pointId], byPoint[it.pointId].orEmpty().substitutions())
+        })
     }
 
     @Transactional
-    fun confirm(matchId: UUID, pointId: UUID, request: ConfirmPointLineupRequest): PointLineupResponse? {
+    fun confirm(
+        matchId: UUID, pointId: UUID, request: ConfirmPointLineupRequest, client: PointLineupClient = PointLineupClient.LEGACY,
+    ): PointLineupResponse? {
         val match = matches.findByIdForUpdate(matchId) ?: return null
+        policy.requireSubstitutionReadClient(matchId, client)
         val revision = request.expectedLogRevision
         if (revision == null || revision < 0) invalid("expectedLogRevision must be a nonnegative integer")
-        val point = timeline(match).firstOrNull { it.pointId == pointId }
+        val journal = journal(matchId)
+        val points = PointTimeline.from(match.id, match.status, journal)
+        val point = points.firstOrNull { it.pointId == pointId }
             ?: reject(PointLineupProblemCode.POINT_LINEUP_CONFLICT, "Point is no longer canonical for this match")
 
         val teamIds = teamIds(matchId)
@@ -75,7 +89,8 @@ class PointLineupService(
             if (original != selection) {
                 reject(PointLineupProblemCode.POINT_LINEUP_CONFLICT, "A different lineup is already confirmed for this point")
             }
-            return point.toResponse(existing)
+            val replacements = PointTimeline.eventsByPoint(points, journal)[pointId].orEmpty().substitutions()
+            return point.toResponse(existing, replacements)
         }
 
         if (revision != match.eventLogRevision) reject(PointLineupProblemCode.EVENT_LOG_STALE, "The event log revision has changed")
@@ -91,12 +106,18 @@ class PointLineupService(
     }
 
     @Transactional
-    fun identify(matchId: UUID, pointId: UUID, slotId: UUID, request: IdentifyPointLineupSlotRequest): PointLineupResponse? {
+    fun identify(
+        matchId: UUID, pointId: UUID, slotId: UUID, request: IdentifyPointLineupSlotRequest, client: PointLineupClient = PointLineupClient.LEGACY,
+    ): PointLineupResponse? {
         val match = matches.findByIdForUpdate(matchId) ?: return null
+        policy.requireSubstitutionReadClient(matchId, client)
         if (request.expectedLineupRevision < 0) invalid("expectedLineupRevision must be a nonnegative integer")
         if (!writesEnabled) reject(PointLineupProblemCode.POINT_LINEUP_WRITE_DISABLED, "Point lineup writes are disabled")
-        val point = timeline(match).firstOrNull { it.pointId == pointId }
+        val journal = journal(matchId)
+        val points = PointTimeline.from(match.id, match.status, journal)
+        val point = points.firstOrNull { it.pointId == pointId }
             ?: conflict("Point is no longer canonical for this match")
+        val replacements = PointTimeline.eventsByPoint(points, journal)[pointId].orEmpty().substitutions()
         if (point.status != PointStatus.COMPLETED || point.closingEventId != request.expectedClosingEventId) {
             conflict("The point must be completed with the expected closing event")
         }
@@ -108,7 +129,7 @@ class PointLineupService(
         } ?: conflict("Temporary slot is not part of this point lineup")
 
         val candidateId = request.participantId
-        if (candidateId == slot.resolvedParticipantId) return point.toResponse(saved)
+        if (candidateId == slot.resolvedParticipantId) return point.toResponse(saved, replacements)
         if (candidateId != null) {
             val candidate = participants.findById(MatchParticipantId(matchId, candidateId)).orElse(null)
             if (candidate?.kind != MatchParticipantKind.PLAYER || candidate.teamId != team.teamId) {
@@ -120,7 +141,9 @@ class PointLineupService(
                     is PointLineupTemporary -> it.resolvedParticipantId == candidateId
                 }
             }
-            if (occupied) conflict("Player already occupies a place in this point lineup")
+            if (occupied || replacements.any { it.toParticipant == candidateId }) {
+                conflict("Player already occupies or occupied a place in this point lineup")
+            }
         }
 
         lineups.identifySlot(matchId, pointId, slotId, candidateId)
@@ -129,7 +152,7 @@ class PointLineupService(
                 if (entry == slot) slot.copy(resolvedParticipantId = candidateId) else entry
             }) else it
         })
-        return point.toResponse(updated)
+        return point.toResponse(updated, replacements)
     }
 
     private fun validateSelection(match: Match, selection: List<PointLineupTeam>, saved: Collection<PointLineup>): String? {
@@ -163,14 +186,15 @@ class PointLineupService(
 
     private fun teamIds(matchId: UUID) = matchTeams.findAllByMatchIdOrderByPosition(matchId).map { it.teamId }
 
-    private fun timeline(match: Match) = PointTimeline.from(
-        match.id, match.status, events.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(match.id).map {
-            StoredEvent(it.id, it.sequenceNumber, it.toDomain())
-        },
-    )
+    private fun journal(matchId: UUID) = events.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(matchId)
+        .map { StoredEvent(it.id, it.sequenceNumber, it.toDomain()) }
 
-    private fun PointBoundary.toResponse(lineup: PointLineup?) =
-        PointLineupResponse(pointId, number, status, pullEventId, closingEventId, lineup)
+    private fun PointBoundary.toResponse(lineup: PointLineup?, replacements: List<TwoPlayerEvent> = emptyList()): PointLineupResponse {
+        val effective = lineup?.teams?.let { initial ->
+            replacements.fold(initial) { teams, replacement -> teams.afterSubstitution(replacement) }
+        }
+        return PointLineupResponse(pointId, number, status, pullEventId, closingEventId, lineup, effective)
+    }
 
     private fun conflict(detail: String): Nothing = reject(PointLineupProblemCode.POINT_LINEUP_CONFLICT, detail)
 
@@ -182,6 +206,8 @@ class PointLineupService(
 
 enum class PointLineupProblemCode {
     INVALID_REQUEST, EVENT_LOG_STALE, POINT_LINEUP_CONFLICT, POINT_LINEUP_WRITE_DISABLED, POINT_LINEUP_CLIENT_REQUIRED,
+    POINT_SUBSTITUTION_WRITE_DISABLED, POINT_SUBSTITUTION_CONFLICT,
+    POINT_SUBSTITUTION_TRANSFER_UNSUPPORTED,
 }
 
 class PointLineupRejectedException(

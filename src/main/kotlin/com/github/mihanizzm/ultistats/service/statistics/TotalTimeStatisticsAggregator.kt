@@ -28,7 +28,7 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
         var currentTeamPossessing: UUID? = null
         var currentParticipantPossessing: UUID? = null
         var isStopped = false
-        var teamOnTimeout: UUID? = null
+        var timeoutStart: TeamEvent? = null
         var announcementStart: AnnouncementStartEvent? = null
         val announcementTotals = mutableMapOf<UUID?, AnnouncementStatistics>()
         val announcementCoverage = AnnouncementCoverage(announcements)
@@ -81,6 +81,7 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
                 EventType.INCOMPLETE_PASS, EventType.INTERCEPTION, EventType.CALLAHAN,
                 EventType.HALFTIME_START -> true
                 EventType.POSSESSION_SET -> currentParticipantPossessing != (event as OnePlayerEvent).participant
+                EventType.PLAYER_SUBSTITUTION -> currentParticipantPossessing == (event as TwoPlayerEvent).fromParticipant
                 else -> false // Timeouts and announcements pause the hold without completing it.
             }
             if (completesHold) {
@@ -92,6 +93,9 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
             }
 
             when (event.type) {
+                EventType.PLAYER_SUBSTITUTION -> {
+                    if (completesHold) currentParticipantPossessing = (event as TwoPlayerEvent).toParticipant
+                }
                 EventType.PASS -> {
                     currentParticipantPossessing = (event as TwoPlayerEvent).toParticipant
                 }
@@ -154,16 +158,16 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
                     announcementStart = null
                 }
                 EventType.TIMEOUT_START -> {
-                    teamOnTimeout = (event as TeamEvent).team
+                    timeoutStart = event as TeamEvent
                     isStopped = true
                 }
                 EventType.TIMEOUT_END -> {
                     isStopped = false
-                    if (teamOnTimeout != null) {
-                        timeSpentOnTimeouts.merge(teamOnTimeout, duration, Duration::plus)
-                        recordExistingPause(previousEventTime, event.occurredAt)
-                        teamOnTimeout = null
+                    timeoutStart?.let { start ->
+                        timeSpentOnTimeouts.merge(start.team, Duration.between(start.occurredAt, event.occurredAt), Duration::plus)
+                        recordExistingPause(start.occurredAt, event.occurredAt)
                     }
+                    timeoutStart = null
                     // Между поинтами не должно включать время таймаута, поэтому старт переносим на конец таймаута
                     if (lastBetweenPointsStart != null) {
                         lastBetweenPointsStart = event.occurredAt

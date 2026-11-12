@@ -41,17 +41,20 @@ class EventSequencePolicy {
             else -> null
         }
         EventSequenceState.PullInFlight -> when (type) {
+            EventType.PLAYER_SUBSTITUTION -> state
             EventType.ANNOUNCEMENT_START -> EventSequenceState.Announcement(state)
             EventType.BRICK -> EventSequenceState.PickupRequired
             EventType.PICKUP, EventType.POSSESSION_SET -> EventSequenceState.PossessionActive
             else -> null
         }
         EventSequenceState.PickupRequired -> when (type) {
+            EventType.PLAYER_SUBSTITUTION -> state
             EventType.ANNOUNCEMENT_START -> EventSequenceState.Announcement(state)
             EventType.PICKUP, EventType.POSSESSION_SET -> EventSequenceState.PossessionActive
             else -> null
         }
         EventSequenceState.PossessionActive -> when (type) {
+            EventType.PLAYER_SUBSTITUTION -> state
             EventType.ANNOUNCEMENT_START -> EventSequenceState.Announcement(state)
             EventType.PASS, EventType.INTERCEPTION, EventType.POSSESSION_SET -> EventSequenceState.PossessionActive
             EventType.GOAL, EventType.CALLAHAN -> EventSequenceState.PointEnded
@@ -69,10 +72,12 @@ class EventSequencePolicy {
         }
         is EventSequenceState.Announcement -> when (type) {
             EventType.ANNOUNCEMENT_END -> state.resume
+            EventType.PLAYER_SUBSTITUTION -> state
             else -> null
         }
         is EventSequenceState.Timeout -> when (type) {
             EventType.TIMEOUT_END -> state.resume
+            EventType.PLAYER_SUBSTITUTION -> state.takeIf { it.resume == EventSequenceState.PossessionActive }
             else -> null
         }
     }

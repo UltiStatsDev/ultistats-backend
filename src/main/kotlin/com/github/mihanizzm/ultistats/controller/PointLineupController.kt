@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
+import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.CacheControl
 import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
@@ -28,7 +29,7 @@ import java.util.UUID
 class PointLineupController(private val lineups: PointLineupService) {
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Read canonical points and their confirmed lineups",
-        description = "Returns the current journal revision and whether new confirmations are enabled. Point IDs survive PULL and change when an opening scoring boundary is replaced.")
+        description = "Public capability discovery. Returns the current journal revision and independent availability of new confirmations and substitutions. effectiveTeams includes all accepted substitutions. Point IDs survive PULL and change when an opening scoring boundary is replaced.")
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Canonical point lineup snapshot", content = [Content(
             mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = PointLineupsResponse::class),
@@ -62,8 +63,9 @@ class PointLineupController(private val lineups: PointLineupService) {
         @PathVariable matchId: UUID,
         @PathVariable pointId: UUID,
         @RequestBody body: ConfirmPointLineupRequest,
+        request: HttpServletRequest,
     ): ResponseEntity<PointLineupResponse> =
-        lineups.confirm(matchId, pointId, body)?.let { ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(it) }
+        lineups.confirm(matchId, pointId, body, request.pointLineupClient())?.let { ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(it) }
             ?: ResponseEntity.notFound().build()
 
     @PatchMapping("/{pointId}/slots/{slotId}", consumes = [MediaType.APPLICATION_JSON_VALUE])
@@ -93,7 +95,8 @@ class PointLineupController(private val lineups: PointLineupService) {
         @PathVariable pointId: UUID,
         @PathVariable slotId: UUID,
         @RequestBody body: IdentifyPointLineupSlotRequest,
+        request: HttpServletRequest,
     ): ResponseEntity<PointLineupResponse> =
-        lineups.identify(matchId, pointId, slotId, body)?.let { ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(it) }
+        lineups.identify(matchId, pointId, slotId, body, request.pointLineupClient())?.let { ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(it) }
             ?: ResponseEntity.notFound().build()
 }
