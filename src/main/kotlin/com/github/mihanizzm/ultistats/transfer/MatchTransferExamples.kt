@@ -102,6 +102,71 @@ object MatchTransferExamples {
     }
   ]
 }"""
+    const val SUBSTITUTION_PACKAGE = """{
+  "formatVersion": 5,
+  "matches": [{
+    "id": "00000000-0000-0000-0000-000000000001",
+    "playersPerTeam": 5,
+    "startedAt": "2026-10-01T10:00:00Z",
+    "teams": [
+      {
+        "teamId": "00000000-0000-0000-0000-000000000002",
+        "teamName": "Соколы",
+        "participants": [
+          {"participantId": "00000000-0000-0000-0000-000000000004", "kind": "PLAYER", "firstName": "Иван", "lastName": "Иванов", "number": 7},
+          {"participantId": "00000000-0000-0000-0000-000000000005", "kind": "UNKNOWN", "unknownSlot": 1},
+          {"participantId": "00000000-0000-0000-0000-000000000006", "kind": "UNKNOWN", "unknownSlot": 2}
+        ]
+      },
+      {
+        "teamId": "00000000-0000-0000-0000-000000000003",
+        "teamName": "Ветер",
+        "participants": [
+          {"participantId": "00000000-0000-0000-0000-000000000007", "kind": "UNKNOWN", "unknownSlot": 1},
+          {"participantId": "00000000-0000-0000-0000-000000000008", "kind": "UNKNOWN", "unknownSlot": 2}
+        ]
+      }
+    ],
+    "events": [
+      {
+        "id": "00000000-0000-0000-0000-000000000009", "sequenceNumber": 1,
+        "type": "PULL", "occurredAt": "2026-10-01T10:00:01Z",
+        "fromParticipantId": "00000000-0000-0000-0000-000000000031"
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000010", "sequenceNumber": 2,
+        "type": "PICKUP", "occurredAt": "2026-10-01T10:00:02Z",
+        "fromParticipantId": "00000000-0000-0000-0000-000000000030"
+      },
+      {
+        "id": "00000000-0000-0000-0000-000000000011", "sequenceNumber": 3,
+        "type": "PLAYER_SUBSTITUTION", "occurredAt": "2026-10-01T10:00:03.123456789Z",
+        "fromParticipantId": "00000000-0000-0000-0000-000000000030",
+        "toParticipantId": "00000000-0000-0000-0000-000000000004"
+      }
+    ],
+    "pointLineups": [{
+      "openingEventId": null,
+      "teams": [
+        {
+          "teamId": "00000000-0000-0000-0000-000000000002",
+          "entries": [{"kind": "TEMPORARY", "slotId": "00000000-0000-0000-0000-000000000030", "number": 1, "resolvedParticipantId": null}]
+        },
+        {
+          "teamId": "00000000-0000-0000-0000-000000000003",
+          "entries": [{"kind": "TEMPORARY", "slotId": "00000000-0000-0000-0000-000000000031", "number": 1, "resolvedParticipantId": null}]
+        }
+      ]
+    }]
+  }],
+  "teams": [
+    {"id": "00000000-0000-0000-0000-000000000002", "name": "Соколы"},
+    {"id": "00000000-0000-0000-0000-000000000003", "name": "Ветер"}
+  ],
+  "players": [
+    {"id": "00000000-0000-0000-0000-000000000004", "firstName": "Иван", "lastName": "Иванов"}
+  ]
+}"""
     const val RESULT = """{
   "matchIds": {
     "00000000-0000-0000-0000-000000000001": "00000000-0000-0000-0000-000000000012"

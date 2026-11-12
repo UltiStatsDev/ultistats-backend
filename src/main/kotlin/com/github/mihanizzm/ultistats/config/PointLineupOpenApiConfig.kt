@@ -1,7 +1,6 @@
 package com.github.mihanizzm.ultistats.config
 
 import com.github.mihanizzm.ultistats.controller.POINT_LINEUPS_HEADER
-import com.github.mihanizzm.ultistats.model.events.EventType
 import io.swagger.v3.oas.models.Operation
 import io.swagger.v3.oas.models.media.ArraySchema
 import io.swagger.v3.oas.models.media.ComposedSchema
@@ -23,9 +22,6 @@ class PointLineupOpenApiConfig {
         flattenDiscriminatedLeaves(schemas, "ConfirmPointLineupEntry")
         flattenDiscriminatedLeaves(schemas, "PointLineupEntry")
         flattenDiscriminatedLeaves(schemas, "PortablePointLineupEntry")
-        schemas["PortableEvent"]?.properties?.set("type", StringSchema().apply {
-            enum = EventType.entries.filterNot { it == EventType.PLAYER_SUBSTITUTION }.map { it.name }
-        })
         // An OpenAPI 3.1 $ref with a nullable sibling still requires the referenced object.
         schemas["PointLineupResponse"]?.properties?.set("lineup", ComposedSchema().apply {
             addAnyOfItem(Schema<Any>().`$ref`("#/components/schemas/PointLineup"))

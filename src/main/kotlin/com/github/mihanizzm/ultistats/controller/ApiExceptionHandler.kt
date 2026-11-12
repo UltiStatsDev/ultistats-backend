@@ -57,8 +57,8 @@ class ApiExceptionHandler {
         val problem = ProblemDetail.forStatusAndDetail(status, error.message.orEmpty()).apply {
             title = when (error.code) {
                 PointLineupProblemCode.INVALID_REQUEST -> "Invalid point lineup"
-                PointLineupProblemCode.POINT_SUBSTITUTION_CONFLICT, PointLineupProblemCode.POINT_SUBSTITUTION_WRITE_DISABLED,
-                PointLineupProblemCode.POINT_SUBSTITUTION_TRANSFER_UNSUPPORTED -> "Point substitution conflict"
+                PointLineupProblemCode.POINT_SUBSTITUTION_CONFLICT,
+                PointLineupProblemCode.POINT_SUBSTITUTION_WRITE_DISABLED -> "Point substitution conflict"
                 else -> "Point lineup conflict"
             }
             instance = URI.create(request.requestURI)

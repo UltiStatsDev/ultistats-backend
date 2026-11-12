@@ -2,7 +2,13 @@ package com.github.mihanizzm.ultistats.transfer
 
 import com.github.mihanizzm.ultistats.model.MatchParticipantKind
 import com.github.mihanizzm.ultistats.model.MatchStatus
+import com.github.mihanizzm.ultistats.model.PointLineup
+import com.github.mihanizzm.ultistats.model.PointLineupPlayer
+import com.github.mihanizzm.ultistats.model.PointLineupTeam
+import com.github.mihanizzm.ultistats.model.PointLineupTemporary
 import com.github.mihanizzm.ultistats.model.events.*
+import com.github.mihanizzm.ultistats.service.ConfirmedJournal
+import com.github.mihanizzm.ultistats.service.PointLineupRejectedException
 import com.github.mihanizzm.ultistats.validation.event.EventSequenceDecision
 import com.github.mihanizzm.ultistats.validation.event.EventSequencePolicy
 import org.springframework.stereotype.Component
@@ -14,7 +20,7 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
     fun validate(data: MatchTransferPackage) {
         val expectedVersion = data.matches.requiredFormatVersion()
         check(data.formatVersion == expectedVersion, "formatVersion",
-            "Expected version $expectedVersion for the included events, announcements and point lineups")
+            "Expected version $expectedVersion for the included active events, announcements and point lineups")
         check(data.matches.isNotEmpty(), "matches", "Select at least one match")
         unique(data.matches.map { it.id }, "matches")
         unique(data.teams.map { it.id }, "teams")
@@ -87,7 +93,9 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
         if (decision is EventSequenceDecision.Rejected) {
             fail("$path.events[${decision.violation.eventIndex}]", "Invalid event sequence in state ${decision.violation.currentState}")
         }
-        if (match.pointLineups.isNotEmpty()) validateLineupScope(match, path, slots.keys, storedEvents)
+        if (match.pointLineups.isNotEmpty() || match.containsSubstitutions()) {
+            validateLineupScope(match, path, slots.keys, storedEvents, teamByParticipant)
+        }
     }
 
     private fun validateLineupEntries(match: PortableMatch, path: String, rosterIds: Set<UUID>): Map<UUID, UUID> {
@@ -126,31 +134,54 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
         return slots
     }
 
-    private fun validateLineupScope(match: PortableMatch, path: String, slots: Set<UUID>, events: List<StoredEvent>) {
+    private fun validateLineupScope(
+        match: PortableMatch, path: String, slots: Set<UUID>, events: List<StoredEvent>, teamByParticipant: Map<UUID, UUID>,
+    ) {
         val timeline = PointTimeline.from(match.id, match.status, events)
-        val canonicalOpenings = timeline.map { it.openingEventId }.toSet()
-        val openings = mutableSetOf<UUID?>()
-        val membersByOpening = match.pointLineups.mapIndexed { index, lineup ->
-            check(lineup.openingEventId in canonicalOpenings && openings.add(lineup.openingEventId),
+        val pointsByOpening = timeline.associateBy { it.openingEventId }
+        val lineupsByOpening = mutableMapOf<UUID?, PointLineup>()
+        match.pointLineups.forEachIndexed { index, lineup ->
+            val opening = lineup.openingEventId
+            check(opening in pointsByOpening && opening !in lineupsByOpening,
                 "$path.pointLineups[$index].openingEventId", "Expected a distinct canonical point boundary")
-            lineup.openingEventId to lineup.teams.flatMap { team ->
-                team.entries.map { entry ->
+            lineupsByOpening[opening] = PointLineup(revision = 1, teams = lineup.teams.map { team ->
+                PointLineupTeam(team.teamId, team.entries.map { entry ->
                     when (entry) {
-                        is PortablePointLineupPlayer -> entry.participantId
-                        is PortablePointLineupTemporary -> entry.slotId
+                        is PortablePointLineupPlayer -> PointLineupPlayer(entry.participantId)
+                        is PortablePointLineupTemporary -> PointLineupTemporary(entry.slotId, entry.number, entry.resolvedParticipantId)
                     }
-                }
-            }.toSet()
-        }.toMap()
+                })
+            })
+        }
+        val membersByOpening = lineupsByOpening.mapValues { (_, lineup) ->
+            lineup.teams.flatMap { team -> team.entries.map { it.actorId } }.toSet()
+        }
         val unknowns = match.teams.flatMap { it.participants }
             .filter { it.kind == MatchParticipantKind.UNKNOWN }.map { it.participantId }.toSet()
+        val replayedOpenings = if (match.containsSubstitutions()) {
+            val lineupsByPoint = lineupsByOpening.mapKeys { (opening, _) -> pointsByOpening.getValue(opening).pointId }
+            val confirmed = ConfirmedJournal(lineupsByPoint, unknowns, teamByParticipant - unknowns, writesEnabled = true)
+            val groups = PointTimeline.eventsByPoint(timeline, events)
+            timeline.filter { point ->
+                val pointEvents = groups[point.pointId].orEmpty()
+                if (pointEvents.none { it.event.type == EventType.PLAYER_SUBSTITUTION }) return@filter false
+                try {
+                    confirmed.validateSubstitutionPoint(point.pointId, pointEvents)
+                } catch (error: PointLineupRejectedException) {
+                    fail("$path.events", "Point ${point.number}: ${error.message}")
+                }
+                true
+            }.map { it.openingEventId }.toSet()
+        } else emptySet()
         val closings = timeline.mapNotNull { it.closingEventId }.toSet()
         var opening: UUID? = null
         match.events.forEachIndexed { index, event ->
-            val members = membersByOpening[opening]
-            for (actor in listOfNotNull(event.fromParticipantId, event.toParticipantId)) {
-                check(if (members == null) actor !in slots else actor in members || actor in unknowns,
-                    "$path.events[$index]", "Event actor must belong to its point lineup or be a match-wide UNKNOWN participant")
+            if (opening !in replayedOpenings) {
+                val members = membersByOpening[opening]
+                for (actor in listOfNotNull(event.fromParticipantId, event.toParticipantId)) {
+                    check(if (members == null) actor !in slots else actor in members || actor in unknowns,
+                        "$path.events[$index]", "Event actor must belong to its point lineup or be a match-wide UNKNOWN participant")
+                }
             }
             if (event.id in closings) opening = event.id
         }
@@ -187,8 +218,9 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
                 check(event.fromParticipantId in teams && event.toParticipantId in teams && event.teamId == null && event.fromParticipantId != event.toParticipantId,
                     path, "TWO_PLAYER requires two distinct match participants and no teamId")
                 val sameTeam = teams[event.fromParticipantId] == teams[event.toParticipantId]
-                check(sameTeam == (event.type == EventType.PASS || event.type == EventType.GOAL), path,
-                    "PASS/GOAL require the same team; blocks, interceptions and callahans require opposing teams")
+                val requiresSameTeam = event.type in setOf(EventType.PASS, EventType.GOAL, EventType.PLAYER_SUBSTITUTION)
+                check(sameTeam == requiresSameTeam, path,
+                    "PASS, GOAL and PLAYER_SUBSTITUTION require the same team; blocks, interceptions and callahans require opposing teams")
             }
             EventCategory.TEAM -> check(event.teamId in teamIds && event.fromParticipantId == null && event.toParticipantId == null,
                 path, "TEAM requires only teamId belonging to this match")
@@ -208,7 +240,12 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
     private fun fail(path: String, detail: String): Nothing = throw InvalidMatchTransferException(path, detail)
 }
 
+private fun PortableMatch.containsSubstitutions() = events.any { it.type == EventType.PLAYER_SUBSTITUTION }
+
+internal fun List<PortableMatch>.containsSubstitutions() = any { it.containsSubstitutions() }
+
 internal fun List<PortableMatch>.requiredFormatVersion() = when {
+    containsSubstitutions() -> 5
     any { it.pointLineups.isNotEmpty() } -> 4
     containsPossessionChanges() -> 3
     any { it.announcements.isNotEmpty() } -> 2
