@@ -32,6 +32,7 @@ class MatchTransferService(
     private val validator: MatchTransferValidator,
     private val lineups: PointLineupRepository,
     @Value("\${ultistats.point-lineups.write-enabled:false}") private val pointLineupWritesEnabled: Boolean,
+    @Value("\${ultistats.point-substitutions.write-enabled:false}") private val substitutionWritesEnabled: Boolean,
 ) {
     /** All queries see one source snapshot, even while an in-progress match changes. */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -44,7 +45,6 @@ class MatchTransferService(
             val roster = participants.findAllByMatchId(id)
             val snapshotTeams = matchTeams.findAllByMatchIdOrderByPosition(id)
             val journal = events.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(id)
-            if (journal.any { it.eventType == EventType.PLAYER_SUBSTITUTION }) throw substitutionTransferUnsupported()
             PortableMatch(
                 id, match.playersPerTeam, match.plannedStartTimestamp, match.effectiveStartedAt, match.effectiveEndedAt,
                 snapshotTeams.map { team ->
@@ -85,17 +85,19 @@ class MatchTransferService(
 
     @Transactional
     fun importPackage(data: MatchTransferPackage): MatchTransferResult {
-        if (data.matches.any { match -> match.events.any { it.type == EventType.PLAYER_SUBSTITUTION } }) {
-            throw substitutionTransferUnsupported()
-        }
         validator.validate(data)
+        if (data.matches.containsSubstitutions() && !substitutionWritesEnabled) {
+            throw PointLineupRejectedException(
+                PointLineupProblemCode.POINT_SUBSTITUTION_WRITE_DISABLED, "Point substitution writes are disabled",
+            )
+        }
         if (data.matches.containsPossessionChanges()) {
             possessionChangeWrites.rejection(EventType.POSSESSION_SET)?.let {
                 throw TransferWriteDisabledException(it)
             }
         }
         if (data.matches.any { it.announcements.isNotEmpty() }) announcementService.requireNewIntervalsEnabled()
-        if (data.formatVersion == 4 && !pointLineupWritesEnabled) {
+        if (data.matches.any { it.pointLineups.isNotEmpty() } && !pointLineupWritesEnabled) {
             throw PointLineupRejectedException(
                 PointLineupProblemCode.POINT_LINEUP_WRITE_DISABLED, "Point lineup writes are disabled",
             )
@@ -213,8 +215,3 @@ class TransferWriteDisabledException(val problem: MatchProblem) : RuntimeExcepti
 
 class ExportPointLineupUnsupportedException(id: UUID) :
     RuntimeException("Match $id has a live temporary actor outside its exportable point lineup")
-
-private fun substitutionTransferUnsupported() = PointLineupRejectedException(
-    PointLineupProblemCode.POINT_SUBSTITUTION_TRANSFER_UNSUPPORTED,
-    "Portable formats 1–4 do not support point substitutions",
-)

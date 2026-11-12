@@ -155,12 +155,12 @@ class PointLineupHttpTest {
         assertFalse(patch.isMissingNode, "The slot PATCH operation is missing from OpenAPI")
         assertEquals("#/components/schemas/PointLineupResponse",
             patch["responses"]["200"]["content"]["application/json"]["schema"]["\$ref"].asText())
-        assertFalse(schemas["PortableEvent"]["properties"]["type"]["enum"].any { it.asText() == "PLAYER_SUBSTITUTION" })
+        assertTrue(schemas["PortableEvent"]["properties"]["type"]["enum"].any { it.asText() == "PLAYER_SUBSTITUTION" })
         val portableMatch = schemas["PortableMatch"]
         assertFalse(portableMatch["required"].any { it.asText() == "pointLineups" })
         assertEquals("#/components/schemas/PortablePointLineup",
             portableMatch["properties"]["pointLineups"]["items"]["\$ref"].asText())
-        assertEquals(4, schemas["MatchTransferPackage"]["properties"]["formatVersion"]["maximum"].asInt())
+        assertEquals(5, schemas["MatchTransferPackage"]["properties"]["formatVersion"]["maximum"].asInt())
         for ((schema, field) in listOf("PortablePointLineup" to "openingEventId", "PortablePointLineupTemporary" to "resolvedParticipantId")) {
             assertTrue(schemas[schema]["required"].any { it.asText() == field })
             assertEquals(setOf("string", "null"), schemas[schema]["properties"][field]["type"].map { it.asText() }.toSet())
@@ -849,16 +849,25 @@ class PointLineupHttpTest {
         event(fixture, "POSSESSION_SET", slot, capability = "1")
         val withPossession = export(fixture.id).also { (it["matches"][0] as ObjectNode).remove("announcements") }
 
+        val journal = "${fixture.matchPath}/events".replace("/v1/", "/v2/")
+        val substitution = eventBody(UUID.randomUUID(), "PLAYER_SUBSTITUTION", slot, fixture.leftPlayers[0]).at(3)
+        response(send("POST", "$journal/batch", batch(2, 2, substitution), login, capability = "2"), 201)
+        val v5 = export(fixture.id)
+        val v5WithAnnouncement = v5.deepCopy().also { (it["matches"][0]["events"] as ArrayNode).remove(1) }
+        val v5WithPossession = v5.deepCopy().also { (it["matches"][0] as ObjectNode).remove("announcements") }
+
         SpringApplicationBuilder(UltistatsApplication::class.java).profiles("postgres-list").run(
             "--server.port=0", "--app.auth.ingress.loopback-mode=true", "--app.auth.ingress.private-port=0",
             "--ultistats.point-lineups.write-enabled=false", "--ultistats.possession-change.write-enabled=true",
-            "--ultistats.announcements.write-enabled=true",
+            "--ultistats.announcements.write-enabled=true", "--ultistats.point-substitutions.write-enabled=true",
         ).use { app ->
             val restartedPort = (app as ServletWebServerApplicationContext).webServer.port
             val count = transferCounts()
-            assertEquals(4, export(fixture.id, "transfer-off-export", restartedPort)["formatVersion"].asInt())
+            assertEquals(v5, export(fixture.id, "transfer-v5-lineup-off-export", restartedPort))
             assertEquals("POINT_LINEUP_WRITE_DISABLED", importPackage(lineupOnly, 409,
                 "transfer-off-import", restartedPort)["code"].asText())
+            assertEquals("POINT_LINEUP_WRITE_DISABLED", importPackage(v5, 409,
+                "transfer-v5-lineup-off", restartedPort)["code"].asText())
             assertEquals(count, transferCounts())
             importPackage(legacy[2], targetPort = restartedPort)
         }
@@ -866,7 +875,7 @@ class PointLineupHttpTest {
         SpringApplicationBuilder(UltistatsApplication::class.java).profiles("postgres-list").run(
             "--server.port=0", "--app.auth.ingress.loopback-mode=true", "--app.auth.ingress.private-port=0",
             "--ultistats.point-lineups.write-enabled=true", "--ultistats.possession-change.write-enabled=false",
-            "--ultistats.announcements.write-enabled=false",
+            "--ultistats.announcements.write-enabled=false", "--ultistats.point-substitutions.write-enabled=true",
         ).use { app ->
             val restartedPort = (app as ServletWebServerApplicationContext).webServer.port
             val count = transferCounts()
@@ -875,6 +884,8 @@ class PointLineupHttpTest {
                 Triple("v3-possession-off", legacy[2], "POSSESSION_CHANGE_WRITE_DISABLED"),
                 Triple("v4-announcement-off", withAnnouncement, "ANNOUNCEMENT_WRITE_DISABLED"),
                 Triple("v4-possession-off", withPossession, "POSSESSION_CHANGE_WRITE_DISABLED"),
+                Triple("v5-announcement-off", v5WithAnnouncement, "ANNOUNCEMENT_WRITE_DISABLED"),
+                Triple("v5-possession-off", v5WithPossession, "POSSESSION_CHANGE_WRITE_DISABLED"),
             )) {
                 assertEquals(code, importPackage(payload, 409, "transfer-$label", restartedPort)["code"].asText())
                 assertEquals(count, transferCounts())
@@ -902,8 +913,10 @@ class PointLineupHttpTest {
     private fun mapped(result: JsonNode, key: String, source: UUID): UUID =
         UUID.fromString(result[key][source.toString()].asText())
 
-    private fun transferCounts() = listOf("matches", "teams", "players", "events", "match_point_lineups", "match_point_lineup_entries")
-        .map { jdbc.queryForObject("SELECT count(*) FROM $it", Long::class.java) }
+    private fun transferCounts() = listOf(
+        "matches", "teams", "players", "match_teams", "match_participants", "events", "match_announcements",
+        "match_point_lineups", "match_point_lineup_entries",
+    ).map { jdbc.queryForObject("SELECT count(*) FROM $it", Long::class.java) }
 
     protected fun verifyFreshProcessIdentification() {
         val fixture = fixture()
@@ -1132,13 +1145,15 @@ class PointLineupHttpTest {
         val slot = UUID.randomUUID()
         val left = fixture.leftPlayers
         val point = confirm(fixture, listOf(temporary(slot), player(left[0])), listOf(player(fixture.rightPlayers[0])))
-        val portable = export(fixture.id)
-        val pull = eventBody(UUID.randomUUID(), "PULL", fixture.rightPlayers[0])
+        val right = fixture.rightPlayers
+        val pull = eventBody(UUID.randomUUID(), "PULL", right[0])
+        val reply = eventBody(UUID.randomUUID(), "PLAYER_SUBSTITUTION", right[0], right[1]).at(1)
+        val brick = eventBody(UUID.randomUUID(), "BRICK", right[0]).at(1)
         val pickup = eventBody(UUID.randomUUID(), "PICKUP", slot).at(2)
         val replacement = eventBody(UUID.randomUUID(), "PLAYER_SUBSTITUTION", slot, left[1]).at(5)
         val goal = eventBody(UUID.randomUUID(), "GOAL", left[1], left[0]).at(9)
         val v2 = "${fixture.matchPath}/events".replace("/v1/", "/v2/")
-        response(send("POST", "$v2/batch", batch(0, 0, pull, pickup, replacement, goal), login, capability = "2"), 201)
+        response(send("POST", "$v2/batch", batch(0, 0, pull, reply, brick, pickup, replacement, goal), login, capability = "2"), 201)
         val before = response(send("GET", v2, capability = "2"), 200)
         assertConflict(send("PATCH", slotPath(fixture, point, slot), identification(left[1], 1, goal.getValue("eventId")),
             login, capability = "2", capture = "substitution-identify-incoming-rejected"))
@@ -1151,16 +1166,166 @@ class PointLineupHttpTest {
         assertEquals(4000, participant(stats, left[1])["time"]["possessionTimeMs"].asInt())
         assertEquals(before, response(send("GET", v2, capability = "2"), 200))
 
-        val exportPath = "/api/v1/matches/export"
-        val importPath = "/api/v1/matches/import"
-        assertEquals("POINT_SUBSTITUTION_TRANSFER_UNSUPPORTED", response(send("POST", exportPath,
-            mapOf("matchIds" to listOf(fixture.id)), login, capture = "substitution-export-blocked"), 409)["code"].asText())
-        val events = portable["matches"].single()["events"] as ArrayNode
-        events.add(mapper.valueToTree<JsonNode>((replacement - "eventId") + mapOf("id" to replacement.getValue("eventId"), "sequenceNumber" to 1)))
+        matches.endMatch(fixture.id, startedAt.plusSeconds(10))
+        val legacy = fixture()
+        confirm(legacy, listOf(player(legacy.leftPlayers[0])), listOf(player(legacy.rightPlayers[0])))
+        val announcement = addAnnouncement(legacy)
+        event(legacy, "PULL", legacy.rightPlayers[0], capability = "1")
+        event(legacy, "POSSESSION_SET", legacy.leftPlayers[0], capability = "1")
+        val legacyFile = export(legacy.id)
+        assertEquals(4, legacyFile["formatVersion"].asInt())
+
+        val selected = mapOf("matchIds" to listOf(fixture.id, legacy.id))
+        val exported = send("POST", "/api/v1/matches/export", selected, login, capture = "transfer-v5-source")
+        val source = response(exported, 200) as ObjectNode
+        assertEquals(5, source["formatVersion"].asInt())
+        val sourceMatch = source["matches"].first()
+        assertEquals(listOf("PULL", "PLAYER_SUBSTITUTION", "BRICK", "PICKUP", "PLAYER_SUBSTITUTION", "GOAL"),
+            sourceMatch["events"].map { it["type"].asText() })
+        assertEquals(legacyFile["matches"].single(), source["matches"][1])
+
+        val result = importPackage(source, capture = "transfer-v5-import")
+        val copyId = mapped(result, "matchIds", fixture.id)
+        val copyPath = "/api/v1/matches/$copyId"
+        val copy = export(copyId, "transfer-v5-copy")["matches"].single()
+        val copyPoint = response(send("GET", "$copyPath/point-lineups", capture = "transfer-v5-copy-lineups"), 200)["points"].single()
+        assertEquals("FINISHED", get(copyPath)["status"].asText())
+        assertEquals(listOf(1, 0), get(copyPath)["teams"].map { it["teamScore"].asInt() })
+        assertEquals("COMPLETED", copyPoint["status"].asText())
+        assertNotEquals(point["pointId"], copyPoint["pointId"])
+        val newSlot = copyPoint["lineup"]["teams"][0]["entries"][0]["slotId"].asText()
+        assertNotEquals(slot.toString(), newSlot)
+        val newHolder = mapped(result, "playerIds", left[1])
+        val newResolved = mapped(result, "playerIds", left[2])
+        val newPuller = mapped(result, "playerIds", right[0])
+        val newReply = mapped(result, "playerIds", right[1])
+        assertNotEquals(left[1], newHolder)
+        assertNotEquals(right[0], newPuller)
+        assertNotEquals(right[1], newReply)
+        assertEquals(newResolved.toString(), resolution(copyPoint))
+        assertEquals(newHolder.toString(), copyPoint["effectiveTeams"][0]["entries"][0]["participantId"].asText())
+        assertEquals(newReply.toString(), copyPoint["effectiveTeams"][1]["entries"][0]["participantId"].asText())
+        assertEquals(listOf(newPuller.toString(), newPuller.toString(), newPuller.toString(), newSlot, newSlot, newHolder.toString()),
+            copy["events"].map { it["fromParticipantId"].asText() })
+        assertEquals(newReply.toString(), copy["events"][1]["toParticipantId"].asText())
+        assertEquals(newHolder.toString(), copy["events"][4]["toParticipantId"].asText())
+        for (key in listOf("sequenceNumber", "occurredAt", "type")) {
+            assertEquals(sourceMatch["events"].map { it[key] }, copy["events"].map { it[key] })
+        }
+        assertEquals(sourceMatch["events"].map { mapped(result, "eventIds", UUID.fromString(it["id"].asText())).toString() },
+            copy["events"].map { it["id"].asText() })
+        val copyStats = response(send("GET", "$copyPath/statistics", capture = "transfer-v5-copy-stats"), 200)
+        assertEquals(stats["teams"][0]["attack"], copyStats["teams"][0]["attack"])
+        assertEquals(stats["teams"][0]["time"], copyStats["teams"][0]["time"])
+        assertEquals(3000, participant(copyStats, newResolved)["time"]["possessionTimeMs"].asInt())
+        assertEquals(4000, participant(copyStats, newHolder)["time"]["possessionTimeMs"].asInt())
+        assertEquals(1, participant(copyStats, newHolder)["attack"]["assists"].asInt())
+
+        val legacyCopy = export(mapped(result, "matchIds", legacy.id), "transfer-v5-legacy-copy")
+        assertEquals(4, legacyCopy["formatVersion"].asInt())
+        val legacyCopyMatch = legacyCopy["matches"].single()
+        assertEquals(announcement.toString(), legacyCopyMatch["announcements"].single()["id"].asText())
+        assertEquals(listOf("PULL", "POSSESSION_SET"), legacyCopyMatch["events"].map { it["type"].asText() })
+        assertEquals(1, legacyCopyMatch["pointLineups"].size())
+        assertEquals(exported.body(), send("POST", "/api/v1/matches/export", selected, login).body())
+
         val counts = transferCounts()
-        assertEquals("POINT_SUBSTITUTION_TRANSFER_UNSUPPORTED", response(send("POST", importPath, portable,
-            login, capture = "substitution-import-blocked"), 409)["code"].asText())
+        val mutations: Map<String, (ObjectNode) -> Unit> = mapOf(
+            "downgrade" to { it.put("formatVersion", 4) },
+            "missing-lineup" to { (it["matches"][0] as ObjectNode).remove("pointLineups") },
+            "wrong-boundary" to {
+                (it["matches"][0]["pointLineups"][0] as ObjectNode).put("openingEventId", pull.getValue("eventId").toString())
+            },
+            "before-pull" to {
+                val events = it["matches"][0]["events"] as ArrayNode
+                events.insert(0, (events.remove(1) as ObjectNode).put("sequenceNumber", 1).put("occurredAt", startedAt.toString()))
+                (events[1] as ObjectNode).put("sequenceNumber", 2)
+            },
+            "absent-outgoing" to { (it["matches"][0]["events"][4] as ObjectNode).put("fromParticipantId", left[2].toString()) },
+            "same-actor" to { (it["matches"][0]["events"][4] as ObjectNode).put("toParticipantId", slot.toString()) },
+            "cross-team" to { (it["matches"][0]["events"][4] as ObjectNode).put("toParticipantId", right[1].toString()) },
+            "unknown" to {
+                val unknown = it["matches"][0]["teams"][0]["participants"].first { p -> p["kind"].asText() == "UNKNOWN" }
+                (it["matches"][0]["events"][4] as ObjectNode).put("toParticipantId", unknown["participantId"].asText())
+            },
+            "on-field" to { (it["matches"][0]["events"][4] as ObjectNode).put("toParticipantId", left[0].toString()) },
+            "resolution-collision" to {
+                (it["matches"][0]["pointLineups"][0]["teams"][0]["entries"][0] as ObjectNode)
+                    .put("resolvedParticipantId", left[1].toString())
+            },
+            "post-substitution-actor" to { (it["matches"][0]["events"][5] as ObjectNode).put("fromParticipantId", slot.toString()) },
+        )
+        for ((label, mutate) in mutations) {
+            val rejected = source.deepCopy().also(mutate)
+            assertEquals("INVALID_REQUEST", importPackage(rejected, 400, "transfer-v5-reject-$label")["code"].asText())
+            assertEquals(counts, transferCounts(), label)
+        }
+        assertEquals("INVALID_REQUEST", importPackage(legacyFile.deepCopy().put("formatVersion", 5), 400,
+            "transfer-v5-reject-without-substitution")["code"].asText())
         assertEquals(counts, transferCounts())
+    }
+
+    @Test
+    fun `portable v5 preserves current possession and ordered undo in the copy`() {
+        val fixture = fixture(rosterSize = 3)
+        val from = fixture.leftPlayers[0]
+        val to = fixture.leftPlayers[1]
+        val puller = fixture.rightPlayers[0]
+        val teammate = fixture.leftPlayers[2]
+        confirm(fixture, listOf(player(from), player(teammate)), listOf(player(puller)))
+        val journal = "${fixture.matchPath}/events".replace("/v1/", "/v2/")
+        val exact = startedAt.plusSeconds(5).plusNanos(123456789)
+        val replacement = eventBody(UUID.randomUUID(), "PLAYER_SUBSTITUTION", from, to) + ("occurredAt" to exact.toString())
+        response(send("POST", "$journal/batch", batch(0, 0, eventBody(UUID.randomUUID(), "PULL", puller),
+            eventBody(UUID.randomUUID(), "POSSESSION_SET", from).at(2), replacement), login, capability = "2"), 201)
+
+        val source = export(fixture.id, "transfer-v5-active")
+        assertEquals(5, source["formatVersion"].asInt())
+        val result = importPackage(source, capture = "transfer-v5-active-import")
+        val copyId = mapped(result, "matchIds", fixture.id)
+        val copyPath = "/api/v1/matches/$copyId"
+        val copyJournal = "$copyPath/events".replace("/v1/", "/v2/")
+        val copied = response(send("GET", copyJournal, capability = "2", capture = "transfer-v5-active-copy-journal"), 200)
+        val newReplacement = mapped(result, "eventIds", replacement.getValue("eventId") as UUID)
+        val newFrom = mapped(result, "playerIds", from)
+        val newTo = mapped(result, "playerIds", to)
+        assertEquals(exact.toString(), copied["events"].last()["occurredAt"].asText())
+        assertEquals(newReplacement.toString(), copied["events"].last()["id"].asText())
+        val copyPoint = get("$copyPath/point-lineups")["points"].single()
+        assertEquals(newTo.toString(), copyPoint["effectiveTeams"][0]["entries"][0]["participantId"].asText())
+        val stats = response(send("GET", "$copyPath/statistics", session = login, capture = "transfer-v5-active-copy-stats"), 200)
+        assertEquals(3123, participant(stats, newFrom)["time"]["possessionTimeMs"].asInt())
+        assertEquals(0, participant(stats, newTo)["attack"]["discPossessions"].asInt())
+
+        val undo = undo(mapOf("eventId" to newReplacement), copied["logRevision"].asLong())
+        val undone = response(send("POST", "$copyJournal/undo", undo, login, capability = "2", capture = "transfer-v5-copy-undo"), 200)
+        assertEquals("APPLIED", undone["outcome"].asText())
+        assertEquals(newFrom.toString(), get("$copyPath/point-lineups")["points"].single()["effectiveTeams"][0]["entries"][0]["participantId"].asText())
+        val afterUndo = export(copyId, "transfer-v5-copy-after-undo")
+        assertEquals(4, afterUndo["formatVersion"].asInt())
+        assertEquals(listOf("PULL", "POSSESSION_SET"), afterUndo["matches"].single()["events"].map { it["type"].asText() })
+        val restoredLog = response(send("GET", copyJournal, capability = "2"), 200)
+        val pass = eventBody(UUID.randomUUID(), "PASS", newFrom, mapped(result, "playerIds", teammate)).at(9)
+        response(send("POST", "$copyJournal/batch", batch(restoredLog["lastSequenceNumber"].asInt(),
+            restoredLog["logRevision"].asLong(), pass), login, capability = "2", capture = "transfer-v5-copy-pass-after-undo"), 201)
+        val restoredStats = response(send("GET", "$copyPath/statistics", session = login, capture = "transfer-v5-copy-stats-after-undo"), 200)
+        assertEquals(7000, participant(restoredStats, newFrom)["time"]["possessionTimeMs"].asInt())
+        assertEquals(1, participant(restoredStats, newFrom)["attack"]["passes"].asInt())
+        assertEquals(source, export(fixture.id))
+    }
+
+    @Test
+    fun `OpenAPI v5 example can be imported and exported directly`() {
+        val docs = response(send("GET", "/v3/api-docs", session = login, capture = "transfer-v5-openapi"), 200)
+        val format = docs["components"]["schemas"]["MatchTransferPackage"]["properties"]["formatVersion"]
+        assertEquals(5, format["maximum"].asInt())
+        val example = docs["paths"]["/api/v1/matches/import"]["post"]["requestBody"]["content"]["application/json"]["examples"]["pointSubstitution"]["value"]
+        assertEquals(5, example["formatVersion"].asInt())
+        val id = UUID.fromString(example["matches"].single()["id"].asText())
+        val result = importPackage(example, capture = "transfer-v5-openapi-import")
+        val copy = export(mapped(result, "matchIds", id), "transfer-v5-openapi-copy")
+        assertEquals(5, copy["formatVersion"].asInt())
+        assertEquals("PLAYER_SUBSTITUTION", copy["matches"].single()["events"].last()["type"].asText())
     }
 
     protected fun verifyFreshProcessSubstitution() {
@@ -1174,12 +1339,17 @@ class PointLineupHttpTest {
         val replacement = eventBody(UUID.randomUUID(), "PLAYER_SUBSTITUTION", from, to).at(5)
         val append = batch(0, 0, pull, pickup, replacement)
         val committed = response(send("POST", "$journal/batch", append, login, capability = "2"), 201)
+        val source = export(fixture.id)
         val reverse = eventBody(UUID.randomUUID(), "PLAYER_SUBSTITUTION", to, from).at(6)
 
         SpringApplicationBuilder(UltistatsApplication::class.java).profiles("postgres-list").run(
             "--server.port=0", "--app.auth.ingress.loopback-mode=true", "--app.auth.ingress.private-port=0",
         ).use { app ->
             val target = (app as ServletWebServerApplicationContext).webServer.port
+            val counts = transferCounts()
+            assertEquals(source, export(fixture.id, "transfer-v5-off-export", target))
+            assertEquals("POINT_SUBSTITUTION_WRITE_DISABLED", importPackage(source, 409, "transfer-v5-off-import", target)["code"].asText())
+            assertEquals(counts, transferCounts())
             val snapshot = response(send("GET", fixture.path, targetPort = target, capture = "substitution-discover-default-off"), 200)
             assertFalse(snapshot["writesEnabled"].asBoolean())
             assertFalse(snapshot["substitutionsWriteEnabled"].asBoolean())

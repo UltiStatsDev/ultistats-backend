@@ -135,19 +135,23 @@ class ConfirmedJournal(
             if (replacements.any { originalSubstitutions[it.id] != pointId }) {
                 substitutionConflict("An edit cannot move a substitution to a different point")
             }
-            if (pointId !in affectedPoints) continue
-            val initial = lineups[pointId]?.teams ?: substitutionConflict("Substitutions require a confirmed point")
-            var effective = initial
-            var puller: UUID? = null
-            for ((_, _, event) in journal) {
-                if (event.type == EventType.PULL) puller = (event as OnePlayerEvent).participant
-                if (event.type == EventType.PLAYER_SUBSTITUTION) {
-                    if (puller == null) substitutionConflict("An edit cannot leave a substitution before PULL")
-                    validateSubstitution(initial, effective, event as TwoPlayerEvent)
-                    effective = effective.afterSubstitution(event)
-                } else if (!actorsAllowed(effective, event, puller)) {
-                    substitutionConflict("An edit would leave a later actor outside the effective point lineup")
-                }
+            if (pointId in affectedPoints) validateSubstitutionPoint(pointId, journal)
+        }
+    }
+
+    /** Replay a point affected by a substitution using the original confirmed lineup. */
+    internal fun validateSubstitutionPoint(pointId: UUID, journal: List<StoredEvent>) {
+        val initial = lineups[pointId]?.teams ?: substitutionConflict("Substitutions require a confirmed point")
+        var effective = initial
+        var puller: UUID? = null
+        for ((_, _, event) in journal) {
+            if (event.type == EventType.PULL) puller = (event as OnePlayerEvent).participant
+            if (event.type == EventType.PLAYER_SUBSTITUTION) {
+                if (puller == null) substitutionConflict("A substitution requires an active point after PULL")
+                validateSubstitution(initial, effective, event as TwoPlayerEvent)
+                effective = effective.afterSubstitution(event)
+            } else if (!actorsAllowed(effective, event, puller)) {
+                substitutionConflict("Event actors must belong to the effective point lineup")
             }
         }
     }
