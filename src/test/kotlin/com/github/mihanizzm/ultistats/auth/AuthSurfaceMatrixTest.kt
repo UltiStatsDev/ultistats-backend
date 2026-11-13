@@ -46,7 +46,7 @@ class AuthSurfaceMatrixTest {
         @Bean fun mapper(): ObjectMapper = jacksonObjectMapper().findAndRegisterModules()
         @Bean fun mode() = Mode()
         @Bean fun classifier(mode: Mode) = object : AuthEntryClassifier {
-            override fun classify(request: jakarta.servlet.http.HttpServletRequest) = mode.value
+            override fun classify(request: jakarta.servlet.http.HttpServletRequest) = if (request.getAttribute("testSecure") == true) AuthEntryMode.SECURE else mode.value
         }
         @Bean fun origins() = object : AuthOriginConfiguration {
             override fun secureOrigins() = setOf("http://localhost:21153")
@@ -76,14 +76,21 @@ class AuthSurfaceMatrixTest {
             assertEquals(200, csrfResult.response.status)
             val csrf = mapper.readTree(csrfResult.response.contentAsString)["token"].asText()
             val csrfCookie = csrfResult.response.getCookie("ULTISTATS_LOOPBACK_CSRF")!!
+            val secureCsrfResponse = mvc.perform(request(org.springframework.http.HttpMethod.GET, "/api/v1/auth/csrf")
+                .requestAttr("testSecure", true)).andReturn().response
+            assertEquals(200, secureCsrfResponse.status)
+            val secureCsrf = mapper.readTree(secureCsrfResponse.contentAsString)["token"].asText()
+            val secureCsrfCookie = secureCsrfResponse.getCookie("__Host-ULTISTATS_CSRF")!!
             val probe = context.getBean(Probe::class.java)
             val id = UUID.fromString("10000000-0000-0000-0000-000000000001")
             val rows = mapper.readTree(Path.of("docs/api/auth-surfaces-v1.json").toFile())["routes"].filter { it["owner"].asText() == "enforcement" && it["policy"].asText() != "OBS_SOURCE_BEARER" }
-            fun perform(method: String, path: String, login: AuthLoginResult?): MvcResult {
+            fun perform(method: String, path: String, login: AuthLoginResult?, secure: Boolean = false): MvcResult {
                 val builder = request(org.springframework.http.HttpMethod.valueOf(method), path)
-                    .cookie(csrfCookie).header("X-CSRF-TOKEN", csrf).contentType("application/json").content("{malformed")
+                    .cookie(if (secure) secureCsrfCookie else csrfCookie)
+                    .requestAttr("testSecure", secure).header("X-CSRF-TOKEN", if (secure) secureCsrf else csrf)
+                    .contentType("application/json").content("{malformed")
                 if (login != null) {
-                    builder.cookie(Cookie("ULTISTATS_LOOPBACK_SESSION", login.credential))
+                    builder.cookie(Cookie(if (secure) "__Host-ULTISTATS_SESSION" else "ULTISTATS_LOOPBACK_SESSION", login.credential))
                     builder.header("X-UltiStats-Installation-Id", login.context.installationId)
                     builder.header("X-UltiStats-Account-Id", login.context.account!!.id)
                     builder.header("X-UltiStats-Session-Id", login.context.sessionId)
@@ -97,7 +104,7 @@ class AuthSurfaceMatrixTest {
                 for ((name, login, expected) in listOf(Triple("guest", null, if (public) 200 else 401),
                     Triple("organizer", organizer, 200), Triple("admin", admin, 200), Triple("temp", temp, if (public) 200 else 403))) {
                     val count = probe.calls.get()
-                    val result = perform(method, path, login)
+                    val result = perform(method, path, login, row.path("secureOnly").asBoolean())
                     assertEquals(expected, result.response.status, "$name $method $path")
                     assertEquals(count + if (expected == 200) 1 else 0, probe.calls.get(), "Denied call entered domain probe")
                     if (expected != 200) assertEquals(true, mapper.readTree(result.response.contentAsString)["requestRejectedBeforeExecution"].asBoolean())
@@ -120,10 +127,12 @@ class AuthSurfaceMatrixTest {
                 val method = row["method"].asText()
                 val path = row["path"].asText().replace(Regex("\\{[^}]+}"), id.toString())
                 val names = DefaultAuthRequestAccess.headers
+                val secure = row.path("secureOnly").asBoolean()
                 val values = listOf(admin.context.installationId.toString(), admin.context.account!!.id.toString(), admin.context.sessionId.toString())
                 for (scenario in listOf(-2, 0, 1, 2, 3, 4, 5)) {
                     val builder = request(org.springframework.http.HttpMethod.valueOf(method), path)
-                        .cookie(Cookie("ULTISTATS_LOOPBACK_SESSION", admin.credential))
+                        .requestAttr("testSecure", secure)
+                        .cookie(Cookie(if (secure) "__Host-ULTISTATS_SESSION" else "ULTISTATS_LOOPBACK_SESSION", admin.credential))
                         .contentType("application/json").content("{malformed")
                     names.forEachIndexed { index, name ->
                         if (scenario != -2 && scenario != index) builder.header(name,

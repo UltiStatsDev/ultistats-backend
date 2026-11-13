@@ -76,7 +76,9 @@ private class AuthBoundaryFilter(private val runtime:AuthSecurityRuntime,private
                     override fun getMethod():String=request.getHeader("Access-Control-Request-Method")
                 }
                 val requirement=requirement(intended)
-                if(runtime.classifier.classify(request)==AuthEntryMode.ANONYMOUS && requirement!=AuthRequirement.PublicRead)
+                val mode = runtime.classifier.classify(request)
+                if ((mode == AuthEntryMode.ANONYMOUS && requirement != AuthRequirement.PublicRead) ||
+                    (secureOnly(requirement) && mode != AuthEntryMode.SECURE))
                     throw AuthProblem(403,"PUBLIC_TRANSPORT_READ_ONLY")
                 if(requirement==AuthRequirement.ObsSourceBearer || requirement==AuthRequirement.Deny) throw AuthProblem(403,"AUTH_PERMISSION_DENIED")
                 checkOrigin(request)
@@ -89,7 +91,7 @@ private class AuthBoundaryFilter(private val runtime:AuthSecurityRuntime,private
             if(requirement==AuthRequirement.PublicRead) { chain.doFilter(request,response);return }
             response.setHeader("Cache-Control","no-store")
             val mode = runtime.classifier.classify(request)
-            if(mode==AuthEntryMode.ANONYMOUS || (requirement==AuthRequirement.ObsSourceBearer && mode!=AuthEntryMode.SECURE))
+            if(mode==AuthEntryMode.ANONYMOUS || (secureOnly(requirement) && mode!=AuthEntryMode.SECURE))
                 throw AuthProblem(403,"PUBLIC_TRANSPORT_READ_ONLY")
             if(requirement==AuthRequirement.Deny) throw AuthProblem(403,"AUTH_PERMISSION_DENIED")
             checkOrigin(request)
@@ -101,6 +103,9 @@ private class AuthBoundaryFilter(private val runtime:AuthSecurityRuntime,private
             chain.doFilter(request,response)
         } catch(problem:AuthProblem) { writer.write(request,response,problem) }
     }
+    private fun secureOnly(requirement: AuthRequirement) =
+        requirement == AuthRequirement.ObsSourceBearer || (requirement as? AuthRequirement.Permission)?.secureOnly == true
+
     private fun core(request:HttpServletRequest) {
         val path=request.requestURI.removePrefix(request.contextPath)
         when(path) {

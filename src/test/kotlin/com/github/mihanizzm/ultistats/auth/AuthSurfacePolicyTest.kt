@@ -37,7 +37,7 @@ class AuthSurfacePolicyTest {
                 "PUBLIC" -> AuthRequirement.PublicRead
                 "OBS_SOURCE_BEARER" -> AuthRequirement.ObsSourceBearer
                 "FINISHED_OR_STATISTICS_READ_ALL" -> AuthRequirement.Permission(AuthPermission.STATISTICS_READ_ALL)
-                else -> AuthRequirement.Permission(AuthPermission.valueOf(name))
+                else -> AuthRequirement.Permission(AuthPermission.valueOf(name), row.path("secureOnly").asBoolean())
             }
             (if (method == "GET" && expected != AuthRequirement.ObsSourceBearer) listOf("GET", "HEAD") else listOf(method)).map { verb ->
                 DynamicTest.dynamicTest("$verb $path") { assertEquals(expected, requirement(verb, path)) }
