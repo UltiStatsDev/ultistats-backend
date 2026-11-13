@@ -78,7 +78,7 @@ class AuthSurfaceMatrixTest {
             val csrfCookie = csrfResult.response.getCookie("ULTISTATS_LOOPBACK_CSRF")!!
             val probe = context.getBean(Probe::class.java)
             val id = UUID.fromString("10000000-0000-0000-0000-000000000001")
-            val rows = mapper.readTree(Path.of("docs/api/auth-surfaces-v1.json").toFile())["routes"].filter { it["owner"].asText() == "enforcement" }
+            val rows = mapper.readTree(Path.of("docs/api/auth-surfaces-v1.json").toFile())["routes"].filter { it["owner"].asText() == "enforcement" && it["policy"].asText() != "OBS_SOURCE_BEARER" }
             fun perform(method: String, path: String, login: AuthLoginResult?): MvcResult {
                 val builder = request(org.springframework.http.HttpMethod.valueOf(method), path)
                     .cookie(csrfCookie).header("X-CSRF-TOKEN", csrf).contentType("application/json").content("{malformed")

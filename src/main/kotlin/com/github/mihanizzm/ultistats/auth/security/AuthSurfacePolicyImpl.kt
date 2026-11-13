@@ -13,6 +13,9 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
     override fun requirement(request: HttpServletRequest): AuthRequirement {
         val path = request.requestURI.removePrefix(request.contextPath)
         if (!canonicalPath(path)) return AuthRequirement.Deny
+        if (exactScoreboard.matches(path)) {
+            return if (request.method == "GET") AuthRequirement.ObsSourceBearer else AuthRequirement.Deny
+        }
         val method = if (request.method == "HEAD") "GET" else request.method
         if (method == "GET") {
             if (path == "/obs-battle-log.html" || path == "/obs-scoreboard.html") {
@@ -43,6 +46,8 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
     private data class Rule(val method: String, val pattern: Regex, val permission: AuthPermission?, val statistics: Boolean)
     private fun rule(method: String, path: String, permission: AuthPermission? = null, statistics: Boolean = false) =
         Rule(method, Regex(path.replace(Regex("\\{[^}]+}"), "[^/]+")), permission, statistics)
+
+    private val exactScoreboard = Regex("/api/v1/obs/sources/scoreboard/[^/]+")
 
     private val rules = listOf(
         rule("GET", "/api/v2/matches/{matchId}/events"),
@@ -103,6 +108,9 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
         rule("DELETE", "/api/v1/teams/{teamId}/photoUrl", AuthPermission.SPORTS_WRITE),
         rule("POST", "/api/v2/matches/{matchId}/events/undo", AuthPermission.SPORTS_WRITE),
         rule("GET", "/api/v2/matches/{matchId}/events/undo/{commandId}", AuthPermission.SPORTS_WRITE),
+        rule("GET", "/api/v1/obs/source-keys", AuthPermission.OBS_ADMIN),
+        rule("POST", "/api/v1/obs/source-keys", AuthPermission.OBS_ADMIN),
+        rule("DELETE", "/api/v1/obs/source-keys/{keyId}", AuthPermission.OBS_ADMIN),
         rule("GET", "/api/v1/obs/config"),
         rule("PUT", "/api/v1/obs/config", AuthPermission.OBS_ADMIN),
         rule("GET", "/api/v1/obs/config/stream"),

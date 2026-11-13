@@ -35,10 +35,11 @@ class AuthSurfacePolicyTest {
             val path = row["path"].asText().replace(Regex("\\{[^}]+}"), matchId.toString())
             val expected = when (val name = row["policy"].asText()) {
                 "PUBLIC" -> AuthRequirement.PublicRead
+                "OBS_SOURCE_BEARER" -> AuthRequirement.ObsSourceBearer
                 "FINISHED_OR_STATISTICS_READ_ALL" -> AuthRequirement.Permission(AuthPermission.STATISTICS_READ_ALL)
                 else -> AuthRequirement.Permission(AuthPermission.valueOf(name))
             }
-            (if (method == "GET") listOf("GET", "HEAD") else listOf(method)).map { verb ->
+            (if (method == "GET" && expected != AuthRequirement.ObsSourceBearer) listOf("GET", "HEAD") else listOf(method)).map { verb ->
                 DynamicTest.dynamicTest("$verb $path") { assertEquals(expected, requirement(verb, path)) }
             }
         }

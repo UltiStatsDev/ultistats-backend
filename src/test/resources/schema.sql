@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS obs_source_keys;
 DROP TABLE IF EXISTS match_announcements;
 DROP TABLE IF EXISTS undo_command_receipts;
 DROP TABLE IF EXISTS obs_scoreboard_profiles;
@@ -213,3 +214,11 @@ ALTER TABLE match_point_lineup_entries ADD CONSTRAINT uq_lineup_entries_introduc
 ALTER TABLE match_point_lineup_entries ADD CONSTRAINT fk_lineup_entries_introduction FOREIGN KEY (match_id, introduced_by_event_id, slot_id)
     REFERENCES events(match_id, id, to_slot_id);
 ALTER TABLE match_point_lineup_entries ADD CONSTRAINT chk_lineup_entries_introduction_slot CHECK (introduced_by_event_id IS NULL OR slot_id IS NOT NULL);
+CREATE TABLE obs_source_keys (
+    key_id UUID PRIMARY KEY,
+    match_id UUID NOT NULL REFERENCES matches(id),
+    scope VARCHAR(32) NOT NULL CHECK (scope = 'EXACT_SCOREBOARD'),
+    secret_digest VARCHAR(64) NOT NULL UNIQUE CHECK (CHAR_LENGTH(secret_digest) = 64),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    revoked_at TIMESTAMP WITH TIME ZONE
+);

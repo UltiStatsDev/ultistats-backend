@@ -15,7 +15,7 @@ def inventory():
         text = source.read_text()
         if not re.search(r'@(RestController|Controller)\b', text):
             continue
-        base_match = re.search(r'@RequestMapping\("([^"]*)"\)', text)
+        base_match = re.search(r'@RequestMapping\("([^"]*)"(?:,|\))', text)
         base = base_match.group(1) if base_match else ''
         for mapping in re.finditer(r'@(Get|Post|Put|Patch|Delete)Mapping\b(?:\(([^\n]*))?', text):
             method = mapping.group(1).upper()
@@ -27,6 +27,10 @@ def inventory():
                 permission = 'CORE'
             elif path.startswith('/swagger-ui'):
                 permission = 'API_DOCS'
+            elif path == '/api/v1/obs/sources/scoreboard/{matchId}':
+                permission = 'OBS_SOURCE_BEARER'
+            elif path == '/api/v1/obs/source-keys' or path == '/api/v1/obs/source-keys/{keyId}':
+                permission = 'OBS_ADMIN'
             elif method != 'GET':
                 permission = ('TRANSFER' if path in ['/api/v1/matches/export', '/api/v1/matches/import']
                               else 'OBS_ADMIN' if path.startswith('/api/v1/obs/') else 'SPORTS_WRITE')

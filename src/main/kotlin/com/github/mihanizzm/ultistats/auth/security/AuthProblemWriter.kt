@@ -11,12 +11,18 @@ class AuthProblemWriter(private val mapper:ObjectMapper,private val navigation:A
     fun write(request:HttpServletRequest,response:HttpServletResponse,problem:AuthProblem,beforeExecution:Boolean=true) {
         response.setHeader("Cache-Control","no-store")
         if(canNavigate(request,problem) && navigation?.redirect(request,response,problem)==true) return
+        if (problem.code == "OBS_SOURCE_KEY_REQUIRED") response.setHeader("WWW-Authenticate", "Bearer")
         response.status=problem.status
         response.contentType="application/problem+json"
         response.setHeader("Cache-Control","no-store")
         problem.retryAfterSeconds?.let { response.setHeader("Retry-After",it.toString()) }
         val detail=ProblemDetail.forStatusAndDetail(org.springframework.http.HttpStatusCode.valueOf(problem.status),"The request could not be authorized.").apply {
-            instance=URI.create(request.requestURI)
+            val path = request.requestURI.removePrefix(request.contextPath)
+            instance = URI.create(when {
+                path.startsWith("/api/v1/obs/sources/") -> "${request.contextPath}/api/v1/obs/sources"
+                path.startsWith("/api/v1/obs/source-keys/") -> "${request.contextPath}/api/v1/obs/source-keys"
+                else -> request.requestURI
+            })
             setProperty("code",problem.code)
             if(beforeExecution) setProperty("requestRejectedBeforeExecution",true)
         }
