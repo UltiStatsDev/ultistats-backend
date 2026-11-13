@@ -4,6 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.github.mihanizzm.ultistats.exception.EntityNotFoundException
 import com.github.mihanizzm.ultistats.exception.InvalidPatchException
 import com.github.mihanizzm.ultistats.model.MatchStatus
+import com.github.mihanizzm.ultistats.model.events.EventType
+import com.github.mihanizzm.ultistats.repository.jpa.MatchAnnouncementRepository
+import com.github.mihanizzm.ultistats.repository.jpa.SpringDataEventRepository
+import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchRepository
+import com.github.mihanizzm.ultistats.validation.event.EventSequenceDecision
+import com.github.mihanizzm.ultistats.validation.event.EventSequencePolicy
+import com.github.mihanizzm.ultistats.validation.event.EventSequenceState
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Service
@@ -17,6 +24,10 @@ class ObsScoreboardService(
     private val jdbc: JdbcTemplate,
     private val json: ObjectMapper,
     private val publisher: ApplicationEventPublisher,
+    private val matches: SpringDataMatchRepository,
+    private val events: SpringDataEventRepository,
+    private val announcements: MatchAnnouncementRepository,
+    private val sequencePolicy: EventSequencePolicy,
 ) {
     // Multiple reads must describe one committed match, including concurrent score/finish changes.
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -24,6 +35,48 @@ class ObsScoreboardService(
         val times = jdbc.query("SELECT started_at, ended_at FROM matches WHERE id = ? AND deleted_at IS NULL",
             { rs, _ -> rs.getTimestamp(1)?.toInstant() to rs.getTimestamp(2)?.toInstant() }, matchId)
             .firstOrNull() ?: throw EntityNotFoundException("Match $matchId not found")
+        return readSnapshot(matchId, times.first, times.second)
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    fun exactSnapshot(matchId: UUID): ObsExactScoreboardSnapshot {
+        val match = matches.findByIdAndDeletedAtIsNull(matchId)
+            ?: throw EntityNotFoundException("Match $matchId not found")
+        val activePauses = if (match.status == MatchStatus.IN_PROGRESS) activePauses(matchId) else emptyList()
+        return ObsExactScoreboardSnapshot(
+            readSnapshot(matchId, match.effectiveStartedAt, match.effectiveEndedAt),
+            activePauses,
+        )
+    }
+
+    private fun activePauses(matchId: UUID): List<ObsScoreboardPause> = buildList {
+        eventPause(matchId)?.let(::add)
+        announcements.list(matchId).filter { it.endedAt == null }.forEach {
+            add(ObsScoreboardPause(it.id, ObsScoreboardPauseType.ANNOUNCEMENT, it.startedAt))
+        }
+    }.sortedWith(compareBy({ it.startedAt }, { it.id }))
+
+    private fun eventPause(matchId: UUID): ObsScoreboardPause? {
+        val rows = events.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(matchId)
+        val activeEvents = try {
+            rows.map { it.toDomain() }
+        } catch (_: IllegalArgumentException) {
+            // A legacy row with missing event data cannot confirm an active event phase.
+            return null
+        }
+        val state = (sequencePolicy.validate(activeEvents) as? EventSequenceDecision.Allowed)?.state
+        val (startType, pauseType) = when (state) {
+            is EventSequenceState.Timeout -> EventType.TIMEOUT_START to ObsScoreboardPauseType.TIMEOUT
+            EventSequenceState.Halftime -> EventType.HALFTIME_START to ObsScoreboardPauseType.HALFTIME
+            is EventSequenceState.Announcement -> EventType.ANNOUNCEMENT_START to ObsScoreboardPauseType.ANNOUNCEMENT
+            else -> return null
+        }
+        return rows.lastOrNull { it.eventType == startType }?.let {
+            ObsScoreboardPause(it.id, pauseType, it.effectiveOccurredAt)
+        }
+    }
+
+    private fun readSnapshot(matchId: UUID, startedAt: Instant?, endedAt: Instant?): ObsScoreboardSnapshot {
         val teams = jdbc.query("""
             SELECT mt.team_id, mt.team_name, t.photo_url, mt.score
             FROM match_teams mt JOIN teams t ON t.id = mt.team_id
@@ -42,10 +95,10 @@ class ObsScoreboardService(
             teamColors = profile.teamColors.filterKeys { it in members },
         )
         return ObsScoreboardSnapshot(matchId, teams, when {
-            times.second != null -> MatchStatus.FINISHED
-            times.first != null -> MatchStatus.IN_PROGRESS
+            endedAt != null -> MatchStatus.FINISHED
+            startedAt != null -> MatchStatus.IN_PROGRESS
             else -> MatchStatus.PLANNED
-        }, times.first, times.second, Instant.now(), currentProfile)
+        }, startedAt, endedAt, Instant.now(), currentProfile)
     }
 
     @Transactional

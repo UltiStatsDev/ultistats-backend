@@ -6,6 +6,11 @@ import com.github.mihanizzm.ultistats.auth.model.AuthEntryMode
 import com.github.mihanizzm.ultistats.auth.principal
 import com.github.mihanizzm.ultistats.auth.security.AuthEntryClassifier
 import com.github.mihanizzm.ultistats.auth.service.AuthService
+import com.github.mihanizzm.ultistats.model.EventEntity
+import com.github.mihanizzm.ultistats.model.MatchAnnouncement
+import com.github.mihanizzm.ultistats.model.events.EventType
+import com.github.mihanizzm.ultistats.repository.jpa.MatchAnnouncementRepository
+import com.github.mihanizzm.ultistats.repository.jpa.SpringDataEventRepository
 import jakarta.servlet.http.Cookie
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -24,6 +29,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request
+import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -47,9 +53,69 @@ class ObsSourceKeysIntegrationTest {
     @Autowired private lateinit var jdbc: JdbcTemplate
     @Autowired private lateinit var auth: AuthService
     @Autowired private lateinit var dataSource: DataSource
+    @Autowired private lateinit var sourceKeys: ObsSourceKeyService
+    @Autowired private lateinit var events: SpringDataEventRepository
+    @Autowired private lateinit var announcements: MatchAnnouncementRepository
 
     private val keys = "/api/v1/obs/source-keys"
     private fun source(matchId: UUID) = "/api/v1/obs/sources/scoreboard/$matchId"
+
+    @Test
+    fun `exact scoreboard exposes committed pauses while public scoreboard keeps its shape`() {
+        val match = UUID.randomUUID()
+        val team = UUID.randomUUID()
+        val timeout = UUID.randomUUID()
+        val announcement = UUID.randomUUID()
+        val startedAt = Instant.parse("2026-01-01T00:00:00Z")
+        val timeoutAt = startedAt.plusSeconds(1)
+        val announcementAt = timeoutAt.plusNanos(123)
+        jdbc.update("INSERT INTO matches(id, players_per_team) VALUES (?, 7)", match)
+        jdbc.update("INSERT INTO teams(id, name) VALUES (?, 'Fixture')", team)
+        jdbc.update(
+            "INSERT INTO match_teams(match_id, team_id, position, score, team_name) VALUES (?, ?, 1, 3, 'Fixture')",
+            match, team,
+        )
+        val secret = sourceKeys.issue(match).secret
+
+        fun snapshot(): JsonNode {
+            val response = mvc.perform(request(HttpMethod.GET, source(match)).header("Authorization", "Bearer $secret"))
+                .andReturn().response
+            assertEquals(200, response.status)
+            return json.readTree(response.contentAsString)
+        }
+
+        val planned = snapshot()
+        assertEquals("PLANNED", planned["status"].asText())
+        assertEquals(json.createArrayNode(), planned["activePauses"])
+
+        jdbc.update("UPDATE matches SET started_at = ? WHERE id = ?", java.sql.Timestamp.from(startedAt), match)
+        events.save(EventEntity(
+            timeout, match, 1, EventType.TIMEOUT_START, timeoutAt,
+            teamId = team,
+        ))
+        announcements.insert(match, MatchAnnouncement(announcement, null, announcementAt))
+        val paused = snapshot()
+        assertEquals("IN_PROGRESS", paused["status"].asText())
+        assertEquals(3, paused["teams"][0]["score"].asInt())
+        assertEquals(json.readTree("""
+            [
+              {"id":"$timeout","type":"TIMEOUT","startedAt":"$timeoutAt"},
+              {"id":"$announcement","type":"ANNOUNCEMENT","startedAt":"$announcementAt"}
+            ]
+        """.trimIndent()), paused["activePauses"])
+
+        val public = mvc.perform(request(HttpMethod.GET, "/api/v1/obs/scoreboard/$match")).andReturn().response
+        assertEquals(200, public.status)
+        assertEquals(planned.fieldNames().asSequence().toSet() - "activePauses",
+            json.readTree(public.contentAsString).fieldNames().asSequence().toSet())
+
+        jdbc.update("UPDATE matches SET ended_at = ? WHERE id = ?", java.sql.Timestamp.from(startedAt.plusSeconds(2)), match)
+        jdbc.update("UPDATE match_teams SET score = 4 WHERE match_id = ?", match)
+        val finished = snapshot()
+        assertEquals("FINISHED", finished["status"].asText())
+        assertEquals(4, finished["teams"][0]["score"].asInt())
+        assertEquals(json.createArrayNode(), finished["activePauses"])
+    }
 
     @Test
     fun `only an active exact scoreboard key authorizes the bound scoreboard`() {

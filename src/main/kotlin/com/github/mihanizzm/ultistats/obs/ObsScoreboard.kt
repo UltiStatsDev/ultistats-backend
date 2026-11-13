@@ -2,6 +2,7 @@ package com.github.mihanizzm.ultistats.obs
 
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.annotation.JsonSetter
+import com.fasterxml.jackson.annotation.JsonUnwrapped
 import com.fasterxml.jackson.annotation.Nulls
 import com.github.mihanizzm.ultistats.model.MatchStatus
 import jakarta.validation.constraints.Size
@@ -31,4 +32,23 @@ data class ObsScoreboardSnapshot(
     val serverNow: Instant,
     val profile: ObsScoreboardProfile,
 )
+
+enum class ObsScoreboardPauseType { TIMEOUT, HALFTIME, ANNOUNCEMENT }
+
+data class ObsScoreboardPause(
+    @field:Schema(description = "ID of the committed start event or standalone announcement interval")
+    val id: UUID,
+    val type: ObsScoreboardPauseType,
+    val startedAt: Instant,
+)
+
+data class ObsExactScoreboardSnapshot(
+    @get:JsonUnwrapped val scoreboard: ObsScoreboardSnapshot,
+    @field:Schema(
+        description = "Confirmed open pauses in start time and ID order. Empty for planned and finished matches.",
+        requiredMode = Schema.RequiredMode.REQUIRED,
+    )
+    val activePauses: List<ObsScoreboardPause>,
+)
+
 data class ScoreboardProfileChanged(val matchId: UUID)
