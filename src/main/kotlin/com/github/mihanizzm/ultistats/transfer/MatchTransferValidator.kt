@@ -7,6 +7,7 @@ import com.github.mihanizzm.ultistats.model.PointLineupPlayer
 import com.github.mihanizzm.ultistats.model.PointLineupTeam
 import com.github.mihanizzm.ultistats.model.PointLineupTemporary
 import com.github.mihanizzm.ultistats.model.events.*
+import com.github.mihanizzm.ultistats.repository.jpa.IntroducedPointSlot
 import com.github.mihanizzm.ultistats.service.ConfirmedJournal
 import com.github.mihanizzm.ultistats.service.PointLineupRejectedException
 import com.github.mihanizzm.ultistats.validation.event.EventSequenceDecision
@@ -20,7 +21,9 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
     fun validate(data: MatchTransferPackage) {
         val expectedVersion = data.matches.requiredFormatVersion()
         check(data.formatVersion == expectedVersion, "formatVersion",
-            "Expected version $expectedVersion for the included active events, announcements and point lineups")
+            "Expected version $expectedVersion for the included active events, announcements, point lineups and incoming reserves")
+        check(data.formatVersion == 6 || data.matches.none { match -> match.pointLineups.any { it.substitutionSlots != null } },
+            "matches.pointLineups.substitutionSlots", "Substitution slots require format version 6")
         check(data.matches.isNotEmpty(), "matches", "Select at least one match")
         unique(data.matches.map { it.id }, "matches")
         unique(data.teams.map { it.id }, "teams")
@@ -104,23 +107,25 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
             team.teamId to team.participants.filter { it.kind == MatchParticipantKind.PLAYER }.map { it.participantId }.toSet()
         }
         val slots = mutableMapOf<UUID, UUID>()
+        val introductionIds = mutableSetOf<UUID>()
         match.pointLineups.forEachIndexed { pointIndex, lineup ->
             val pointPath = "$path[$pointIndex]"
             check(lineup.teams.size == playersByTeam.size && lineup.teams.map { it.teamId }.toSet() == playersByTeam.keys,
                 "$pointPath.teams", "Both match teams must appear once")
+            val numbersByTeam = playersByTeam.keys.associateWith { mutableSetOf<Int>() }
+            val playersUsedByTeam = playersByTeam.keys.associateWith { mutableSetOf<UUID>() }
             lineup.teams.forEachIndexed { teamIndex, team ->
                 val teamPath = "$pointPath.teams[$teamIndex]"
                 check(team.entries.size <= match.playersPerTeam, "$teamPath.entries", "Lineup exceeds team capacity")
-                val numbers = mutableSetOf<Int>()
-                val usedPlayers = mutableSetOf<UUID>()
+                val numbers = numbersByTeam.getValue(team.teamId)
+                val usedPlayers = playersUsedByTeam.getValue(team.teamId)
                 val roster = playersByTeam.getValue(team.teamId)
                 team.entries.forEachIndexed { entryIndex, entry ->
                     val entryPath = "$teamPath.entries[$entryIndex]"
                     val playerId = when (entry) {
                         is PortablePointLineupPlayer -> entry.participantId
                         is PortablePointLineupTemporary -> {
-                            check(entry.slotId !in rosterIds && slots.putIfAbsent(entry.slotId, team.teamId) == null,
-                                "$entryPath.slotId", "Slot ID must be unique and distinct from match participants")
+                            validateSlotId(entry.slotId, team.teamId, rosterIds, slots, entryPath)
                             check(entry.number in 1..match.playersPerTeam && numbers.add(entry.number),
                                 "$entryPath.number", "Slot numbers must be unique within the team and within capacity")
                             entry.resolvedParticipantId
@@ -130,8 +135,28 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
                         "Player must be an available PLAYER from the same match team")
                 }
             }
+            lineup.substitutionSlots.orEmpty().forEachIndexed { index, slot ->
+                val slotPath = "$pointPath.substitutionSlots[$index]"
+                check(slot.teamId in playersByTeam, "$slotPath.teamId", "Team must belong to this match")
+                validateSlotId(slot.slotId, slot.teamId, rosterIds, slots, slotPath)
+                check(slot.number > 0 && numbersByTeam.getValue(slot.teamId).add(slot.number), "$slotPath.number",
+                    "Slot numbers must be positive and unique within the point team")
+                check(introductionIds.add(slot.introducedByEventId), "$slotPath.introducedByEventId",
+                    "An event can introduce only one slot")
+                slot.resolvedParticipantId?.let { player ->
+                    check(player in playersByTeam.getValue(slot.teamId) && playersUsedByTeam.getValue(slot.teamId).add(player),
+                        "$slotPath.resolvedParticipantId", "Player must be an available PLAYER from the same match team")
+                }
+            }
         }
         return slots
+    }
+
+    private fun validateSlotId(
+        slotId: UUID, teamId: UUID, rosterIds: Set<UUID>, slots: MutableMap<UUID, UUID>, path: String,
+    ) {
+        check(slotId !in rosterIds && slots.putIfAbsent(slotId, teamId) == null,
+            "$path.slotId", "Slot ID must be unique and distinct from match participants")
     }
 
     private fun validateLineupScope(
@@ -140,6 +165,9 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
         val timeline = PointTimeline.from(match.id, match.status, events)
         val pointsByOpening = timeline.associateBy { it.openingEventId }
         val lineupsByOpening = mutableMapOf<UUID?, PointLineup>()
+        val hasSubstitutions = match.containsSubstitutions()
+        val eventsByPoint = if (hasSubstitutions) PointTimeline.eventsByPoint(timeline, events) else emptyMap()
+        val introduced = mutableListOf<IntroducedPointSlot>()
         match.pointLineups.forEachIndexed { index, lineup ->
             val opening = lineup.openingEventId
             check(opening in pointsByOpening && opening !in lineupsByOpening,
@@ -152,18 +180,20 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
                     }
                 })
             })
+            val pointId = pointsByOpening.getValue(opening).pointId
+            introduced += validateIntroductions(lineup, pointId, eventsByPoint[pointId].orEmpty(), "$path.pointLineups[$index]")
         }
         val membersByOpening = lineupsByOpening.mapValues { (_, lineup) ->
             lineup.teams.flatMap { team -> team.entries.map { it.actorId } }.toSet()
         }
         val unknowns = match.teams.flatMap { it.participants }
             .filter { it.kind == MatchParticipantKind.UNKNOWN }.map { it.participantId }.toSet()
-        val replayedOpenings = if (match.containsSubstitutions()) {
+        val replayedOpenings = if (hasSubstitutions) {
             val lineupsByPoint = lineupsByOpening.mapKeys { (opening, _) -> pointsByOpening.getValue(opening).pointId }
-            val confirmed = ConfirmedJournal(lineupsByPoint, unknowns, teamByParticipant - unknowns, writesEnabled = true)
-            val groups = PointTimeline.eventsByPoint(timeline, events)
+            val confirmed = ConfirmedJournal(lineupsByPoint, unknowns, teamByParticipant - unknowns,
+                writesEnabled = true, introducedSlots = introduced)
             timeline.filter { point ->
-                val pointEvents = groups[point.pointId].orEmpty()
+                val pointEvents = eventsByPoint[point.pointId].orEmpty()
                 if (pointEvents.none { it.event.type == EventType.PLAYER_SUBSTITUTION }) return@filter false
                 try {
                     confirmed.validateSubstitutionPoint(point.pointId, pointEvents)
@@ -185,6 +215,36 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
             }
             if (event.id in closings) opening = event.id
         }
+    }
+
+    private fun validateIntroductions(
+        lineup: PortablePointLineup, pointId: UUID, events: List<StoredEvent>, path: String,
+    ): List<IntroducedPointSlot> {
+        val slots = lineup.substitutionSlots.orEmpty()
+        if (slots.isEmpty()) return emptyList()
+        val substitutions = events.filter { it.event.type == EventType.PLAYER_SUBSTITUTION }
+            .associate { it.id to (it.event as TwoPlayerEvent) }
+        val incomingActors = substitutions.values.map { it.toParticipant }.toSet()
+        val mapped = slots.mapIndexed { index, slot ->
+            val slotPath = "$path.substitutionSlots[$index]"
+            check(substitutions[slot.introducedByEventId]?.toParticipant == slot.slotId, "$slotPath.introducedByEventId",
+                "Expected the active substitution introducing this slot in the same point")
+            check(slot.resolvedParticipantId !in incomingActors, "$slotPath.resolvedParticipantId",
+                "Player already occupied a place in this point through a substitution")
+            IntroducedPointSlot(pointId, slot.toDomain())
+        }
+        val maxNumberByTeam = lineup.teams.associate { team ->
+            team.teamId to (team.entries.filterIsInstance<PortablePointLineupTemporary>().maxOfOrNull { it.number } ?: 0)
+        }.toMutableMap()
+        val slotsByEvent = slots.associateBy { it.introducedByEventId }
+        for (eventId in substitutions.keys) {
+            val slot = slotsByEvent[eventId] ?: continue
+            // Omitted soft-deleted introductions can leave gaps in the allocation.
+            check(slot.number > maxNumberByTeam.getValue(slot.teamId), "$path.substitutionSlots",
+                "Slot numbers must increase in introduction order within the point team")
+            maxNumberByTeam[slot.teamId] = slot.number
+        }
+        return mapped
     }
 
     private fun validateAnnouncements(match: PortableMatch, path: String) {
@@ -244,7 +304,11 @@ private fun PortableMatch.containsSubstitutions() = events.any { it.type == Even
 
 internal fun List<PortableMatch>.containsSubstitutions() = any { it.containsSubstitutions() }
 
+internal fun List<PortableMatch>.containsIncomingReserves() =
+    any { match -> match.pointLineups.any { !it.substitutionSlots.isNullOrEmpty() } }
+
 internal fun List<PortableMatch>.requiredFormatVersion() = when {
+    containsIncomingReserves() -> 6
     containsSubstitutions() -> 5
     any { it.pointLineups.isNotEmpty() } -> 4
     containsPossessionChanges() -> 3
