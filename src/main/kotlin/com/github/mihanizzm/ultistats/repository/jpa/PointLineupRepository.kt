@@ -81,10 +81,11 @@ class PointLineupRepository(private val jdbc: JdbcTemplate) {
     fun insertIncomingSlot(matchId: UUID, incoming: IntroducedPointSlot) {
         val slot = incoming.slot
         jdbc.update(
-            """INSERT INTO match_point_lineup_entries (match_id, point_id, team_id, position, slot_id, slot_number)
-                SELECT ?, ?, ?, COALESCE(MAX(position) + 1, 0), ?, ?
+            """INSERT INTO match_point_lineup_entries (match_id, point_id, team_id, position, slot_id, slot_number, resolved_participant_id)
+                SELECT ?, ?, ?, COALESCE(MAX(position) + 1, 0), ?, ?, ?
                 FROM match_point_lineup_entries WHERE match_id = ? AND point_id = ? AND team_id = ?""",
-            matchId, incoming.pointId, slot.teamId, slot.slotId, slot.number, matchId, incoming.pointId, slot.teamId,
+            matchId, incoming.pointId, slot.teamId, slot.slotId, slot.number, slot.resolvedParticipantId,
+            matchId, incoming.pointId, slot.teamId,
         )
     }
 
