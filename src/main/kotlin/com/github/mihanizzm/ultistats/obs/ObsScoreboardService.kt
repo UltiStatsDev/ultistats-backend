@@ -76,14 +76,18 @@ class ObsScoreboardService(
         }
     }
 
-    private fun readSnapshot(matchId: UUID, startedAt: Instant?, endedAt: Instant?): ObsScoreboardSnapshot {
-        val teams = jdbc.query("""
+    internal fun teams(matchId: UUID): List<ObsScoreboardTeam> = jdbc.query(
+        """
             SELECT mt.team_id, mt.team_name, t.photo_url, mt.score
             FROM match_teams mt JOIN teams t ON t.id = mt.team_id
             WHERE mt.match_id = ? ORDER BY mt.position
-        """.trimIndent(), { rs, _ ->
-            ObsScoreboardTeam(rs.getObject(1, UUID::class.java), rs.getString(2), rs.getString(3), rs.getInt(4))
-        }, matchId)
+        """.trimIndent(),
+        { rs, _ -> ObsScoreboardTeam(rs.getObject(1, UUID::class.java), rs.getString(2), rs.getString(3), rs.getInt(4)) },
+        matchId,
+    )
+
+    private fun readSnapshot(matchId: UUID, startedAt: Instant?, endedAt: Instant?): ObsScoreboardSnapshot {
+        val teams = teams(matchId)
         val profile = jdbc.query("SELECT payload FROM obs_scoreboard_profiles WHERE match_id = ?",
             { rs, _ -> json.readValue(rs.getString(1), ObsScoreboardProfile::class.java) }, matchId)
             .firstOrNull() ?: ObsScoreboardProfile()

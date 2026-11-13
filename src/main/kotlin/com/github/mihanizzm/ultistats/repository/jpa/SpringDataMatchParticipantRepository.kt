@@ -7,5 +7,6 @@ import java.util.UUID
 
 interface SpringDataMatchParticipantRepository : JpaRepository<MatchParticipant, MatchParticipantId> {
     fun findAllByMatchId(matchId: UUID): List<MatchParticipant>
+    fun findAllByMatchIdAndParticipantIdIn(matchId: UUID, participantIds: Collection<UUID>): List<MatchParticipant>
     fun deleteAllByMatchId(matchId: UUID)
 }

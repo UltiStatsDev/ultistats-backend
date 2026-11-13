@@ -613,6 +613,14 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/obs/sources/event-log/{matchId}",
+      "policy": "OBS_SOURCE_BEARER",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsExactEventLogController.kt",
+      "line": 22
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/obs/stream",
       "policy": "PUBLIC",
       "owner": "enforcement",
@@ -641,7 +649,7 @@
       "policy": "OBS_ADMIN",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsSourceKeyController.kt",
-      "line": 29
+      "line": 35
     },
     {
       "method": "GET",
@@ -649,7 +657,7 @@
       "policy": "OBS_ADMIN",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsSourceKeyController.kt",
-      "line": 33,
+      "line": 39,
       "secureOnly": true
     },
     {
@@ -658,7 +666,7 @@
       "policy": "OBS_ADMIN",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsSourceKeyController.kt",
-      "line": 52,
+      "line": 61,
       "secureOnly": true
     },
     {
@@ -667,7 +675,7 @@
       "policy": "OBS_ADMIN",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsSourceKeyController.kt",
-      "line": 77
+      "line": 87
     }
   ],
   "static": [

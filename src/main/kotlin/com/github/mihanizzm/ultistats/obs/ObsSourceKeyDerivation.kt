@@ -46,7 +46,7 @@ internal class ObsSourceKeyDerivation(@Value("\${app.obs.source-key-file:}") pri
             if (version != VERSION) keyMaterialUnavailable()
             return Base64.getUrlEncoder().withoutPadding().encodeToString(sign(
                 "ultistats/obs/source-key", version.toString(), installationId.toString(),
-                "SCOREBOARD", "EXACT", metadata.matchId.toString(), metadata.keyId.toString(),
+                metadata.scope.kind, "EXACT", metadata.matchId.toString(), metadata.keyId.toString(),
             ))
         }
 
