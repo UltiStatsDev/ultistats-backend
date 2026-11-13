@@ -1,4 +1,4 @@
-# Exact scoreboard links
+# Exact OBS source links
 
 Staff with OBS_ADMIN on HTTPS can copy a link through
 `GET /api/v1/obs/source-keys/current/{matchId}`. The no-store response includes
@@ -17,6 +17,33 @@ the same request. A retry returns that link while current. A retired or
 differently scoped ID returns 409. A failed rotation leaves the previous key
 active. The list still provides metadata only. DELETE by key UUID is safe to
 repeat and affects only that key.
+
+## Exact Event Log
+
+Use `?scope=EXACT_EVENT_LOG` on the current-link request and
+`"scope": "EXACT_EVENT_LOG"` in the rotation body. Omitting scope selects
+`EXACT_SCOREBOARD` on both endpoints. Each match can have one active key
+per scope. Operation IDs are unique across matches and scopes.
+
+The Event Log link reserves `/obs-sources/event-log.html?matchId=<uuid>#key=<bearer>`.
+Fetch `GET /api/v1/obs/sources/event-log/{matchId}` over HTTPS with the bearer
+in the Authorization header. The response uses `Cache-Control: no-store`.
+An unknown or revoked key returns 401. A valid key bound to a different
+match or scope returns 403. A removed bound match returns 404.
+
+The response includes `matchId`, committed `teams` with scores, `logRevision`,
+`serverNow`, and all active canonical `events` in sequence order. Each entry
+in `retractions` contains the same canonical event shape under `event` and its
+persisted deletion timestamp under `cancelledAt`. The window includes
+`serverNow - 60s < cancelledAt <= serverNow`. Rows are ordered by cancellation
+time, then sequence number. Use `matchId` and `event.id` as the retraction
+identity across retries and reconnects.
+
+`participants` contains the match snapshots referenced by the returned events
+or by their `temporarySlots`. An undone substitution can still reference the
+persisted slot it introduced. The event's actor ID remains the slot ID even
+when that slot has a `resolvedParticipantId`. Clients can use these facts to
+choose labels and filter event categories.
 
 ## V18 preflight
 

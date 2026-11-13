@@ -12,7 +12,7 @@ class AuthOpenApiConfiguration {
     @Bean fun authContextOpenApi():OpenApiCustomizer=OpenApiCustomizer { api ->
         api.components.addSecuritySchemes("obsSourceBearer", SecurityScheme()
             .type(SecurityScheme.Type.HTTP).scheme("bearer")
-            .description("Opaque OBS source key scoped to an exact match scoreboard."))
+            .description("Opaque OBS source key scoped to one match and one exact source kind."))
         api.components.addSecuritySchemes("staffSession", SecurityScheme()
             .type(SecurityScheme.Type.APIKEY).`in`(SecurityScheme.In.COOKIE).name("__Host-ULTISTATS_SESSION")
             .description("Existing staff session. Mutations also require X-CSRF-TOKEN and captured installation, account and session IDs."))

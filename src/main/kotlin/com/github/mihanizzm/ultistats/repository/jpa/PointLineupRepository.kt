@@ -31,6 +31,24 @@ class PointLineupRepository(private val jdbc: JdbcTemplate) {
         matchId,
     ).toMap()
 
+    // Only referenced actors are requested. An undone introduction still has a persisted slot.
+    fun referencedSlots(matchId: UUID, slotIds: Set<UUID>): List<ReferencedPointSlot> =
+        slotIds.chunked(1000).flatMap { ids ->
+            val placeholders = ids.joinToString(",") { "?" }
+            jdbc.query(
+                """SELECT slot_id, point_id, team_id, slot_number, resolved_participant_id
+                    FROM match_point_lineup_entries
+                    WHERE match_id = ? AND slot_id IN ($placeholders)""",
+                { row, _ ->
+                    ReferencedPointSlot(
+                        requireNotNull(row.uuid("slot_id")), requireNotNull(row.uuid("point_id")),
+                        requireNotNull(row.uuid("team_id")), row.getInt("slot_number"), row.uuid("resolved_participant_id"),
+                    )
+                },
+                matchId, *ids.toTypedArray(),
+            )
+        }
+
     fun list(matchId: UUID, teamIds: List<UUID>): Map<UUID, PointLineup> = jdbc.query(
         """
         SELECT l.point_id, l.revision, e.team_id, e.participant_id, e.slot_id, e.slot_number, e.resolved_participant_id
@@ -137,6 +155,14 @@ class PointLineupRepository(private val jdbc: JdbcTemplate) {
     private data class LineupRow(val pointId: UUID, val revision: Long, val teamId: UUID?, val entry: PointLineupEntry?)
     private fun ResultSet.uuid(column: String): UUID? = getObject(column, UUID::class.java)
 }
+
+data class ReferencedPointSlot(
+    val slotId: UUID,
+    val pointId: UUID,
+    val teamId: UUID,
+    val number: Int,
+    val resolvedParticipantId: UUID?,
+)
 
 data class PointLineupSlotActor(val pointId: UUID, val teamId: UUID, val resolvedParticipantId: UUID?)
 

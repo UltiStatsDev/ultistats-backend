@@ -31,6 +31,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request
 import java.nio.file.Files
 import java.security.MessageDigest
+import java.sql.Timestamp
 import java.time.Instant
 import java.util.HexFormat
 import org.springframework.test.context.DynamicPropertyRegistry
@@ -161,7 +162,7 @@ class ObsSourceKeysIntegrationTest {
 
         fun mutation(
             method: HttpMethod, path: String, withCsrf: Boolean = true, withIdentity: Boolean = true,
-            operation: UUID = UUID.randomUUID(), matchId: UUID = match,
+            operation: UUID = UUID.randomUUID(), matchId: UUID = match, scope: String? = null,
         ): MockHttpServletRequestBuilder =
             request(method, path).cookie(staff, csrfCookie).apply {
                 if (withIdentity) {
@@ -170,7 +171,11 @@ class ObsSourceKeysIntegrationTest {
                     header("X-UltiStats-Session-Id", login.context.sessionId!!)
                 }
                 if (withCsrf) header("X-CSRF-TOKEN", csrfToken)
-                if (method == HttpMethod.POST) contentType("application/json").content("""{"matchId":"$matchId","operationId":"$operation"}""")
+                if (method == HttpMethod.POST) {
+                    val body = json.createObjectNode().put("matchId", matchId.toString()).put("operationId", operation.toString())
+                    scope?.let { body.put("scope", it) }
+                    contentType("application/json").content(body.toString())
+                }
             }
         fun expect(builder: MockHttpServletRequestBuilder, status: Int): JsonNode {
             val response = mvc.perform(builder).andReturn().response
@@ -252,7 +257,55 @@ class ObsSourceKeysIntegrationTest {
         expect(mutation(HttpMethod.DELETE, "$keys/${third["key"]["keyId"].asText()}"), 204)
         rotate(thirdOperation, 409, other)
         assertTrue(second == expect(current(), 200), "Revoking another scope must not change the current link")
-        jdbc.update("UPDATE matches SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", match)
+        val journal = "/api/v1/obs/sources/event-log/$match"
+        fun journalCurrent() = current().param("scope", "EXACT_EVENT_LOG")
+        val journalOperation = UUID.randomUUID()
+        fun rotateJournal(operation: UUID) =
+            mutation(HttpMethod.POST, keys, operation = operation, scope = "EXACT_EVENT_LOG")
+        fun readJournal(secret: String) = request(HttpMethod.GET, journal).header("Authorization", "Bearer $secret")
+
+        assertEquals("NO_ACTIVE_LINK", expect(journalCurrent(), 200)["status"].asText())
+        assertEquals("OBS_SOURCE_OPERATION_CONFLICT", expect(rotateJournal(secondOperation), 409)["code"].asText())
+        val journalKey = expect(rotateJournal(journalOperation), 201)
+        val journalToken = journalKey["url"].asText().substringAfter("#key=")
+        assertTrue(journalKey["url"].asText() == "https://localhost:8443/obs-sources/event-log.html?matchId=$match#key=$journalToken")
+        assertEquals("EXACT_EVENT_LOG", journalKey["key"]["scope"].asText())
+        assertTrue(journalKey == expect(rotateJournal(journalOperation), 201))
+        assertTrue(journalKey == expect(journalCurrent(), 200))
+        assertTrue(second == expect(current(), 200))
+        assertEquals("OBS_SOURCE_SCOPE_DENIED", expect(read(journalToken), 403)["code"].asText())
+        assertEquals("OBS_SOURCE_SCOPE_DENIED", expect(readJournal(secondToken), 403)["code"].asText())
+        expect(request(HttpMethod.GET, journal).cookie(staff), 401)
+        expect(readJournal(journalToken).requestAttr("testConnector", "LOOPBACK"), 403)
+
+        val activeId = UUID.randomUUID()
+        val cancelledId = UUID.randomUUID()
+        val expiredId = UUID.randomUUID()
+        val futureId = UUID.randomUUID()
+        val occurred = Instant.parse("2026-01-01T00:00:00.123456789Z")
+        val cancelledAt = Instant.now().minusSeconds(2).truncatedTo(java.time.temporal.ChronoUnit.MICROS)
+        listOf(null, cancelledAt, cancelledAt.minusSeconds(60), cancelledAt.plusSeconds(60))
+            .zip(listOf(activeId, cancelledId, expiredId, futureId))
+            .forEachIndexed { i, (removedAt, eventId) ->
+                events.save(EventEntity(eventId, match, i + 1, EventType.HALFTIME_START, occurred, deletedAt = removedAt))
+            }
+        jdbc.update("UPDATE matches SET event_log_revision = 7 WHERE id = ?", match)
+        val snapshot = expect(readJournal(journalToken), 200)
+        assertEquals(7L, snapshot["logRevision"].asLong())
+        assertEquals(listOf(activeId.toString()), snapshot["events"].map { it["id"].asText() })
+        val cancelled = snapshot["retractions"].single()
+        assertEquals(cancelledId.toString(), cancelled["event"]["id"].asText())
+        assertEquals(occurred, Instant.parse(cancelled["event"]["occurredAt"].asText()))
+        assertEquals(cancelledAt, Instant.parse(cancelled["cancelledAt"].asText()))
+        assertEquals(cancelled, expect(readJournal(journalToken), 200)["retractions"].single())
+
+        val freshJournal = expect(rotateJournal(UUID.randomUUID()), 201)
+        val freshJournalToken = freshJournal["url"].asText().substringAfter("#key=")
+        expect(readJournal(journalToken), 401)
+        expect(read(secondToken), 200)
+
+        jdbc.update("UPDATE matches SET deleted_at = ? WHERE id = ?", Timestamp.from(Instant.now()), match)
+        expect(readJournal(freshJournalToken), 404)
         expect(read(secondToken), 404)
         expect(mutation(HttpMethod.POST, keys), 404)
     }

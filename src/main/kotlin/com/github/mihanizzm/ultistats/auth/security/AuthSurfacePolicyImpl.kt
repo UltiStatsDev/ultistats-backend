@@ -13,7 +13,7 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
     override fun requirement(request: HttpServletRequest): AuthRequirement {
         val path = request.requestURI.removePrefix(request.contextPath)
         if (!canonicalPath(path)) return AuthRequirement.Deny
-        if (exactScoreboard.matches(path)) {
+        if (exactSource.matches(path)) {
             return if (request.method == "GET") AuthRequirement.ObsSourceBearer else AuthRequirement.Deny
         }
         val method = if (request.method == "HEAD") "GET" else request.method
@@ -47,7 +47,7 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
     private fun rule(method: String, path: String, permission: AuthPermission? = null, statistics: Boolean = false, secureOnly: Boolean = false) =
         Rule(method, Regex(path.replace(Regex("\\{[^}]+}"), "[^/]+")), permission, statistics, secureOnly)
 
-    private val exactScoreboard = Regex("/api/v1/obs/sources/scoreboard/[^/]+")
+    private val exactSource = Regex("/api/v1/obs/sources/(?:scoreboard|event-log)/[^/]+")
 
     private val rules = listOf(
         rule("GET", "/api/v2/matches/{matchId}/events"),
