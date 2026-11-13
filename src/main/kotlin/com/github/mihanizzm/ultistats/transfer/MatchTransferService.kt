@@ -42,6 +42,9 @@ class MatchTransferService(
         }
         val portableMatches = matchIds.map { id ->
             val match = matches.findByIdAndDeletedAtIsNull(id) ?: throw ExportMatchNotFoundException(id)
+            if (lineups.hasActiveIntroducedSlots(id)) {
+                throw ExportPointLineupUnsupportedException(id, "contains an incoming reserve that requires a newer portable format")
+            }
             val roster = participants.findAllByMatchId(id)
             val snapshotTeams = matchTeams.findAllByMatchIdOrderByPosition(id)
             val journal = events.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(id)
@@ -213,5 +216,7 @@ class MatchTransferService(
 
 class TransferWriteDisabledException(val problem: MatchProblem) : RuntimeException(problem.detail)
 
-class ExportPointLineupUnsupportedException(id: UUID) :
-    RuntimeException("Match $id has a live temporary actor outside its exportable point lineup")
+class ExportPointLineupUnsupportedException(
+    id: UUID,
+    reason: String = "has a live temporary actor outside its exportable point lineup",
+) : RuntimeException("Match $id $reason")

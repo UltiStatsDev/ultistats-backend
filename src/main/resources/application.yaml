@@ -30,6 +30,8 @@ ultistats:
     write-enabled: ${ULTISTATS_POINT_LINEUPS_WRITE_ENABLED:false}
   point-substitutions:
     write-enabled: ${ULTISTATS_POINT_SUBSTITUTIONS_WRITE_ENABLED:false}
+  point-incoming-reserves:
+    write-enabled: ${ULTISTATS_POINT_INCOMING_RESERVES_WRITE_ENABLED:false}
   announcements:
     write-enabled: ${ULTISTATS_ANNOUNCEMENTS_WRITE_ENABLED:false}
   possession-change:

@@ -3,6 +3,7 @@ package com.github.mihanizzm.ultistats.dto.response
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.github.mihanizzm.ultistats.model.PointLineup
 import com.github.mihanizzm.ultistats.model.PointLineupTeam
+import com.github.mihanizzm.ultistats.model.PointSubstitutionSlot
 import com.github.mihanizzm.ultistats.model.events.PointStatus
 import io.swagger.v3.oas.annotations.media.Schema
 import java.util.UUID
@@ -11,6 +12,8 @@ data class PointLineupsResponse(
     val logRevision: Long,
     val writesEnabled: Boolean,
     val substitutionsWriteEnabled: Boolean,
+    @field:Schema(description = "Capability 3 discovery. True when all write gates permit creating an incoming reserve.")
+    val incomingReservesWriteEnabled: Boolean,
     val points: List<PointLineupResponse>,
 )
 
@@ -30,4 +33,6 @@ data class PointLineupResponse(
         requiredMode = Schema.RequiredMode.REQUIRED,
     )
     val effectiveTeams: List<PointLineupTeam>?,
+    @field:Schema(description = "Temporary slots introduced by active events in this point, including reserves who have since left.")
+    val substitutionSlots: List<PointSubstitutionSlot>,
 )

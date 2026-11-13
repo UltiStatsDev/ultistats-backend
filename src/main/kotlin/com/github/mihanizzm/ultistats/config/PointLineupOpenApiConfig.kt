@@ -52,8 +52,8 @@ class PointLineupOpenApiConfig {
 
     private fun Operation.lineupProtocol(read: Boolean = false, lineupMutation: Boolean = false) {
         addParametersItem(HeaderParameter().name(POINT_LINEUPS_HEADER).required(false)
-            .description("Send 1 for raw temporary slot UUIDs. Send 2 when the client can also replay PLAYER_SUBSTITUTION.")
-            .schema(StringSchema().addEnumItem("1").addEnumItem("2")))
+            .description("Send 1 for raw temporary slot UUIDs, 2 to also replay known-player substitutions, or 3 to also replay incoming reserves.")
+            .schema(StringSchema().addEnumItem("1").addEnumItem("2").addEnumItem("3")))
         val detail = if (lineupMutation) {
             ""
         } else if (read) {
@@ -63,7 +63,7 @@ class PointLineupOpenApiConfig {
                 "POINT_LINEUP_CONFLICT for a missing lineup, actor outside its point, or an invalid boundary edit. " +
                 "POINT_LINEUP_WRITE_DISABLED for a new temporary actor write while the feature is off."
         }
-        val protocol = "$detail POINT_LINEUP_CLIENT_REQUIRED for a journal containing substitutions without capability 2.".trimStart()
+        val protocol = "$detail POINT_LINEUP_CLIENT_REQUIRED for a journal containing substitutions without capability 2 or 3, or active incoming reserves without capability 3.".trimStart()
         val existing = responses["409"]
         if (existing != null) {
             existing.description += " $protocol"

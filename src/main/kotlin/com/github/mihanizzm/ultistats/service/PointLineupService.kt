@@ -13,6 +13,7 @@ import com.github.mihanizzm.ultistats.model.PointLineup
 import com.github.mihanizzm.ultistats.model.PointLineupPlayer
 import com.github.mihanizzm.ultistats.model.PointLineupTeam
 import com.github.mihanizzm.ultistats.model.PointLineupTemporary
+import com.github.mihanizzm.ultistats.model.PointSubstitutionSlot
 import com.github.mihanizzm.ultistats.model.events.PointBoundary
 import com.github.mihanizzm.ultistats.model.events.PointStatus
 import com.github.mihanizzm.ultistats.model.events.PointTimeline
@@ -48,9 +49,15 @@ class PointLineupService(
         val journal = journal(matchId)
         val points = PointTimeline.from(match.id, match.status, journal)
         val byPoint = PointTimeline.eventsByPoint(points, journal)
-        return PointLineupsResponse(match.eventLogRevision, writesEnabled, policy.substitutionsWriteEnabled, points.map {
-            it.toResponse(saved[it.pointId], byPoint[it.pointId].orEmpty().substitutions())
-        })
+        val introduced = lineups.introducedSlots(matchId).groupBy { it.pointId }
+        return PointLineupsResponse(
+            match.eventLogRevision, writesEnabled, policy.substitutionsWriteEnabled, policy.incomingReservesWriteEnabled,
+            points.map { point ->
+                val pointJournal = byPoint[point.pointId].orEmpty()
+                val slots = activeSlots(introduced[point.pointId].orEmpty().map { it.slot }, pointJournal)
+                point.toResponse(saved[point.pointId], pointJournal.substitutions(), slots)
+            },
+        )
     }
 
     @Transactional
@@ -81,6 +88,7 @@ class PointLineupService(
         }
 
         val saved = lineups.list(matchId, teamIds)
+        val introduced = lineups.introducedSlots(matchId)
         saved[pointId]?.let { existing ->
             // Resolution is an attribution change. The original selection remains the retry key.
             val original = existing.teams.map { team -> team.copy(entries = team.entries.map {
@@ -89,8 +97,9 @@ class PointLineupService(
             if (original != selection) {
                 reject(PointLineupProblemCode.POINT_LINEUP_CONFLICT, "A different lineup is already confirmed for this point")
             }
-            val replacements = PointTimeline.eventsByPoint(points, journal)[pointId].orEmpty().substitutions()
-            return point.toResponse(existing, replacements)
+            val pointJournal = PointTimeline.eventsByPoint(points, journal)[pointId].orEmpty()
+            return point.toResponse(existing, pointJournal.substitutions(),
+                activeSlots(introduced.filter { it.pointId == pointId }.map { it.slot }, pointJournal))
         }
 
         if (revision != match.eventLogRevision) reject(PointLineupProblemCode.EVENT_LOG_STALE, "The event log revision has changed")
@@ -99,7 +108,7 @@ class PointLineupService(
         }
         if (!writesEnabled) reject(PointLineupProblemCode.POINT_LINEUP_WRITE_DISABLED, "Point lineup writes are disabled")
 
-        validateSelection(match, selection, saved.values)?.let { invalid(it) }
+        validateSelection(match, selection, saved.values, introduced.mapTo(mutableSetOf()) { it.slot.slotId })?.let { invalid(it) }
         val confirmed = PointLineup(revision = 1, teams = selection)
         lineups.insert(matchId, point, confirmed)
         return point.toResponse(confirmed)
@@ -117,19 +126,24 @@ class PointLineupService(
         val points = PointTimeline.from(match.id, match.status, journal)
         val point = points.firstOrNull { it.pointId == pointId }
             ?: conflict("Point is no longer canonical for this match")
-        val replacements = PointTimeline.eventsByPoint(points, journal)[pointId].orEmpty().substitutions()
+        val pointJournal = PointTimeline.eventsByPoint(points, journal)[pointId].orEmpty()
+        val replacements = pointJournal.substitutions()
+        val introduced = activeSlots(lineups.introducedSlots(matchId).filter { it.pointId == pointId }.map { it.slot }, pointJournal)
         if (point.status != PointStatus.COMPLETED || point.closingEventId != request.expectedClosingEventId) {
             conflict("The point must be completed with the expected closing event")
         }
 
         val saved = lineups.list(matchId, teamIds(matchId))[pointId] ?: conflict("Point has no confirmed lineup")
         if (saved.revision != request.expectedLineupRevision) conflict("The point lineup revision has changed")
+        val introducedSlot = introduced.firstOrNull { it.slotId == slotId }
         val (team, slot) = saved.teams.firstNotNullOfOrNull { team ->
-            team.entries.filterIsInstance<PointLineupTemporary>().firstOrNull { it.slotId == slotId }?.let { team to it }
+            val temporary = team.entries.filterIsInstance<PointLineupTemporary>().firstOrNull { it.slotId == slotId }
+                ?: introducedSlot?.takeIf { it.teamId == team.teamId }?.asTemporary()
+            temporary?.let { team to it }
         } ?: conflict("Temporary slot is not part of this point lineup")
 
         val candidateId = request.participantId
-        if (candidateId == slot.resolvedParticipantId) return point.toResponse(saved, replacements)
+        if (candidateId == slot.resolvedParticipantId) return point.toResponse(saved, replacements, introduced)
         if (candidateId != null) {
             val candidate = participants.findById(MatchParticipantId(matchId, candidateId)).orElse(null)
             if (candidate?.kind != MatchParticipantKind.PLAYER || candidate.teamId != team.teamId) {
@@ -141,7 +155,8 @@ class PointLineupService(
                     is PointLineupTemporary -> it.resolvedParticipantId == candidateId
                 }
             }
-            if (occupied || replacements.any { it.toParticipant == candidateId }) {
+            if (occupied || introduced.any { it.resolvedParticipantId == candidateId } ||
+                replacements.any { it.toParticipant == candidateId }) {
                 conflict("Player already occupies or occupied a place in this point lineup")
             }
         }
@@ -152,16 +167,22 @@ class PointLineupService(
                 if (entry == slot) slot.copy(resolvedParticipantId = candidateId) else entry
             }) else it
         })
-        return point.toResponse(updated, replacements)
+        return point.toResponse(updated, replacements, introduced.map {
+            if (it.slotId == slotId) it.copy(resolvedParticipantId = candidateId) else it
+        })
     }
 
-    private fun validateSelection(match: Match, selection: List<PointLineupTeam>, saved: Collection<PointLineup>): String? {
+    private fun validateSelection(
+        match: Match, selection: List<PointLineupTeam>, saved: Collection<PointLineup>, usedSlots: MutableSet<UUID>,
+    ): String? {
         val roster = participants.findAllByMatchId(match.id).associateBy { it.participantId }
         val usedPlayers = mutableSetOf<UUID>()
         // Include IDs from confirmed points whose opening boundaries were removed.
-        val usedSlots = saved.flatMap { lineup ->
-            lineup.teams.flatMap { it.entries.filterIsInstance<PointLineupTemporary>().map { slot -> slot.slotId } }
-        }.toMutableSet()
+        saved.forEach { lineup ->
+            lineup.teams.forEach { team ->
+                team.entries.filterIsInstance<PointLineupTemporary>().mapTo(usedSlots) { it.slotId }
+            }
+        }
         for (team in selection) {
             if (team.entries.size > match.playersPerTeam) return "Too many entries for team ${team.teamId}"
             val numbers = mutableSetOf<Int>()
@@ -189,11 +210,24 @@ class PointLineupService(
     private fun journal(matchId: UUID) = events.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(matchId)
         .map { StoredEvent(it.id, it.sequenceNumber, it.toDomain()) }
 
-    private fun PointBoundary.toResponse(lineup: PointLineup?, replacements: List<TwoPlayerEvent> = emptyList()): PointLineupResponse {
+    private fun activeSlots(slots: List<PointSubstitutionSlot>, journal: List<StoredEvent>): List<PointSubstitutionSlot> {
+        val activeEvents = journal.map { it.id }.toSet()
+        return slots.filter { it.introducedByEventId in activeEvents }
+    }
+
+    private fun PointBoundary.toResponse(
+        lineup: PointLineup?,
+        replacements: List<TwoPlayerEvent> = emptyList(),
+        slots: List<PointSubstitutionSlot> = emptyList(),
+    ): PointLineupResponse {
+        val incoming = slots.associate { it.slotId to it.asTemporary() }
         val effective = lineup?.teams?.let { initial ->
-            replacements.fold(initial) { teams, replacement -> teams.afterSubstitution(replacement) }
+            replacements.fold(initial) { teams, replacement ->
+                incoming[replacement.toParticipant]?.let { teams.afterSubstitution(replacement, it) }
+                    ?: teams.afterSubstitution(replacement)
+            }
         }
-        return PointLineupResponse(pointId, number, status, pullEventId, closingEventId, lineup, effective)
+        return PointLineupResponse(pointId, number, status, pullEventId, closingEventId, lineup, effective, slots)
     }
 
     private fun conflict(detail: String): Nothing = reject(PointLineupProblemCode.POINT_LINEUP_CONFLICT, detail)

@@ -62,8 +62,8 @@ class EventBatchController(
         description = "Server assigns consecutive sequence numbers in request order. Both expected bases are required. " +
             "The entire batch commits or nothing commits; lifecycle, participants, timestamps and EventSequencePolicy match v1. " +
             "POSSESSION_SET requires participantId from either team and an active point after PULL. " +
-            "PLAYER_SUBSTITUTION requires capability 2 and a confirmed active point after PULL. " +
-            "The outgoing actor can be a roster player or temporary slot. The incoming actor must be an off-field roster player on the same team. " +
+            "PLAYER_SUBSTITUTION requires capability 2 or 3 and a confirmed active point after PULL. " +
+            "The outgoing actor can be a roster player or temporary slot. The incoming actor can be an off-field roster player on the same team. Capability 3 can set createIncomingReserve to true with a fresh toParticipantId slot UUID. " +
             "Write gates do not affect canonical reads, exact retries or Undo. " +
             "Equal timestamps are allowed; backwards timestamps are rejected. Score is recalculated once. " +
             "201 confirms a new batch; 200 replays the exact original batch (same bases, UUIDs, payloads and order), even after later appends. " +
@@ -86,7 +86,7 @@ class EventBatchController(
         val result = try {
             events.appendBatch(matchId, body, request.pointLineupClient())
         } catch (exception: EventIdempotencyConflictException) {
-            val snapshot = events.snapshot(matchId, PointLineupClient.SUBSTITUTIONS) ?: return ResponseEntity.notFound().build<Void>()
+            val snapshot = events.snapshot(matchId, PointLineupClient.INCOMING_RESERVES) ?: return ResponseEntity.notFound().build<Void>()
             EventBatchResult.Rejected(
                 MatchProblem(MatchProblemCode.EVENT_IDEMPOTENCY_CONFLICT, "Event idempotency conflict", "Event ${exception.eventId} already exists with a different payload"),
                 snapshot.lastSequenceNumber, snapshot.logRevision, exception.eventId,

@@ -6,9 +6,12 @@ import com.github.mihanizzm.ultistats.mapper.StatisticsResponseMapper
 import com.github.mihanizzm.ultistats.service.MatchService
 import com.github.mihanizzm.ultistats.service.statistics.StatisticsService
 import org.springframework.stereotype.Component
+import org.springframework.transaction.annotation.Isolation
+import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 @Component
+@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 class StatisticsFacade(
     private val matchService: MatchService,
     private val statisticsService: StatisticsService,

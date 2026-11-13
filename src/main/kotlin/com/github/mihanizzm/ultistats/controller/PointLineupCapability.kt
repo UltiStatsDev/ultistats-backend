@@ -9,5 +9,6 @@ internal fun HttpServletRequest.pointLineupClient(): PointLineupClient =
     when (getHeaders(POINT_LINEUPS_HEADER).toList().singleOrNull()) {
         "1" -> PointLineupClient.LINEUPS
         "2" -> PointLineupClient.SUBSTITUTIONS
+        "3" -> PointLineupClient.INCOMING_RESERVES
         else -> PointLineupClient.LEGACY
     }
