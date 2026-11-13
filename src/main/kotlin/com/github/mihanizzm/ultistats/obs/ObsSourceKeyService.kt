@@ -92,7 +92,7 @@ class ObsSourceKeyService(
 
     // The key lookup establishes the same database snapshot used by the scoreboard.
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    fun snapshot(matchId: UUID, authorization: List<String>): ObsScoreboardSnapshot {
+    fun snapshot(matchId: UUID, authorization: List<String>): ObsExactScoreboardSnapshot {
         val header = authorization.singleOrNull()
         val secret = header?.let(bearer::matchEntire)?.groupValues?.get(1) ?: invalidKey()
         val boundMatchId = jdbc.query(
@@ -101,7 +101,7 @@ class ObsSourceKeyService(
         ).singleOrNull() ?: invalidKey()
         if (boundMatchId != matchId) throw AuthProblem(403, "OBS_SOURCE_SCOPE_DENIED")
         return try {
-            scoreboard.snapshot(matchId)
+            scoreboard.exactSnapshot(matchId)
         } catch (_: EntityNotFoundException) {
             throw AuthProblem(404, "OBS_SOURCE_MATCH_NOT_FOUND")
         }

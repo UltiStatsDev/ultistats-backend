@@ -23,7 +23,7 @@ class ObsExactScoreboardController(private val service: ObsSourceKeyService) {
     @Operation(
         summary = "Read an exact scoreboard with a source key",
         description = "HTTPS only. Pass the active EXACT_SCOREBOARD secret in Authorization: Bearer. " +
-            "Staff cookies grant no access. No-store. Existing planned matches can be read.",
+            "Staff cookies grant no access. No-store. Returns confirmed score, lifecycle and open pauses.",
     )
     @ApiResponse(responseCode = "200", description = "Scoreboard snapshot", useReturnTypeSchema = true)
     @ApiResponse(
