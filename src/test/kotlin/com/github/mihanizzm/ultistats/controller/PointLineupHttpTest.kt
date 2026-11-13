@@ -16,6 +16,7 @@ import com.github.mihanizzm.ultistats.service.MatchService
 import com.github.mihanizzm.ultistats.service.PlayerService
 import com.github.mihanizzm.ultistats.service.TeamPlayerService
 import com.github.mihanizzm.ultistats.service.TeamService
+import com.github.mihanizzm.ultistats.service.statistics.StatisticsService
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
@@ -49,6 +50,7 @@ import kotlin.test.assertTrue
         "app.auth.ingress.loopback-mode=true",
         "ultistats.point-lineups.write-enabled=true",
         "ultistats.point-substitutions.write-enabled=true",
+        "ultistats.point-incoming-reserves.write-enabled=true",
         "ultistats.possession-change.write-enabled=true",
         "ultistats.announcements.write-enabled=true",
     ],
@@ -64,6 +66,7 @@ class PointLineupHttpTest {
     @Autowired private lateinit var players: PlayerService
     @Autowired private lateinit var memberships: TeamPlayerService
     @Autowired private lateinit var jdbc: JdbcTemplate
+    @Autowired private lateinit var statistics: StatisticsService
     private val client = HttpClient.newHttpClient()
     private val startedAt = Instant.parse("2026-10-15T09:00:00Z")
     private val login by lazy {
@@ -130,7 +133,7 @@ class PointLineupHttpTest {
             val operation = schemasByPath[path][method]
             val capability = operation["parameters"].single { it["name"].asText() == "X-UltiStats-Point-Lineups" }
             assertEquals("header", capability["in"].asText())
-            assertEquals(listOf("1", "2"), capability["schema"]["enum"].map { it.asText() })
+            assertEquals(listOf("1", "2", "3"), capability["schema"]["enum"].map { it.asText() })
             assertTrue(operation["responses"]["409"]["description"].asText().contains("POINT_LINEUP_CLIENT_REQUIRED"))
         }
         assertFalse(api["components"]["schemas"]["UndoCommandRejection"]["properties"]["code"]["enum"].any {
@@ -141,12 +144,19 @@ class PointLineupHttpTest {
         assertFalse(api["components"]["schemas"]["CreateEventRequest"]["discriminator"]["mapping"].has("PLAYER_SUBSTITUTION"))
         assertEquals(setOf("type", "eventId", "occurredAt", "fromParticipantId", "toParticipantId"),
             api["components"]["schemas"]["PlayerSubstitutionBatchEvent"]["required"].map { it.asText() }.toSet())
+        val reserveMarker = api["components"]["schemas"]["PlayerSubstitutionBatchEvent"]["properties"]["createIncomingReserve"]
+        assertEquals(listOf(true), reserveMarker["enum"].map { it.asBoolean() })
+        assertFalse(api["components"]["schemas"]["TwoPlayerEventRequest"]["properties"].has("createIncomingReserve"))
         val getResponseSchema = api["paths"]["/api/v1/matches/{matchId}/point-lineups"]["get"]["responses"]
             .path("200").path("content").path("application/json").path("schema")
         assertEquals("#/components/schemas/PointLineupsResponse", getResponseSchema.path("\$ref").asText())
         val schemas = api["components"]["schemas"]
         val pointSchema = schemas["PointLineupResponse"]
         val temporarySchema = schemas["PointLineupTemporary"]
+        assertTrue(schemas["PointLineupsResponse"]["required"].any { it.asText() == "incomingReservesWriteEnabled" })
+        assertTrue(pointSchema["required"].any { it.asText() == "substitutionSlots" })
+        assertEquals("#/components/schemas/PointSubstitutionSlot",
+            pointSchema["properties"]["substitutionSlots"]["items"]["\$ref"].asText())
         assertTrue(pointSchema["required"].any { it.asText() == "lineup" })
         assertTrue(pointSchema["properties"]["lineup"]["anyOf"].any { it["type"]?.asText() == "null" })
         assertTrue(temporarySchema["required"].any { it.asText() == "resolvedParticipantId" })
@@ -1006,6 +1016,206 @@ class PointLineupHttpTest {
         mapOf("commandId" to UUID.randomUUID(), "expectedLastEventId" to event.getValue("eventId"), "expectedLogRevision" to revision)
 
     @Test
+    fun `incoming reserve is committed with its substitution and reused on exact retry`() {
+        val fixture = fixture()
+        val journal = "${fixture.matchPath}/events".replace("/v1/", "/v2/")
+        val (thrower, receiver) = fixture.leftPlayers
+        val reserve = UUID.randomUUID()
+        val initial = confirm(fixture, listOf(player(thrower), player(receiver)), listOf(player(fixture.rightPlayers[0])))
+        val pull = eventBody(UUID.randomUUID(), "PULL", fixture.rightPlayers[0])
+        val pickup = eventBody(UUID.randomUUID(), "PICKUP", thrower).at(2)
+        response(send("POST", "$journal/batch", batch(0, 0, pull, pickup), login, capability = "2", capture = "reserve-ordinary-header2"), 201)
+        val replace = eventBody(UUID.randomUUID(), "PLAYER_SUBSTITUTION", thrower, reserve).at(5) +
+            ("createIncomingReserve" to true)
+        val request = batch(2, 1, replace)
+        val committed = response(send("POST", "$journal/batch", request, login, capability = "3", capture = "reserve-append"), 201)
+        val raw = committed["events"].single()
+        assertEquals(reserve.toString(), raw["toParticipantId"].asText())
+        assertFalse(raw.has("createIncomingReserve"))
+        assertEquals(committed, response(send("POST", "$journal/batch", request, login, capability = "3", capture = "reserve-retry"), 200))
+        val discovery = response(send("GET", fixture.path, capture = "reserve-discovery"), 200)
+        assertTrue(discovery["incomingReservesWriteEnabled"].asBoolean())
+        assertEquals(committed["logRevision"], discovery["logRevision"])
+        val point = discovery["points"].single()
+        assertEquals(initial["lineup"], point["lineup"])
+        val entry = point["effectiveTeams"][0]["entries"][0]
+        assertEquals("TEMPORARY", entry["kind"].asText())
+        assertEquals(reserve.toString(), entry["slotId"].asText())
+        val metadata = point["substitutionSlots"].single()
+        assertEquals(1, metadata["number"].asInt())
+        assertTrue(metadata["resolvedParticipantId"].isNull)
+        assertEquals(fixture.teamIds[0].toString(), metadata["teamId"].asText())
+        assertEquals(replace["eventId"].toString(), metadata["introducedByEventId"].asText())
+    }
+
+    @Test
+    fun `incoming reserve batches reject invalid and stale writes before allocating any slot`() {
+        val fixture = fixture(rosterSize = 3)
+        val journal = "${fixture.matchPath}/events".replace("/v1/", "/v2/")
+        val (outgoing, known, unused) = fixture.leftPlayers
+        val original = UUID.randomUUID()
+        val reserve = UUID.randomUUID()
+        val point = confirm(fixture, listOf(player(outgoing), temporary(original, 2)), listOf(player(fixture.rightPlayers[0])))
+        val pull = eventBody(UUID.randomUUID(), "PULL", fixture.rightPlayers[0])
+        val first = reserveEvent(outgoing, reserve, 2)
+        fun append(body: Any, status: Int, capture: String? = null, capability: String = "3") =
+            response(send("POST", "$journal/batch", body, login, capability = capability, capture = capture), status)
+
+        assertEquals("POINT_SUBSTITUTION_CONFLICT", append(batch(0, 0, first), 409)["code"].asText())
+        append(batch(0, 0, pull), 201, "reserve-ordinary-web2-post", "2")
+        response(send("GET", journal, capability = "2", capture = "reserve-ordinary-web2-get"), 200)
+        assertEquals("POINT_LINEUP_CLIENT_REQUIRED", append(batch(1, 1, first), 409, "reserve-new-requires3", "2")["code"].asText())
+        val knownReplace = eventBody(UUID.randomUUID(), "PLAYER_SUBSTITUTION", outgoing, known).at(1)
+        val knownRequest = batch(1, 1, knownReplace)
+        val knownResponse = append(knownRequest, 201, "reserve-known-web2-post", "2")
+        assertEquals(knownResponse, append(knownRequest, 200, "reserve-known-web3-retry"))
+        response(send("GET", journal, capability = "2", capture = "reserve-known-web2-get"), 200)
+        val knownPackage = export(fixture.id)
+        val knownEvent = knownPackage["matches"][0]["events"].last() as ObjectNode
+        knownEvent.put("createIncomingReserve", true)
+        assertEquals("INVALID_REQUEST", importPackage(knownPackage, 400, "reserve-v5-import-marker-rejected")["code"].asText())
+        knownEvent.remove("createIncomingReserve")
+        knownEvent.put("toParticipantId", reserve.toString())
+        assertEquals("INVALID_REQUEST", importPackage(knownPackage, 400, "reserve-v5-import-unknown-slot-rejected")["code"].asText())
+        val firstAfterKnown = reserveEvent(known, reserve, 2)
+        assertEquals("EVENT_LOG_STALE", append(batch(1, 1, firstAfterKnown), 409, "reserve-stale")["code"].asText())
+        val priorRows = journalRows(fixture)
+        val priorCounts = transferCounts()
+        val pass = eventBody(UUID.randomUUID(), "PASS", reserve, original).at(3)
+        assertEquals("POINT_SUBSTITUTION_CONFLICT", append(batch(2, 2, firstAfterKnown, reserveEvent(known, UUID.randomUUID(), 3)), 409,
+            "reserve-batch-atomic-rejection")["code"].asText())
+        for (target in listOf(original, unused)) {
+            assertEquals("POINT_SUBSTITUTION_CONFLICT", append(batch(2, 2, reserveEvent(known, target, 2)), 409)["code"].asText())
+        }
+        for (marker in listOf(false, "true", 1, NullNode.instance)) {
+            assertEquals("INVALID_REQUEST", append(batch(2, 2, firstAfterKnown + ("createIncomingReserve" to marker)), 400)["code"].asText())
+        }
+        assertEquals("INVALID_REQUEST", append(batch(2, 2, pull.withNewId() + ("createIncomingReserve" to true)), 400)["code"].asText())
+        assertEquals("INVALID_REQUEST", append(batch(2, 2, pass + ("createIncomingReserve" to true)), 400)["code"].asText())
+        response(send("POST", "$journal/batch", batch(2, 2, firstAfterKnown), capability = "3"), 401)
+        response(send("POST", "$journal/batch", batch(2, 2, firstAfterKnown), login, csrf = false, capability = "3"), 403)
+        assertEquals(priorRows, journalRows(fixture))
+        assertEquals(priorCounts, transferCounts())
+        assertTrue(get(fixture.path)["points"].single()["substitutionSlots"].isEmpty)
+
+        val pickup = eventBody(UUID.randomUUID(), "PICKUP", reserve).at(3)
+        val committed = append(batch(2, 2, firstAfterKnown, pickup, pass), 201, "reserve-batch-with-following-actions")
+        assertEquals(3, committed["events"].size())
+        assertEquals(3, get(fixture.path)["points"].single()["substitutionSlots"].single()["number"].asInt())
+        assertEquals("EVENT_IDEMPOTENCY_CONFLICT",
+            append(batch(2, 2, firstAfterKnown - "createIncomingReserve", pickup, pass), 409, "reserve-marker-changed")["code"].asText())
+
+        val oldGet = response(send("GET", journal, capability = "2", capture = "reserve-affected-web2-get"), 409)
+        val oldPost = append(batch(5, 3, pass.withNewId()), 409, "reserve-affected-web2-post", "2")
+        assertEquals("POINT_LINEUP_CLIENT_REQUIRED", oldGet["code"].asText())
+        assertEquals(oldGet["code"], oldPost["code"])
+        assertEquals(5, oldPost["lastSequenceNumber"].asInt())
+        assertEquals(3, oldPost["logRevision"].asInt())
+        val v1 = "${fixture.matchPath}/events"
+        assertEquals(oldGet["code"], response(send("GET", v1, capture = "reserve-affected-flutter-get"), 409)["code"])
+        assertEquals(oldGet["code"], response(send("POST", v1, pass.withNewId(), login, capture = "reserve-affected-flutter-post"), 409)["code"])
+        assertEquals(oldGet["code"], response(send("PUT", "${fixture.path}/${point["pointId"].asText()}",
+            fixture.selection(3, listOf(player(outgoing), temporary(original, 2)), listOf(player(fixture.rightPlayers[0]))),
+            login, capability = "2", capture = "reserve-affected-web2-confirm"), 409)["code"])
+        assertEquals("POINT_SUBSTITUTION_CONFLICT", response(send("DELETE", "$v1/${firstAfterKnown["eventId"]}",
+            session = login, capability = "3", capture = "reserve-delete-dependent"), 409)["code"].asText())
+
+        for ((index, event) in listOf(pass, pickup, firstAfterKnown).withIndex()) {
+            assertEquals("APPLIED", response(send("POST", "$journal/undo", undo(event, 3L + index), login,
+                capability = "3", capture = "reserve-ordered-undo-$index"), 200)["outcome"].asText())
+        }
+        response(send("GET", journal, capability = "2", capture = "reserve-restored-web2-get"), 200)
+        assertTrue(get(fixture.path)["points"].single()["substitutionSlots"].isEmpty)
+        assertEquals(5, export(fixture.id, "reserve-restored-export")["formatVersion"].asInt())
+        assertEquals("POINT_SUBSTITUTION_CONFLICT", append(batch(5, 6, reserveEvent(known, reserve, 6)), 409)["code"].asText())
+        append(batch(5, 6, reserveEvent(known, UUID.randomUUID(), 6)), 201)
+        assertEquals(4, get(fixture.path)["points"].single()["substitutionSlots"].single()["number"].asInt())
+    }
+
+    @Test
+    fun `historical incoming reserves retain raw events, possession time and identification after leaving`() {
+        val fixture = fixture(rosterSize = 3)
+        val (outgoing, receiver, candidate) = fixture.leftPlayers
+        val puller = fixture.rightPlayers[0]
+        val (reserve, next, rightReserve) = List(3) { UUID.randomUUID() }
+        val journal = "${fixture.matchPath}/events".replace("/v1/", "/v2/")
+        val point = confirm(fixture, listOf(player(outgoing), player(receiver)), listOf(player(puller)))
+        val pull = eventBody(UUID.randomUUID(), "PULL", puller)
+        val rightReplace = reserveEvent(puller, rightReserve, 1)
+        val brick = eventBody(UUID.randomUUID(), "BRICK", puller).at(2)
+        val pickup = eventBody(UUID.randomUUID(), "PICKUP", outgoing).at(3)
+        val replace = reserveEvent(outgoing, reserve, 5)
+        val nextReplace = reserveEvent(reserve, next, 8)
+        val goal = eventBody(UUID.randomUUID(), "GOAL", next, receiver).at(12)
+        response(send("POST", "$journal/batch", batch(0, 0, pull, rightReplace, brick, pickup, replace, nextReplace, goal),
+            login, capability = "3", capture = "reserve-successive-holder-and-brick"), 201)
+        val public = response(send("GET", fixture.path, capture = "reserve-completed-discovery"), 200)
+        val completed = public["points"].first()
+        val slots = completed["substitutionSlots"].associateBy { it["slotId"].asText() }
+        assertEquals(1, slots.getValue(reserve.toString())["number"].asInt())
+        assertEquals(2, slots.getValue(next.toString())["number"].asInt())
+        assertEquals(1, slots.getValue(rightReserve.toString())["number"].asInt())
+        assertEquals(next.toString(), completed["effectiveTeams"][0]["entries"][0]["slotId"].asText())
+        assertTrue(public["points"].last()["substitutionSlots"].isEmpty)
+        val path = "${fixture.path}/${point["pointId"].asText()}/slots/$reserve"
+        val scoreAndStats = "${fixture.matchPath}/statistics"
+        val before = response(send("GET", scoreAndStats, session = login, capture = "reserve-stats-before-identification"), 200)
+        assertEquals(9000, before["teams"].first()["time"]["possessionTimeMs"].asInt())
+        assertEquals(1, before["teams"].first()["attack"]["score"].asInt())
+        assertEquals(2000, participant(before, outgoing)["time"]["possessionTimeMs"].asInt())
+        val actors = statistics.recalculateMatchStatistics(matches.getOrThrow(fixture.id)).playerStatistics
+            .associateBy { it.participantId }
+        assertEquals(Duration.ofSeconds(3), actors.getValue(reserve).time.totalPossessionTime)
+        assertEquals(Duration.ofSeconds(4), actors.getValue(next).time.totalPossessionTime)
+        assertEquals(0, actors.getValue(reserve).attack.discPossessions)
+        assertEquals(0, actors.getValue(next).attack.discPossessions)
+        val raw = response(send("GET", journal, capability = "3", capture = "reserve-canonical-raw-log"), 200)
+        assertEquals(puller.toString(), raw["events"][2]["participantId"].asText())
+        assertEquals(reserve.toString(), raw["events"][5]["fromParticipantId"].asText())
+        val closing = goal.getValue("eventId")
+        assertEquals("POINT_LINEUP_CLIENT_REQUIRED", response(send("PATCH", path, identification(candidate, 1, closing),
+            login, capability = "2", capture = "reserve-identify-web2"), 409)["code"].asText())
+        assertConflict(send("PATCH", path, identification(outgoing, 1, closing), login, capability = "3"))
+        assertConflict(send("PATCH", path, identification(puller, 1, closing), login, capability = "3"))
+        val identified = response(send("PATCH", path, identification(candidate, 1, closing), login, capability = "3",
+            capture = "reserve-identify-historical"), 200)
+        assertEquals(completed["lineup"]["teams"], identified["lineup"]["teams"])
+        assertEquals(candidate.toString(), identified["substitutionSlots"].single {
+            it["slotId"].asText() == reserve.toString()
+        }["resolvedParticipantId"].asText())
+        val nextPath = "${fixture.path}/${point["pointId"].asText()}/slots/$next"
+        assertConflict(send("PATCH", nextPath, identification(candidate, 2, closing), login, capability = "3"))
+        val after = response(send("GET", scoreAndStats, session = login, capture = "reserve-stats-after-identification"), 200)
+        assertEquals(3000, participant(after, candidate)["time"]["possessionTimeMs"].asInt())
+        assertEquals(before["teams"].first()["time"], after["teams"].first()["time"])
+        assertEquals(before["teams"].first()["attack"], after["teams"].first()["attack"])
+        assertEquals(raw, response(send("GET", journal, capability = "3", capture = "reserve-log-after-identification"), 200))
+        assertEquals("POINT_LINEUP_EXPORT_UNSUPPORTED", response(send("POST", "/api/v1/matches/export",
+            mapOf("matchIds" to listOf(fixture.id)), login, capture = "reserve-export-rejected"), 409)["code"].asText())
+
+        val nextPoint = public["points"].last()["pointId"].asText()
+        val nextPointPath = "${fixture.path}/$nextPoint"
+        val nextSelection = fixture.selection(1, listOf(player(outgoing)), listOf(player(puller)))
+        val duplicateSlot = fixture.selection(1, listOf(temporary(next)), listOf(player(puller)))
+        response(send("PUT", nextPointPath, duplicateSlot, login, capability = "3"), 400)
+        response(send("PUT", nextPointPath, nextSelection, login, capability = "3"), 200)
+        val nextPull = eventBody(UUID.randomUUID(), "PULL", puller).at(14)
+        val crossPoint = reserveEvent(next, UUID.randomUUID(), 15)
+        assertEquals("POINT_SUBSTITUTION_CONFLICT", response(send("POST", "$journal/batch", batch(7, 1, nextPull, crossPoint),
+            login, capability = "3", capture = "reserve-cross-point-rejected"), 409)["code"].asText())
+        assertEquals(raw, response(send("GET", journal, capability = "3"), 200))
+
+        val ordinary = fixture()
+        val v1 = "${ordinary.matchPath}/events"
+        response(send("POST", v1, eventBody(UUID.randomUUID(), "PULL", ordinary.rightPlayers[0]), login,
+            capture = "reserve-ordinary-flutter-post"), 201)
+        response(send("GET", v1, capture = "reserve-ordinary-flutter-get"), 200)
+    }
+
+    private fun reserveEvent(from: UUID, slot: UUID, second: Long) =
+        eventBody(UUID.randomUUID(), "PLAYER_SUBSTITUTION", from, slot).at(second) + ("createIncomingReserve" to true)
+
+    @Test
     fun `substitution replaces a temporary holder and protects journal across clients and undo`() {
         val fixture = fixture()
         val journal = "${fixture.matchPath}/events"
@@ -1328,6 +1538,53 @@ class PointLineupHttpTest {
         assertEquals("PLAYER_SUBSTITUTION", copy["matches"].single()["events"].last()["type"].asText())
     }
 
+    protected fun verifyFreshProcessIncomingReserve() {
+        val fixture = fixture(rosterSize = 3)
+        val (outgoing, receiver, candidate) = fixture.leftPlayers
+        val puller = fixture.rightPlayers[0]
+        val slot = UUID.randomUUID()
+        val journal = "${fixture.matchPath}/events".replace("/v1/", "/v2/")
+        val initial = confirm(fixture, listOf(player(outgoing), player(receiver)), listOf(player(puller)))
+        val pull = eventBody(UUID.randomUUID(), "PULL", puller)
+        val pickup = eventBody(UUID.randomUUID(), "PICKUP", outgoing).at(2)
+        val replacement = reserveEvent(outgoing, slot, 5)
+        val append = batch(0, 0, pull, pickup, replacement)
+        val committed = response(send("POST", "$journal/batch", append, login, capability = "3"), 201)
+
+        SpringApplicationBuilder(UltistatsApplication::class.java).profiles("postgres-list").run(
+            "--server.port=0", "--app.auth.ingress.loopback-mode=true", "--app.auth.ingress.private-port=0",
+            "--ultistats.point-lineups.write-enabled=true", "--ultistats.point-substitutions.write-enabled=true",
+        ).use { app ->
+            val target = (app as ServletWebServerApplicationContext).webServer.port
+            val public = response(send("GET", fixture.path, targetPort = target, capture = "reserve-off-discovery"), 200)
+            assertTrue(public["substitutionsWriteEnabled"].asBoolean())
+            assertFalse(public["incomingReservesWriteEnabled"].asBoolean())
+            assertEquals(slot.toString(), public["points"].single()["substitutionSlots"].single()["slotId"].asText())
+            assertEquals(committed, response(send("GET", journal, targetPort = target, capability = "3", capture = "reserve-off-log"), 200))
+            assertEquals(committed, response(send("POST", "$journal/batch", append, login,
+                targetPort = target, capability = "3", capture = "reserve-off-retry"), 200))
+            val next = reserveEvent(slot, UUID.randomUUID(), 7)
+            assertEquals("POINT_SUBSTITUTION_WRITE_DISABLED", response(send("POST", "$journal/batch", batch(3, 1, next), login,
+                targetPort = target, capability = "3", capture = "reserve-off-fresh"), 409)["code"].asText())
+            val command = undo(replacement, 1)
+            val undone = response(send("POST", "$journal/undo", command, login, targetPort = target, capability = "3",
+                capture = "reserve-off-undo"), 200)
+            assertEquals("APPLIED", undone["outcome"].asText())
+            assertEquals(undone, response(send("GET", "$journal/undo/${command["commandId"]}", session = login,
+                targetPort = target, capture = "reserve-off-outcome"), 200))
+            val restored = response(send("GET", fixture.path, targetPort = target, capture = "reserve-off-restored"), 200)["points"].single()
+            assertEquals(initial["effectiveTeams"], restored["effectiveTeams"])
+            assertTrue(restored["substitutionSlots"].isEmpty)
+            response(send("GET", journal, targetPort = target, capability = "2", capture = "reserve-off-restored-web2"), 200)
+
+            val goal = eventBody(UUID.randomUUID(), "GOAL", outgoing, receiver).at(9)
+            response(send("POST", "$journal/batch", batch(3, 2, goal), login, targetPort = target, capability = "3"), 201)
+            val path = "${fixture.path}/${initial["pointId"].asText()}/slots/$slot"
+            assertConflict(send("PATCH", path, identification(candidate, 1, goal.getValue("eventId")), login,
+                targetPort = target, capability = "3", capture = "reserve-undone-identification-rejected"))
+        }
+    }
+
     protected fun verifyFreshProcessSubstitution() {
         val fixture = fixture()
         val journal = "${fixture.matchPath}/events".replace("/v1/", "/v2/")
@@ -1545,6 +1802,9 @@ class PointLineupHttpTest {
 @ActiveProfiles("postgres-list", inheritProfiles = false)
 @EnabledIfEnvironmentVariable(named = "TEST_POSTGRES_URL", matches = ".+")
 class PointLineupPostgresTest : PointLineupHttpTest() {
+    @Test
+    fun `fresh reserve-off successor reads replays and undoes an incoming reserve`() = verifyFreshProcessIncomingReserve()
+
     @Test
     fun `default-off successor preserves substitutions and permits replay and ordered undo`() = verifyFreshProcessSubstitution()
 

@@ -15,7 +15,10 @@ internal val PointLineupEntry.actorId: UUID
 internal fun List<StoredEvent>.substitutions(): List<TwoPlayerEvent> =
     mapNotNull { if (it.event.type == EventType.PLAYER_SUBSTITUTION) it.event as TwoPlayerEvent else null }
 
-internal fun List<PointLineupTeam>.afterSubstitution(event: TwoPlayerEvent): List<PointLineupTeam> =
+internal fun List<PointLineupTeam>.afterSubstitution(
+    event: TwoPlayerEvent,
+    incoming: PointLineupEntry = PointLineupPlayer(event.toParticipant),
+): List<PointLineupTeam> =
     map { team -> team.copy(entries = team.entries.map {
-        if (it.actorId == event.fromParticipant) PointLineupPlayer(event.toParticipant) else it
+        if (it.actorId == event.fromParticipant) incoming else it
     }) }

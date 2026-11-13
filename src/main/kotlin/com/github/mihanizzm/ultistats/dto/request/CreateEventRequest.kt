@@ -1,6 +1,10 @@
 package com.github.mihanizzm.ultistats.dto.request
 
+import com.fasterxml.jackson.annotation.JsonAnySetter
+import com.fasterxml.jackson.annotation.JsonSetter
+import com.fasterxml.jackson.annotation.Nulls
 import com.fasterxml.jackson.annotation.JsonSubTypes
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.github.mihanizzm.ultistats.model.events.EventType
 import io.swagger.v3.oas.annotations.media.DiscriminatorMapping
@@ -73,6 +77,11 @@ sealed interface CreateEventRequest {
         example = "2026-07-28T12:30:00Z",
     )
     val occurredAt: Instant
+
+    @JsonAnySetter
+    fun handleUnknownProperty(name: String, value: JsonNode) {
+        require(name != "createIncomingReserve") { "createIncomingReserve is only valid on PLAYER_SUBSTITUTION" }
+    }
 }
 
 @Schema(description = "Событие с одним участником матча: INCOMPLETE_PASS, PULL, BRICK, PICKUP или POSSESSION_SET.")
@@ -102,7 +111,17 @@ data class TwoPlayerEventRequest(
     )
     val toParticipantId: UUID,
     override val eventId: UUID? = null,
-) : CreateEventRequest
+    @param:JsonSetter(nulls = Nulls.FAIL)
+    @get:Schema(hidden = true)
+    val createIncomingReserve: JsonNode? = null,
+) : CreateEventRequest {
+    init {
+        require(createIncomingReserve == null ||
+            (type == EventType.PLAYER_SUBSTITUTION && createIncomingReserve.isBoolean && createIncomingReserve.booleanValue())) {
+            "createIncomingReserve must be literal true on PLAYER_SUBSTITUTION"
+        }
+    }
+}
 
 @Schema(description = "Командное событие: TIMEOUT_START или TIMEOUT_END.")
 data class TeamEventRequest(

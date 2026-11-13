@@ -2,7 +2,7 @@ DROP TABLE IF EXISTS match_announcements;
 DROP TABLE IF EXISTS undo_command_receipts;
 DROP TABLE IF EXISTS obs_scoreboard_profiles;
 DROP TABLE IF EXISTS event_batch_receipts;
-DROP TABLE IF EXISTS events;
+DROP TABLE IF EXISTS events CASCADE;
 DROP TABLE IF EXISTS match_point_lineup_entries;
 DROP TABLE IF EXISTS match_point_lineups;
 DROP TABLE IF EXISTS match_participants;
@@ -205,3 +205,11 @@ ALTER TABLE events ADD CONSTRAINT chk_events_actor_source CHECK (
     (from_participant_id IS NULL OR from_slot_id IS NULL)
     AND (to_participant_id IS NULL OR to_slot_id IS NULL)
 );
+
+
+ALTER TABLE events ADD CONSTRAINT uq_events_match_id_id_to_slot UNIQUE (match_id, id, to_slot_id);
+ALTER TABLE match_point_lineup_entries ADD COLUMN introduced_by_event_id UUID;
+ALTER TABLE match_point_lineup_entries ADD CONSTRAINT uq_lineup_entries_introduction UNIQUE (match_id, introduced_by_event_id);
+ALTER TABLE match_point_lineup_entries ADD CONSTRAINT fk_lineup_entries_introduction FOREIGN KEY (match_id, introduced_by_event_id, slot_id)
+    REFERENCES events(match_id, id, to_slot_id);
+ALTER TABLE match_point_lineup_entries ADD CONSTRAINT chk_lineup_entries_introduction_slot CHECK (introduced_by_event_id IS NULL OR slot_id IS NOT NULL);

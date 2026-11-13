@@ -10,6 +10,7 @@ import com.github.mihanizzm.ultistats.repository.jpa.SpringDataUndoCommandReceip
 import com.github.mihanizzm.ultistats.service.result.UndoCommandResult
 import com.github.mihanizzm.ultistats.dto.request.CreateEventBatchRequest
 import com.github.mihanizzm.ultistats.dto.request.CreateEventRequest
+import com.github.mihanizzm.ultistats.dto.request.TwoPlayerEventRequest
 import com.github.mihanizzm.ultistats.dto.response.EventLogResponse
 import com.github.mihanizzm.ultistats.dto.response.EventResponse
 import com.github.mihanizzm.ultistats.factory.EventFactory
@@ -26,6 +27,7 @@ import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.model.events.StoredEvent
 import com.github.mihanizzm.ultistats.realtime.MatchRealtimePublisher
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataEventRepository
+import com.github.mihanizzm.ultistats.repository.jpa.IntroducedPointSlot
 import com.github.mihanizzm.ultistats.service.result.EventCommandResult
 import com.github.mihanizzm.ultistats.validation.match.MatchLifecycleDecision
 import com.github.mihanizzm.ultistats.validation.match.MatchLifecyclePolicy
@@ -111,7 +113,7 @@ class EventServiceImpl(
     override fun snapshot(matchId: UUID, client: PointLineupClient): EventLogResponse? {
         val match = matchService.getForUpdate(matchId) ?: return null
         val active = activeEvents(matchId)
-        pointLineups.requireReadClient(active, client)
+        pointLineups.requireReadClient(matchId, active, client)
         return logResponse(match, active.map { it.toStored() })
     }
 
@@ -144,15 +146,25 @@ class EventServiceImpl(
             }
         }
         val substitutionIndex = request.events.indexOfFirst { it?.type == EventType.PLAYER_SUBSTITUTION }
-        if (substitutionIndex >= 0 && client != PointLineupClient.SUBSTITUTIONS) {
+        if (substitutionIndex >= 0 && !client.supportsSubstitutions) {
             throw pointLineups.substitutionClientRequired().forBatch(
                 lastSequence, match.eventLogRevision, request.events[substitutionIndex]?.eventId, substitutionIndex,
             )
         }
-        val actorTeams = eventFactory.actorTeams(matchId)
+        val actorTeams = eventFactory.actorTeams(matchId).toMutableMap()
         val pending = request.events.filterNotNull().mapIndexed { index, requestEvent ->
+            val id = requireNotNull(requestEvent.eventId)
+            val createsReserve = requestEvent is TwoPlayerEventRequest && requestEvent.createIncomingReserve != null
+            if (requestEvent is TwoPlayerEventRequest && createsReserve) {
+                if (client != PointLineupClient.INCOMING_RESERVES) {
+                    throw pointLineups.incomingReserveClientRequired().forBatch(lastSequence, match.eventLogRevision, id, index)
+                }
+                // Permit typed parsing of the incoming actor and subsequent requests. The
+                // locked append validates the outgoing actor, point, and UUID before persisting.
+                actorTeams[requestEvent.fromParticipantId]?.let { actorTeams.putIfAbsent(requestEvent.toParticipantId, it) }
+            }
             when (val created = eventFactory.createValidatedFromRequest(requestEvent, matchId, actorTeams)) {
-                is EventCreationResult.Success -> PendingEvent(requireNotNull(requestEvent.eventId), created.event)
+                is EventCreationResult.Success -> PendingEvent(id, created.event, createsReserve)
                 is EventCreationResult.Invalid -> return reject(
                     MatchProblem(MatchProblemCode.INVALID_REQUEST, "Invalid event request", created.detail), index, true,
                 )
@@ -162,11 +174,11 @@ class EventServiceImpl(
         pending.forEachIndexed { index, event ->
             val stored = existing[index]
             if (stored != null && (stored.matchId != matchId || stored.deletedAt != null ||
-                    stored.creationFingerprint == null || stored.creationFingerprint != event.event.creationFingerprint())) {
+                    stored.creationFingerprint == null || stored.creationFingerprint != event.fingerprint())) {
                 return reject(idempotencyConflict(event.id), index)
             }
         }
-        val fingerprint = sha256(pending.joinToString("|") { "${it.id}:${it.event.creationFingerprint()}" })
+        val fingerprint = sha256(pending.joinToString("|") { "${it.id}:${it.fingerprint()}" })
         if (existing.any { it != null }) {
             val receipt = receiptRepository.findByMatchIdAndBaseSequenceNumberAndBaseLogRevision(
                 matchId, request.expectedLastSequenceNumber, request.expectedLogRevision,
@@ -204,7 +216,7 @@ class EventServiceImpl(
         }
     }
 
-    private data class PendingEvent(val id: UUID, val event: Event)
+    private data class PendingEvent(val id: UUID, val event: Event, val createsReserve: Boolean = false)
     private sealed interface AppendResult {
         data class Applied(val events: List<StoredEvent>) : AppendResult
         data class Rejected(val result: EventCommandResult, val index: Int) : AppendResult
@@ -219,9 +231,11 @@ class EventServiceImpl(
         val prefix = active.map { it.toStored() }.toMutableList()
         val last = lastSequence(match.id)
         require(last.toLong() + pending.size <= Int.MAX_VALUE) { "Event sequence capacity exceeded" }
+        val incomingSlots = mutableListOf<IntroducedPointSlot>()
         pending.forEachIndexed { index, command ->
             val isSubstitution = command.event.type == EventType.PLAYER_SUBSTITUTION
-            if (isSubstitution && !pointLineups.substitutionsWriteEnabled) {
+            if ((isSubstitution && !pointLineups.substitutionsWriteEnabled) ||
+                (command.createsReserve && !pointLineups.incomingReservesWriteEnabled)) {
                 return AppendResult.LineupRejected(PointLineupRejectedException(
                     PointLineupProblemCode.POINT_SUBSTITUTION_WRITE_DISABLED, "Point substitution writes are disabled",
                 ), index)
@@ -238,7 +252,9 @@ class EventServiceImpl(
                     if (sequenceError != null) substitutionConflict(sequenceError.problem.detail)
                     if (lineup == null) substitutionConflict("Confirm the active point before substituting")
                 }
-                lineup?.validateWrite(match, prefix, command.event, append = true)
+                lineup?.validateWrite(match, prefix, command.event, append = true,
+                    introductionId = command.id.takeIf { command.createsReserve },
+                )?.let(incomingSlots::add)
             } catch (problem: PointLineupRejectedException) {
                 return AppendResult.LineupRejected(problem, index)
             }
@@ -247,12 +263,13 @@ class EventServiceImpl(
         }
         val entities = pending.mapIndexed { index, command ->
             EventEntity.fromDomain(
-                command.id, match.id, last + index + 1, command.event, command.event.creationFingerprint(),
+                command.id, match.id, last + index + 1, command.event, command.fingerprint(),
                 lineup?.slotIds.orEmpty(),
             )
         }
         // Sequence numbers and validation follow request order. Acquire global UUID
         // uniqueness in one order across matches to avoid opposite-key deadlock cycles.
+        pointLineups.insertIncomingSlots(match.id, incomingSlots)
         entities.sortedBy { it.id }.forEach { entity ->
             try {
                 eventRepository.insert(entity)
@@ -260,6 +277,7 @@ class EventServiceImpl(
                 throw EventIdempotencyConflictException(entity.id, exception)
             }
         }
+        pointLineups.bindIntroductions(match.id, incomingSlots)
         match.eventLogRevision++
         matchService.recalculateScore(match.id)
         realtimePublisher.eventLogChanged(match.id, MatchRealtimeOperation.CREATED, entities.last().id)
@@ -276,10 +294,9 @@ class EventServiceImpl(
     @ReadTransaction(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     override fun get(eventId: UUID, matchId: UUID, client: PointLineupClient): StoredEvent? {
         matchService.getOrThrow(matchId)
-        pointLineups.requireSubstitutionReadClient(matchId, client)
-        val entity = eventRepository.findByIdAndMatchIdAndDeletedAtIsNull(eventId, matchId) ?: return null
-        pointLineups.requireReadClient(listOf(entity), client)
-        return entity.toStored()
+        val entity = eventRepository.findByIdAndMatchIdAndDeletedAtIsNull(eventId, matchId)
+        pointLineups.requireReadClient(matchId, listOfNotNull(entity), client)
+        return entity?.toStored()
     }
 
     @Transactional
@@ -303,6 +320,7 @@ class EventServiceImpl(
         lineup?.validateWrite(match, active.takeWhile { it.id != eventId }, event, append = false)
         val proposed = active.map { if (it.id == eventId) it.copy(event = event) else it }
         lineup?.validateSubstitutionEdit(match, active, proposed)
+        lineup?.validateRemainingSlots(match, proposed)
         validateSequence(proposed.map { it.event }, requirePointEnded = match.status == MatchStatus.FINISHED)?.let { return it }
 
         val updated = EventEntity.fromDomain(
@@ -427,10 +445,11 @@ class EventServiceImpl(
         return EventCommandResult.Deleted
     }
 
+    @ReadTransaction(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     override fun getAllEventsOfMatch(matchId: UUID, client: PointLineupClient): List<StoredEvent> {
         matchService.getOrThrow(matchId)
         val active = activeEvents(matchId)
-        pointLineups.requireReadClient(active, client)
+        pointLineups.requireReadClient(matchId, active, client)
         return active.map { it.toStored() }
     }
 
@@ -477,6 +496,11 @@ class EventServiceImpl(
         title = "Event idempotency conflict",
         detail = "Event $eventId already exists with a different payload",
     )
+
+    private fun PendingEvent.fingerprint(): String {
+        val original = event.creationFingerprint()
+        return if (createsReserve) sha256("$original|createIncomingReserve=true") else original
+    }
 
     private fun Event.creationFingerprint(): String {
         val canonicalPayload = when (this) {

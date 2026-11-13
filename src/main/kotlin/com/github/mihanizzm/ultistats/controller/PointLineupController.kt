@@ -29,7 +29,7 @@ import java.util.UUID
 class PointLineupController(private val lineups: PointLineupService) {
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Read canonical points and their confirmed lineups",
-        description = "Public capability discovery. Returns the current journal revision and independent availability of new confirmations and substitutions. effectiveTeams includes all accepted substitutions. Point IDs survive PULL and change when an opening scoring boundary is replaced.")
+        description = "Public capability discovery. Returns the current journal revision and availability of confirmations, known substitutions and incoming reserve creation. effectiveTeams reflects the original lineup after substitutions. substitutionSlots supplies metadata for active introductions even after the actor has left. Point IDs survive PULL and change when an opening scoring boundary is replaced.")
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Canonical point lineup snapshot", content = [Content(
             mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = PointLineupsResponse::class),
@@ -71,7 +71,7 @@ class PointLineupController(private val lineups: PointLineupService) {
     @PatchMapping("/{pointId}/slots/{slotId}", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Identify a temporary slot on a completed point or undo its identification",
         description = "Requires SPORTS_WRITE, CSRF and enabled point lineup writes. Supply the current lineup revision " +
-            "and closing event ID. Explicit null clears the binding. A same-value request at the current revision is a no-op.")
+            "and closing event ID. Introduced reserves remain identifiable after they leave the field if their introduction is active. Explicit null clears the binding. A same-value request at the current revision is a no-op.")
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Canonical completed point", content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
             schema = Schema(implementation = PointLineupResponse::class))]),

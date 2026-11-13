@@ -5,6 +5,7 @@ import com.github.mihanizzm.ultistats.model.PointLineupEntry
 import com.github.mihanizzm.ultistats.model.PointLineupPlayer
 import com.github.mihanizzm.ultistats.model.PointLineupTeam
 import com.github.mihanizzm.ultistats.model.PointLineupTemporary
+import com.github.mihanizzm.ultistats.model.PointSubstitutionSlot
 import com.github.mihanizzm.ultistats.model.events.PointBoundary
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
@@ -18,8 +19,10 @@ class PointLineupRepository(private val jdbc: JdbcTemplate) {
     ) == true
 
     fun slots(matchId: UUID): Map<UUID, PointLineupSlotActor> = jdbc.query(
-        """SELECT slot_id, point_id, team_id, resolved_participant_id FROM match_point_lineup_entries
-            WHERE match_id = ? AND slot_id IS NOT NULL""",
+        """SELECT e.slot_id, e.point_id, e.team_id, e.resolved_participant_id
+            FROM match_point_lineup_entries e
+            LEFT JOIN events intro ON intro.match_id = e.match_id AND intro.id = e.introduced_by_event_id
+            WHERE e.match_id = ? AND e.slot_id IS NOT NULL AND intro.deleted_at IS NULL""",
         { row, _ ->
             requireNotNull(row.uuid("slot_id")) to PointLineupSlotActor(
                 requireNotNull(row.uuid("point_id")), requireNotNull(row.uuid("team_id")), row.uuid("resolved_participant_id"),
@@ -33,6 +36,7 @@ class PointLineupRepository(private val jdbc: JdbcTemplate) {
         SELECT l.point_id, l.revision, e.team_id, e.participant_id, e.slot_id, e.slot_number, e.resolved_participant_id
         FROM match_point_lineups l
         LEFT JOIN match_point_lineup_entries e ON l.match_id = e.match_id AND l.point_id = e.point_id
+            AND e.introduced_by_event_id IS NULL
         WHERE l.match_id = ?
         ORDER BY l.point_id, e.team_id, e.position
         """.trimIndent(),
@@ -49,6 +53,46 @@ class PointLineupRepository(private val jdbc: JdbcTemplate) {
         PointLineup(rows.first().revision, teamIds.map { teamId ->
             PointLineupTeam(teamId, byTeam[teamId].orEmpty().mapNotNull { it.entry })
         })
+    }
+
+    fun introducedSlots(matchId: UUID): List<IntroducedPointSlot> = jdbc.query(
+        """SELECT point_id, team_id, slot_id, slot_number, resolved_participant_id, introduced_by_event_id
+            FROM match_point_lineup_entries WHERE match_id = ? AND introduced_by_event_id IS NOT NULL
+            ORDER BY point_id, team_id, slot_number""",
+        { row, _ ->
+            IntroducedPointSlot(requireNotNull(row.uuid("point_id")), PointSubstitutionSlot(
+                requireNotNull(row.uuid("team_id")), requireNotNull(row.uuid("slot_id")),
+                row.getInt("slot_number"), row.uuid("resolved_participant_id"), requireNotNull(row.uuid("introduced_by_event_id")),
+            ))
+        },
+        matchId,
+    )
+
+    fun hasActiveIntroducedSlots(matchId: UUID): Boolean = jdbc.queryForObject(
+        """SELECT EXISTS (
+            SELECT 1 FROM match_point_lineup_entries e
+            JOIN events intro ON intro.match_id = e.match_id AND intro.id = e.introduced_by_event_id
+            WHERE e.match_id = ? AND intro.deleted_at IS NULL
+        )""",
+        Boolean::class.java, matchId,
+    ) == true
+
+    /** Insert the actor before its event; the caller binds the introduction after persisting events. */
+    fun insertIncomingSlot(matchId: UUID, incoming: IntroducedPointSlot) {
+        val slot = incoming.slot
+        jdbc.update(
+            """INSERT INTO match_point_lineup_entries (match_id, point_id, team_id, position, slot_id, slot_number)
+                SELECT ?, ?, ?, COALESCE(MAX(position) + 1, 0), ?, ?
+                FROM match_point_lineup_entries WHERE match_id = ? AND point_id = ? AND team_id = ?""",
+            matchId, incoming.pointId, slot.teamId, slot.slotId, slot.number, matchId, incoming.pointId, slot.teamId,
+        )
+    }
+
+    fun bindIntroduction(matchId: UUID, incoming: IntroducedPointSlot) {
+        check(jdbc.update(
+            "UPDATE match_point_lineup_entries SET introduced_by_event_id = ? WHERE match_id = ? AND slot_id = ?",
+            incoming.slot.introducedByEventId, matchId, incoming.slot.slotId,
+        ) == 1)
     }
 
     /** The caller holds the match lock and supplies the canonical opening boundary. */
@@ -94,3 +138,5 @@ class PointLineupRepository(private val jdbc: JdbcTemplate) {
 }
 
 data class PointLineupSlotActor(val pointId: UUID, val teamId: UUID, val resolvedParticipantId: UUID?)
+
+data class IntroducedPointSlot(val pointId: UUID, val slot: PointSubstitutionSlot)

@@ -33,3 +33,16 @@ data class PointLineupTemporary(
     @get:Schema(allowableValues = ["TEMPORARY"], requiredMode = Schema.RequiredMode.REQUIRED)
     val kind: String get() = "TEMPORARY"
 }
+
+data class PointSubstitutionSlot(
+    val teamId: UUID,
+    val slotId: UUID,
+    @field:Schema(minimum = "1")
+    val number: Int,
+    @get:JsonInclude(JsonInclude.Include.ALWAYS)
+    @field:Schema(types = ["string", "null"], format = "uuid", requiredMode = Schema.RequiredMode.REQUIRED)
+    val resolvedParticipantId: UUID?,
+    val introducedByEventId: UUID,
+) {
+    internal fun asTemporary() = PointLineupTemporary(slotId, number, resolvedParticipantId)
+}

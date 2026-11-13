@@ -1,6 +1,7 @@
 package com.github.mihanizzm.ultistats.config
 
 import io.swagger.v3.oas.models.media.ArraySchema
+import io.swagger.v3.oas.models.media.BooleanSchema
 import io.swagger.v3.oas.models.media.ComposedSchema
 import io.swagger.v3.oas.models.media.DateTimeSchema
 import io.swagger.v3.oas.models.media.Discriminator
@@ -27,9 +28,13 @@ class EventBatchOpenApiConfig {
                 "eventId" to UUIDSchema().description("Stable client-generated event UUID for exact batch replay."),
                 "occurredAt" to DateTimeSchema().description("Occurrence time in ISO-8601 UTC, no earlier than the previous event."),
                 "fromParticipantId" to UUIDSchema().description("Outgoing on-field roster participant or temporary slot UUID."),
-                "toParticipantId" to UUIDSchema().description("Incoming off-field PLAYER participant UUID from the same match team."),
+                "toParticipantId" to UUIDSchema().description("Incoming off-field PLAYER participant UUID, or a fresh match-scoped slot UUID with createIncomingReserve true."),
+                "createIncomingReserve" to BooleanSchema().apply {
+                    addEnumItem(true)
+                    description = "Capability 3 only. When present, atomically introduces the incoming slot in the outgoing actor's team."
+                },
             )
-            required = properties.keys.toList()
+            required = properties.keys.filterNot { it == "createIncomingReserve" }
         })
         api.components.addSchemas("BatchEventRequest", ComposedSchema().apply {
             oneOf = create.oneOf + Schema<Any>().`$ref`(substitution)
@@ -42,7 +47,7 @@ class EventBatchOpenApiConfig {
                 example = create.properties.getValue("eventId").example
             })
             required = listOf("eventId")
-            description = "Event payloads with a mandatory stable client eventId. PLAYER_SUBSTITUTION requires capability 2 and is batch-only."
+            description = "Event payloads with a mandatory stable client eventId. PLAYER_SUBSTITUTION is batch-only and requires capability 2 or 3. Incoming reserve creation requires capability 3."
         })
         api.components.schemas["CreateEventBatchRequest"]?.properties?.set("events", ArraySchema().apply {
             minItems = 1

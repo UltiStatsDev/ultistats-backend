@@ -146,7 +146,7 @@
             const renderChanges = renderChangesRequested;
             syncRequested = false;
             renderChangesRequested = false;
-            const response = await fetch(`/api/v1/matches/${encodeURIComponent(matchId)}/events`, { cache: "no-store", headers: { "X-UltiStats-Point-Lineups": "2" } });
+            const response = await fetch(`/api/v1/matches/${encodeURIComponent(matchId)}/events`, { cache: "no-store", headers: { "X-UltiStats-Point-Lineups": "3" } });
             if (!response.ok) throw new Error(`events request failed: ${response.status}`);
             const events = await response.json();
             const current = byId(events);
