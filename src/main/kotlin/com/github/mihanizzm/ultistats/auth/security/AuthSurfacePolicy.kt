@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletRequest
 
 sealed interface AuthRequirement {
     data object PublicRead : AuthRequirement
+    data object ObsSourceBearer : AuthRequirement
     data object Core : AuthRequirement
     data object Deny : AuthRequirement
     data class Permission(val permission: AuthPermission) : AuthRequirement

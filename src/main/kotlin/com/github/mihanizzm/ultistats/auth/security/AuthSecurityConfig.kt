@@ -78,7 +78,7 @@ private class AuthBoundaryFilter(private val runtime:AuthSecurityRuntime,private
                 val requirement=requirement(intended)
                 if(runtime.classifier.classify(request)==AuthEntryMode.ANONYMOUS && requirement!=AuthRequirement.PublicRead)
                     throw AuthProblem(403,"PUBLIC_TRANSPORT_READ_ONLY")
-                if(requirement==AuthRequirement.Deny) throw AuthProblem(403,"AUTH_PERMISSION_DENIED")
+                if(requirement==AuthRequirement.ObsSourceBearer || requirement==AuthRequirement.Deny) throw AuthProblem(403,"AUTH_PERMISSION_DENIED")
                 checkOrigin(request)
                 // Credential-free preflight is completed by configured CorsFilter, never a controller.
                 chain.doFilter(request,response)
@@ -88,7 +88,9 @@ private class AuthBoundaryFilter(private val runtime:AuthSecurityRuntime,private
             request.setAttribute(AuthRequirement::class.java.name,requirement)
             if(requirement==AuthRequirement.PublicRead) { chain.doFilter(request,response);return }
             response.setHeader("Cache-Control","no-store")
-            if(runtime.classifier.classify(request)==AuthEntryMode.ANONYMOUS) throw AuthProblem(403,"PUBLIC_TRANSPORT_READ_ONLY")
+            val mode = runtime.classifier.classify(request)
+            if(mode==AuthEntryMode.ANONYMOUS || (requirement==AuthRequirement.ObsSourceBearer && mode!=AuthEntryMode.SECURE))
+                throw AuthProblem(403,"PUBLIC_TRANSPORT_READ_ONLY")
             if(requirement==AuthRequirement.Deny) throw AuthProblem(403,"AUTH_PERMISSION_DENIED")
             checkOrigin(request)
             when(requirement) {

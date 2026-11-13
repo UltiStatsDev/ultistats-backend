@@ -121,7 +121,7 @@
       "policy": "PUBLIC",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/EventBatchController.kt",
-      "line": 29
+      "line": 38
     },
     {
       "method": "POST",
@@ -129,7 +129,7 @@
       "policy": "SPORTS_WRITE",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/EventBatchController.kt",
-      "line": 39
+      "line": 60
     },
     {
       "method": "GET",
@@ -137,7 +137,7 @@
       "policy": "PUBLIC",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/EventController.kt",
-      "line": 34
+      "line": 35
     },
     {
       "method": "GET",
@@ -145,7 +145,7 @@
       "policy": "PUBLIC",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/EventController.kt",
-      "line": 42
+      "line": 43
     },
     {
       "method": "POST",
@@ -153,7 +153,7 @@
       "policy": "SPORTS_WRITE",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/EventController.kt",
-      "line": 52
+      "line": 54
     },
     {
       "method": "PATCH",
@@ -161,7 +161,7 @@
       "policy": "SPORTS_WRITE",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/EventController.kt",
-      "line": 223
+      "line": 244
     },
     {
       "method": "POST",
@@ -169,7 +169,7 @@
       "policy": "SPORTS_WRITE",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/EventController.kt",
-      "line": 317
+      "line": 339
     },
     {
       "method": "DELETE",
@@ -177,7 +177,39 @@
       "policy": "SPORTS_WRITE",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/EventController.kt",
-      "line": 367
+      "line": 389
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/matches/{matchId}/announcements",
+      "policy": "PUBLIC",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchAnnouncementController.kt",
+      "line": 44
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/matches/{matchId}/announcements",
+      "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchAnnouncementController.kt",
+      "line": 67
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/matches/{matchId}/announcements/{id}/end",
+      "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchAnnouncementController.kt",
+      "line": 95
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/matches/{matchId}/announcements/{id}/team",
+      "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchAnnouncementController.kt",
+      "line": 119
     },
     {
       "method": "GET",
@@ -245,62 +277,6 @@
     },
     {
       "method": "GET",
-      "path": "/api/v1/matches/{matchId}/point-lineups",
-      "policy": "PUBLIC",
-      "owner": "enforcement",
-      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PointLineupController.kt",
-      "line": 42
-    },
-    {
-      "method": "PUT",
-      "path": "/api/v1/matches/{matchId}/point-lineups/{pointId}",
-      "policy": "SPORTS_WRITE",
-      "owner": "enforcement",
-      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PointLineupController.kt",
-      "line": 65
-    },
-    {
-      "method": "PATCH",
-      "path": "/api/v1/matches/{matchId}/point-lineups/{pointId}/slots/{slotId}",
-      "policy": "SPORTS_WRITE",
-      "owner": "enforcement",
-      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PointLineupController.kt",
-      "line": 69
-    },
-    {
-      "method": "GET",
-      "path": "/api/v1/matches/{matchId}/announcements",
-      "policy": "PUBLIC",
-      "owner": "enforcement",
-      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchAnnouncementController.kt",
-      "line": 44
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/matches/{matchId}/announcements",
-      "policy": "SPORTS_WRITE",
-      "owner": "enforcement",
-      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchAnnouncementController.kt",
-      "line": 67
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/matches/{matchId}/announcements/{id}/end",
-      "policy": "SPORTS_WRITE",
-      "owner": "enforcement",
-      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchAnnouncementController.kt",
-      "line": 95
-    },
-    {
-      "method": "PATCH",
-      "path": "/api/v1/matches/{matchId}/announcements/{id}/team",
-      "policy": "SPORTS_WRITE",
-      "owner": "enforcement",
-      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchAnnouncementController.kt",
-      "line": 119
-    },
-    {
-      "method": "GET",
       "path": "/api/v1/matches/{matchId}/events/stream",
       "policy": "PUBLIC",
       "owner": "enforcement",
@@ -321,7 +297,7 @@
       "policy": "TRANSFER",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/MatchTransferController.kt",
-      "line": 53
+      "line": 54
     },
     {
       "method": "GET",
@@ -429,11 +405,35 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/matches/{matchId}/point-lineups",
+      "policy": "PUBLIC",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PointLineupController.kt",
+      "line": 30
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/matches/{matchId}/point-lineups/{pointId}",
+      "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PointLineupController.kt",
+      "line": 43
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/matches/{matchId}/point-lineups/{pointId}/slots/{slotId}",
+      "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PointLineupController.kt",
+      "line": 71
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/matches/{matchId}/statistics",
       "policy": "FINISHED_OR_STATISTICS_READ_ALL",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/StatisticsController.kt",
-      "line": 34
+      "line": 38
     },
     {
       "method": "GET",
@@ -441,7 +441,7 @@
       "policy": "FINISHED_OR_STATISTICS_READ_ALL",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/StatisticsController.kt",
-      "line": 66
+      "line": 75
     },
     {
       "method": "GET",
@@ -605,6 +605,14 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/obs/sources/scoreboard/{matchId}",
+      "policy": "OBS_SOURCE_BEARER",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsExactScoreboardController.kt",
+      "line": 22
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/obs/stream",
       "policy": "PUBLIC",
       "owner": "enforcement",
@@ -626,6 +634,30 @@
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsScoreboardController.kt",
       "line": 24
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/obs/source-keys",
+      "policy": "OBS_ADMIN",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsSourceKeyController.kt",
+      "line": 26
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/obs/source-keys",
+      "policy": "OBS_ADMIN",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsSourceKeyController.kt",
+      "line": 30
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/obs/source-keys/{keyId}",
+      "policy": "OBS_ADMIN",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsSourceKeyController.kt",
+      "line": 40
     }
   ],
   "static": [
