@@ -641,7 +641,16 @@
       "policy": "OBS_ADMIN",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsSourceKeyController.kt",
-      "line": 26
+      "line": 29
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/obs/source-keys/current/{matchId}",
+      "policy": "OBS_ADMIN",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsSourceKeyController.kt",
+      "line": 33,
+      "secureOnly": true
     },
     {
       "method": "POST",
@@ -649,7 +658,8 @@
       "policy": "OBS_ADMIN",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsSourceKeyController.kt",
-      "line": 30
+      "line": 52,
+      "secureOnly": true
     },
     {
       "method": "DELETE",
@@ -657,7 +667,7 @@
       "policy": "OBS_ADMIN",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsSourceKeyController.kt",
-      "line": 40
+      "line": 77
     }
   ],
   "static": [

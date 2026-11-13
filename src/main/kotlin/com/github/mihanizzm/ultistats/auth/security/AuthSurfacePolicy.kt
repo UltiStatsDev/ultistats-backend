@@ -8,6 +8,6 @@ sealed interface AuthRequirement {
     data object ObsSourceBearer : AuthRequirement
     data object Core : AuthRequirement
     data object Deny : AuthRequirement
-    data class Permission(val permission: AuthPermission) : AuthRequirement
+    data class Permission(val permission: AuthPermission, val secureOnly: Boolean = false) : AuthRequirement
 }
 interface AuthSurfacePolicy { fun requirement(request: HttpServletRequest): AuthRequirement }

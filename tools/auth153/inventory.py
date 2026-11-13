@@ -29,7 +29,7 @@ def inventory():
                 permission = 'API_DOCS'
             elif path == '/api/v1/obs/sources/scoreboard/{matchId}':
                 permission = 'OBS_SOURCE_BEARER'
-            elif path == '/api/v1/obs/source-keys' or path == '/api/v1/obs/source-keys/{keyId}':
+            elif path == '/api/v1/obs/source-keys' or path.startswith('/api/v1/obs/source-keys/'):
                 permission = 'OBS_ADMIN'
             elif method != 'GET':
                 permission = ('TRANSFER' if path in ['/api/v1/matches/export', '/api/v1/matches/import']
@@ -40,9 +40,13 @@ def inventory():
                 permission = 'SPORTS_WRITE'
             else:
                 permission = 'PUBLIC'
-            routes.append(dict(method=method, path=path, policy=permission, owner=owner,
-                               source=str(source.relative_to(ROOT)),
-                               line=text.count('\n', 0, mapping.start()) + 1))
+            route = dict(method=method, path=path, policy=permission, owner=owner,
+                         source=str(source.relative_to(ROOT)),
+                         line=text.count('\n', 0, mapping.start()) + 1)
+            if (method, path) in {('GET', '/api/v1/obs/source-keys/current/{matchId}'),
+                                  ('POST', '/api/v1/obs/source-keys')}:
+                route['secureOnly'] = True
+            routes.append(route)
     static = []
     for source in sorted((ROOT / 'src/main/resources/static').rglob('*')):
         if source.is_file():

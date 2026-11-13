@@ -29,7 +29,12 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request
+import java.nio.file.Files
+import java.security.MessageDigest
 import java.time.Instant
+import java.util.HexFormat
+import org.springframework.test.context.DynamicPropertyRegistry
+import org.springframework.test.context.DynamicPropertySource
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -39,6 +44,20 @@ import kotlin.test.assertTrue
 @AutoConfigureMockMvc(print = MockMvcPrint.NONE)
 @Import(ObsSourceKeysIntegrationTest.Config::class)
 class ObsSourceKeysIntegrationTest {
+    companion object {
+        private val fixtureKey = ByteArray(32) { (it + 1).toByte() }
+        private val fixtureFile = Files.createTempFile("obs-rotation-test", ".bin").apply {
+            toFile().deleteOnExit()
+            Files.write(this, fixtureKey)
+        }
+
+        @JvmStatic
+        @DynamicPropertySource
+        fun properties(registry: DynamicPropertyRegistry) {
+            registry.add("app.obs.source-key-file") { fixtureFile.toString() }
+        }
+    }
+
     @TestConfiguration
     class Config {
         @Bean @Primary
@@ -53,7 +72,6 @@ class ObsSourceKeysIntegrationTest {
     @Autowired private lateinit var jdbc: JdbcTemplate
     @Autowired private lateinit var auth: AuthService
     @Autowired private lateinit var dataSource: DataSource
-    @Autowired private lateinit var sourceKeys: ObsSourceKeyService
     @Autowired private lateinit var events: SpringDataEventRepository
     @Autowired private lateinit var announcements: MatchAnnouncementRepository
 
@@ -75,7 +93,12 @@ class ObsSourceKeysIntegrationTest {
             "INSERT INTO match_teams(match_id, team_id, position, score, team_name) VALUES (?, ?, 1, 3, 'Fixture')",
             match, team,
         )
-        val secret = sourceKeys.issue(match).secret
+        val secret = "A".repeat(43)
+        val digest = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(secret.toByteArray()))
+        jdbc.update(
+            "INSERT INTO obs_source_keys(key_id, match_id, scope, secret_digest, created_at) VALUES (?, ?, 'EXACT_SCOREBOARD', ?, CURRENT_TIMESTAMP)",
+            UUID.randomUUID(), match, digest,
+        )
 
         fun snapshot(): JsonNode {
             val response = mvc.perform(request(HttpMethod.GET, source(match)).header("Authorization", "Bearer $secret"))
@@ -136,7 +159,10 @@ class ObsSourceKeysIntegrationTest {
         val csrfCookie = csrf.getCookie("__Host-ULTISTATS_CSRF")!!
         val csrfToken = json.readTree(csrf.contentAsString)["token"].asText()
 
-        fun mutation(method: HttpMethod, path: String, withCsrf: Boolean = true, withIdentity: Boolean = true): MockHttpServletRequestBuilder =
+        fun mutation(
+            method: HttpMethod, path: String, withCsrf: Boolean = true, withIdentity: Boolean = true,
+            operation: UUID = UUID.randomUUID(), matchId: UUID = match,
+        ): MockHttpServletRequestBuilder =
             request(method, path).cookie(staff, csrfCookie).apply {
                 if (withIdentity) {
                     header("X-UltiStats-Installation-Id", installation)
@@ -144,7 +170,7 @@ class ObsSourceKeysIntegrationTest {
                     header("X-UltiStats-Session-Id", login.context.sessionId!!)
                 }
                 if (withCsrf) header("X-CSRF-TOKEN", csrfToken)
-                if (method == HttpMethod.POST) contentType("application/json").content("""{"matchId":"$match"}""")
+                if (method == HttpMethod.POST) contentType("application/json").content("""{"matchId":"$matchId","operationId":"$operation"}""")
             }
         fun expect(builder: MockHttpServletRequestBuilder, status: Int): JsonNode {
             val response = mvc.perform(builder).andReturn().response
@@ -155,15 +181,23 @@ class ObsSourceKeysIntegrationTest {
         }
         expect(mutation(HttpMethod.POST, keys, withIdentity = false), 403)
         expect(mutation(HttpMethod.POST, keys, withCsrf = false), 403)
-        val first = expect(mutation(HttpMethod.POST, keys), 201)
-        val second = expect(mutation(HttpMethod.POST, keys), 201)
-        val token = first["secret"].asText()
-        val secondToken = second["secret"].asText()
-        assertTrue(token.matches(Regex("[A-Za-z0-9_-]{43}")) && token != secondToken)
-        assertEquals("EXACT_SCOREBOARD", first["scope"].asText())
-        val metadata = expect(request(HttpMethod.GET, keys).cookie(staff), 200)
-        assertEquals(2, metadata.size())
-        assertTrue(metadata.all { !it.has("secret") && !it.has("secretDigest") && it["matchId"].asText() == match.toString() })
+        val current = "$keys/current/$match"
+        fun current() = request(HttpMethod.GET, current).cookie(staff)
+        expect(request(HttpMethod.GET, current), 401)
+        expect(current().requestAttr("testConnector", "LOOPBACK"), 403)
+        assertEquals("NO_ACTIVE_LINK", expect(current(), 200)["status"].asText())
+
+        fun rotate(operation: UUID = UUID.randomUUID(), status: Int = 201, matchId: UUID = match) =
+            expect(mutation(HttpMethod.POST, keys, operation = operation, matchId = matchId), status)
+        val firstOperation = UUID.randomUUID()
+        val first = rotate(firstOperation)
+        assertTrue(first == rotate(firstOperation), "Exact retry must recover the original response")
+        assertTrue(first == expect(current().header("Host", "untrusted.example"), 200), "Request Host must not affect the URL")
+        val token = first["url"].asText().substringAfter("#key=")
+        assertTrue(token.matches(Regex("[A-Za-z0-9_-]{43}")))
+        assertTrue(first["url"].asText() == "https://localhost:8443/obs-sources/scoreboard.html?matchId=$match#key=$token")
+        assertEquals("EXACT_SCOREBOARD", first["key"]["scope"].asText())
+        assertEquals("OBS_SOURCE_OPERATION_CONFLICT", rotate(firstOperation, 409, other)["code"].asText())
 
         fun read(secret: String, id: UUID = match) = request(HttpMethod.GET, source(id)).header("Authorization", "Bearer $secret")
         val missing = mvc.perform(request(HttpMethod.GET, source(match)).cookie(staff)).andReturn().response
@@ -171,27 +205,53 @@ class ObsSourceKeysIntegrationTest {
         assertEquals("Bearer", missing.getHeader("WWW-Authenticate"))
         assertEquals("no-store", missing.getHeader("Cache-Control"))
         assertEquals(json.readTree(missing.contentAsString), expect(read("malformed"), 401))
-        assertEquals(json.readTree(missing.contentAsString), expect(read("A".repeat(43)), 401))
-        expect(read(token).header("Authorization", "Bearer $secondToken"), 401)
+        assertEquals(json.readTree(missing.contentAsString), expect(read("B".repeat(43)), 401))
+        expect(read(token).header("Authorization", "Bearer " + "B".repeat(43)), 401)
         expect(read(token, other), 403)
         expect(read(token).requestAttr("testConnector", "ANONYMOUS").header("X-Forwarded-Proto", "https"), 403)
         expect(read(token).requestAttr("testConnector", "LOOPBACK"), 403)
         expect(request(HttpMethod.GET, keys).header("Authorization", "Bearer $token"), 401)
         expect(request(HttpMethod.HEAD, source(match)).header("Authorization", "Bearer $token"), 403)
         assertEquals("PLANNED", expect(read(token), 200)["status"].asText())
-        assertEquals(match.toString(), expect(read(secondToken), 200)["matchId"].asText())
 
-        val revoke = "$keys/${first["keyId"].asText()}"
+        try {
+            Files.write(fixtureFile, ByteArray(32) { 33 })
+            assertEquals("OBS_SOURCE_KEY_MATERIAL_UNAVAILABLE", expect(current(), 503)["code"].asText())
+            rotate(status = 503)
+            Files.delete(fixtureFile)
+            expect(current(), 503)
+            rotate(status = 503)
+            expect(read(token), 200)
+        } finally {
+            Files.write(fixtureFile, fixtureKey)
+        }
+        assertTrue(first == expect(current(), 200), "Restoring the key file must recover the original response")
+        val secondOperation = UUID.randomUUID()
+        val second = rotate(secondOperation)
+        val secondToken = second["url"].asText().substringAfter("#key=")
+        assertTrue(token != secondToken)
+        assertEquals("ACTIVE", second["status"].asText())
+        rotate(firstOperation, 409)
+        val metadata = expect(request(HttpMethod.GET, keys).cookie(staff), 200).filter { it["matchId"].asText() == match.toString() }
+        assertEquals(2, metadata.size)
+        assertTrue(metadata.all {
+            it.fieldNames().asSequence().toSet() - "revokedAt" == setOf("keyId", "matchId", "scope", "createdAt")
+        })
+
+        val revoke = "$keys/${first["key"]["keyId"].asText()}"
         expect(mutation(HttpMethod.DELETE, revoke, withCsrf = false), 403)
-        expect(mutation(HttpMethod.DELETE, revoke), 204)
-        val revokedAt = expect(request(HttpMethod.GET, keys).cookie(staff), 200)
-            .first { it["keyId"] == first["keyId"] }["revokedAt"]
+        val revokedAt = metadata.first { it["keyId"] == first["key"]["keyId"] }["revokedAt"]
         assertTrue(revokedAt.isTextual)
-        expect(mutation(HttpMethod.DELETE, revoke), 204)
+        repeat(2) { expect(mutation(HttpMethod.DELETE, revoke), 204) }
         assertEquals(revokedAt, expect(request(HttpMethod.GET, keys).cookie(staff), 200)
-            .first { it["keyId"] == first["keyId"] }["revokedAt"])
+            .first { it["keyId"] == first["key"]["keyId"] }["revokedAt"])
         assertEquals(json.readTree(missing.contentAsString), expect(read(token), 401))
-        expect(read(secondToken), 200)
+        assertEquals(match.toString(), expect(read(secondToken), 200)["matchId"].asText())
+        val thirdOperation = UUID.randomUUID()
+        val third = rotate(thirdOperation, matchId = other)
+        expect(mutation(HttpMethod.DELETE, "$keys/${third["key"]["keyId"].asText()}"), 204)
+        rotate(thirdOperation, 409, other)
+        assertTrue(second == expect(current(), 200), "Revoking another scope must not change the current link")
         jdbc.update("UPDATE matches SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", match)
         expect(read(secondToken), 404)
         expect(mutation(HttpMethod.POST, keys), 404)

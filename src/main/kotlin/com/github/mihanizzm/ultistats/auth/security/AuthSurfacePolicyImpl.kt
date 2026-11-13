@@ -36,16 +36,16 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
             return if (id != null && matches.get(id)?.let { it.deletedAt == null && it.status == MatchStatus.FINISHED } == true)
                 AuthRequirement.PublicRead else AuthRequirement.Permission(AuthPermission.STATISTICS_READ_ALL)
         }
-        return rule.permission?.let { AuthRequirement.Permission(it) } ?: AuthRequirement.PublicRead
+        return rule.permission?.let { AuthRequirement.Permission(it, rule.secureOnly) } ?: AuthRequirement.PublicRead
     }
 
     private fun canonicalPath(path: String): Boolean = path.startsWith('/') &&
         listOf(';', '%', '\\').none { it in path } && !path.contains("//") &&
         path.split('/').none { it == "." || it == ".." }
 
-    private data class Rule(val method: String, val pattern: Regex, val permission: AuthPermission?, val statistics: Boolean)
-    private fun rule(method: String, path: String, permission: AuthPermission? = null, statistics: Boolean = false) =
-        Rule(method, Regex(path.replace(Regex("\\{[^}]+}"), "[^/]+")), permission, statistics)
+    private data class Rule(val method: String, val pattern: Regex, val permission: AuthPermission?, val statistics: Boolean, val secureOnly: Boolean)
+    private fun rule(method: String, path: String, permission: AuthPermission? = null, statistics: Boolean = false, secureOnly: Boolean = false) =
+        Rule(method, Regex(path.replace(Regex("\\{[^}]+}"), "[^/]+")), permission, statistics, secureOnly)
 
     private val exactScoreboard = Regex("/api/v1/obs/sources/scoreboard/[^/]+")
 
@@ -109,7 +109,8 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
         rule("POST", "/api/v2/matches/{matchId}/events/undo", AuthPermission.SPORTS_WRITE),
         rule("GET", "/api/v2/matches/{matchId}/events/undo/{commandId}", AuthPermission.SPORTS_WRITE),
         rule("GET", "/api/v1/obs/source-keys", AuthPermission.OBS_ADMIN),
-        rule("POST", "/api/v1/obs/source-keys", AuthPermission.OBS_ADMIN),
+        rule("GET", "/api/v1/obs/source-keys/current/{matchId}", AuthPermission.OBS_ADMIN, secureOnly = true),
+        rule("POST", "/api/v1/obs/source-keys", AuthPermission.OBS_ADMIN, secureOnly = true),
         rule("DELETE", "/api/v1/obs/source-keys/{keyId}", AuthPermission.OBS_ADMIN),
         rule("GET", "/api/v1/obs/config"),
         rule("PUT", "/api/v1/obs/config", AuthPermission.OBS_ADMIN),

@@ -43,6 +43,8 @@ server:
     max-swallow-size: 12MB
 
 app:
+  obs:
+    source-key-file: ${APP_OBS_SOURCE_KEY_FILE:}
   storage:
     root: ${APP_STORAGE_ROOT:uploads}
 

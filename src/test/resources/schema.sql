@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS obs_source_key_material;
 DROP TABLE IF EXISTS obs_source_keys;
 DROP TABLE IF EXISTS match_announcements;
 DROP TABLE IF EXISTS undo_command_receipts;
@@ -222,3 +223,15 @@ CREATE TABLE obs_source_keys (
     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
     revoked_at TIMESTAMP WITH TIME ZONE
 );
+ALTER TABLE obs_source_keys
+    ADD COLUMN operation_id UUID UNIQUE;
+ALTER TABLE obs_source_keys ADD COLUMN derivation_version SMALLINT;
+ALTER TABLE obs_source_keys ADD CONSTRAINT obs_source_keys_derivation_pair CHECK (
+        (operation_id IS NULL) = (derivation_version IS NULL)
+    );
+
+CREATE TABLE obs_source_key_material (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    fingerprint VARCHAR(64) CHECK (CHAR_LENGTH(fingerprint) = 64)
+);
+INSERT INTO obs_source_key_material (singleton) VALUES (1);
