@@ -135,8 +135,59 @@ try {
   await page.waitForFunction(() => document.querySelector('#status').textContent === '');
   await page.unroute('**/api/v1/obs/sources/scoreboard/auto');
   results.push('network loss retains confirmed score and serialized polling resumes');
-  await page.waitForFunction(() => [...document.images].every((image) => image.complete));
-  await page.locator('#scoreboard').screenshot({ path: `${evidence}/scoreboard.png`, omitBackground: true, timeout: 10000 });
+  await page.waitForFunction(
+    () => document.querySelectorAll('.scoreboard-logo img').length === 2 && [...document.images].every((image) => image.complete),
+  );
+  const settledFrames = () =>
+    page.evaluate(async () => {
+      await document.fonts.ready;
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
+  await settledFrames();
+  const renderEvidence = await page.evaluate(() =>
+    ['.scoreboard-score', '.scoreboard-clock'].map((selector) => {
+      const element = document.querySelector(selector),
+        style = getComputedStyle(element),
+        box = element.getBoundingClientRect();
+      return {
+        selector,
+        text: element.textContent,
+        color: style.color,
+        visibility: style.visibility,
+        display: style.display,
+        opacity: style.opacity,
+        font: style.font,
+        box: { x: box.x, y: box.y, width: box.width, height: box.height },
+      };
+    }),
+  );
+  assert.deepEqual(
+    renderEvidence.map((element) => element.text),
+    ['0 : 3', await page.locator('.scoreboard-clock').textContent()],
+  );
+  for (const element of renderEvidence) {
+    assert.equal(element.visibility, 'visible');
+    assert.equal(element.opacity, '1');
+    assert.ok(element.box.width > 0 && element.box.height > 0);
+  }
+  for (let index = 0; index < 3; index++) {
+    await settledFrames();
+    const path = `${evidence}/settled-scoreboard-${index}.png`;
+    await page.locator('#scoreboard').screenshot({ path, omitBackground: true, timeout: 10000 });
+    const whitePixels = Number(
+      execFileSync(
+        'python3',
+        [
+          '-c',
+          'from PIL import Image; import sys; im=Image.open(sys.argv[1]).convert("RGBA"); print(sum(1 for r,g,b,a in im.crop((410,0,590,134)).getdata() if a>200 and min(r,g,b)>230))',
+          path,
+        ],
+        { encoding: 'utf8' },
+      ),
+    );
+    assert.ok(whitePixels > 100, `settled central score/clock paint missing in capture ${index}`);
+  }
+  writeFileSync(`${evidence}/settled-render.json`, JSON.stringify(renderEvidence, null, 2) + '\n');
   sql(`UPDATE obs_source_keys SET revoked_at=now() WHERE scope='AUTO_SCOREBOARD';`);
   await page.waitForFunction(
     () => document.querySelector('#scoreboard').hidden && document.querySelector('#status').textContent === 'Ссылка недоступна',
