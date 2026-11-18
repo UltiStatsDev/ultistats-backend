@@ -22,6 +22,8 @@ import java.util.UUID
 data class ObsExactEventLogSnapshot(
     val matchId: UUID,
     val teams: List<ObsScoreboardTeam>,
+    @field:Schema(description = "Current presentation settings, with teamColors scoped to the selected match teams.")
+    val config: ObsConfig,
     val logRevision: Long,
     val serverNow: Instant,
     @field:Schema(description = "All active canonical event categories in sequenceNumber order.")
@@ -75,6 +77,7 @@ class ObsExactEventLogService(
     private val lineups: PointLineupRepository,
     private val scoreboard: ObsScoreboardService,
     private val clock: Clock,
+    private val config: ObsConfigService,
 ) {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     fun snapshot(matchId: UUID, authorization: List<String>): ObsExactEventLogSnapshot {
@@ -109,8 +112,11 @@ class ObsExactEventLogService(
             .map {
                 ObsEventLogParticipant(it.participantId, it.teamId, it.kind, it.firstName, it.lastName, it.number, it.unknownSlot)
             }
+        val teams = scoreboard.teams(matchId)
+        val teamIds = teams.map { it.teamId }.toSet()
+        val settings = config.get().let { it.copy(teamColors = it.teamColors.filterKeys(teamIds::contains)) }
         return ObsExactEventLogSnapshot(
-            matchId, scoreboard.teams(matchId), match.eventLogRevision, now,
+            matchId, teams, settings, match.eventLogRevision, now,
             active.map { it.response() },
             removed.map { ObsEventRetraction(it.response(), requireNotNull(it.deletedAt)) },
             actors,
