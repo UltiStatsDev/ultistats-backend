@@ -581,6 +581,22 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/obs/sources/scoreboard/auto",
+      "policy": "OBS_SOURCE_BEARER",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsAutoSourceController.kt",
+      "line": 20
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/obs/sources/event-log/auto",
+      "policy": "OBS_SOURCE_BEARER",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsAutoSourceController.kt",
+      "line": 37
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/obs/config",
       "policy": "PUBLIC",
       "owner": "enforcement",
@@ -605,18 +621,18 @@
     },
     {
       "method": "GET",
-      "path": "/api/v1/obs/sources/scoreboard/{matchId}",
-      "policy": "OBS_SOURCE_BEARER",
-      "owner": "enforcement",
-      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsExactScoreboardController.kt",
-      "line": 22
-    },
-    {
-      "method": "GET",
       "path": "/api/v1/obs/sources/event-log/{matchId}",
       "policy": "OBS_SOURCE_BEARER",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsExactEventLogController.kt",
+      "line": 22
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/obs/sources/scoreboard/{matchId}",
+      "policy": "OBS_SOURCE_BEARER",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsExactScoreboardController.kt",
       "line": 22
     },
     {
@@ -661,23 +677,6 @@
       "secureOnly": true
     },
     {
-      "method": "POST",
-      "path": "/api/v1/obs/source-keys",
-      "policy": "OBS_ADMIN",
-      "owner": "enforcement",
-      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsSourceKeyController.kt",
-      "line": 61,
-      "secureOnly": true
-    },
-    {
-      "method": "DELETE",
-      "path": "/api/v1/obs/source-keys/{keyId}",
-      "policy": "OBS_ADMIN",
-      "owner": "enforcement",
-      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsSourceKeyController.kt",
-      "line": 87
-    },
-    {
       "method": "GET",
       "path": "/api/v1/obs/source-keys/current",
       "policy": "OBS_ADMIN",
@@ -687,20 +686,21 @@
       "secureOnly": true
     },
     {
-      "method": "GET",
-      "path": "/api/v1/obs/sources/scoreboard/auto",
-      "policy": "OBS_SOURCE_BEARER",
+      "method": "POST",
+      "path": "/api/v1/obs/source-keys",
+      "policy": "OBS_ADMIN",
       "owner": "enforcement",
-      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsAutoSourceController.kt",
-      "line": 20
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsSourceKeyController.kt",
+      "line": 65,
+      "secureOnly": true
     },
     {
-      "method": "GET",
-      "path": "/api/v1/obs/sources/event-log/auto",
-      "policy": "OBS_SOURCE_BEARER",
+      "method": "DELETE",
+      "path": "/api/v1/obs/source-keys/{keyId}",
+      "policy": "OBS_ADMIN",
       "owner": "enforcement",
-      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsAutoSourceController.kt",
-      "line": 37
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsSourceKeyController.kt",
+      "line": 91
     }
   ],
   "static": [
@@ -753,6 +753,14 @@
       "policy": "PUBLIC"
     },
     {
+      "path": "/obs/protected-scoreboard.mjs",
+      "policy": "PUBLIC"
+    },
+    {
+      "path": "/obs/protected-source-client.mjs",
+      "policy": "PUBLIC"
+    },
+    {
       "path": "/obs/renderer.mjs",
       "policy": "PUBLIC"
     },
@@ -802,6 +810,10 @@
     },
     {
       "path": "/obs-scoreboard.html",
+      "policy": "PUBLIC"
+    },
+    {
+      "path": "/obs-sources/scoreboard.html",
       "policy": "PUBLIC"
     }
   ]

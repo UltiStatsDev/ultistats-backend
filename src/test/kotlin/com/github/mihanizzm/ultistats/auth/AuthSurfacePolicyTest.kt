@@ -82,6 +82,17 @@ class AuthSurfacePolicyTest {
     }
 
     @Test
+    fun `protected scoreboard shell exposes only its reviewed assets`() {
+        for (path in listOf("/obs-sources/scoreboard.html", "/obs/protected-source-client.mjs", "/obs/protected-scoreboard.mjs")) {
+            for (verb in listOf("GET", "HEAD")) assertEquals(AuthRequirement.PublicRead, requirement(verb, path))
+            assertEquals(AuthRequirement.Deny, requirement("POST", path))
+        }
+        for (path in listOf("/obs-sources/", "/obs-sources/event-log.html", "/obs-sources/other.html",
+            "/obs-sources/../obs-admin.html", "/obs/protected-other.mjs"))
+            assertEquals(AuthRequirement.Deny, requirement("GET", path))
+    }
+
+    @Test
     fun `docs aliases YAML config and generated assets require API docs permission`() {
         for (path in listOf("/swagger-ui.html", "/swagger-ui/index.html", "/swagger-ui/swagger-initializer.js", "/v3/api-docs", "/v3/api-docs/swagger-config", "/v3/api-docs.yaml"))
             for (verb in listOf("GET", "HEAD")) assertEquals(AuthRequirement.Permission(AuthPermission.API_DOCS), requirement(verb, path))
