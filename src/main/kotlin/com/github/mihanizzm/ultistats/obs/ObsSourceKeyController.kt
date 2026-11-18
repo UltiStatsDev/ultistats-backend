@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
 data class RotateObsSourceKeyRequest(
-    val matchId: UUID,
+    val matchId: UUID? = null,
     val operationId: UUID,
     @field:Schema(defaultValue = "EXACT_SCOREBOARD")
     val scope: ObsSourceKeyScope = ObsSourceKeyScope.EXACT_SCOREBOARD,
@@ -58,19 +58,23 @@ class ObsSourceKeyController(private val service: ObsSourceKeyService) {
         @RequestParam(defaultValue = "EXACT_SCOREBOARD") scope: ObsSourceKeyScope,
     ) = service.current(sourceUuid(matchId), scope)
 
+    @GetMapping("/current")
+    @Operation(summary = "Copy the current AUTO source link", description = "HTTPS and OBS_ADMIN. No-store. AUTO scope required.")
+    fun currentAuto(@RequestParam scope: ObsSourceKeyScope) = service.current(null, scope)
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(
-        summary = "Rotate the exact source link",
+        summary = "Rotate an OBS source link",
         description = "HTTPS, OBS_ADMIN, CSRF and captured installation, account and session IDs. No-store. " +
-            "Defaults to EXACT_SCOREBOARD. Atomically revokes the previous key for this match and scope. " +
+            "Defaults to EXACT_SCOREBOARD. EXACT requires matchId; AUTO forbids matchId. Atomically revokes the previous key for this binding and scope. " +
             "A retry of the current operation returns the same link.",
     )
     @ApiResponse(
         responseCode = "201", description = "New or replayed current link", useReturnTypeSchema = true,
         headers = [Header(name = "Cache-Control", schema = Schema(type = "string", allowableValues = ["no-store"]))],
     )
-    @ApiResponse(responseCode = "400", description = "Both UUID fields are required and scope must be supported", content = [Content()])
+    @ApiResponse(responseCode = "400", description = "operationId required; matchId required for EXACT and forbidden for AUTO", content = [Content()])
     @ApiResponse(responseCode = "401", description = "Staff session required", content = [Content()])
     @ApiResponse(responseCode = "403", description = "OBS_ADMIN on HTTPS, CSRF and identity required", content = [Content()])
     @ApiResponse(responseCode = "404", description = "OBS_SOURCE_MATCH_NOT_FOUND", content = [Content()])

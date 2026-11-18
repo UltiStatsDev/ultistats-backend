@@ -23,11 +23,17 @@ import java.util.UUID
 enum class ObsSourceKeyScope(internal val kind: String, internal val page: String) {
     EXACT_SCOREBOARD("SCOREBOARD", "scoreboard"),
     EXACT_EVENT_LOG("EVENT_LOG", "event-log"),
+    AUTO_SCOREBOARD("SCOREBOARD", "scoreboard"),
+    AUTO_EVENT_LOG("EVENT_LOG", "event-log");
+
+    internal val auto: Boolean get() = this == AUTO_SCOREBOARD || this == AUTO_EVENT_LOG
 }
 
 data class ObsSourceKeyMetadata(
     val keyId: UUID,
-    val matchId: UUID,
+    @get:JsonInclude(JsonInclude.Include.ALWAYS)
+    @field:Schema(types = ["string", "null"], format = "uuid", requiredMode = Schema.RequiredMode.REQUIRED)
+    val matchId: UUID?,
     val scope: ObsSourceKeyScope,
     val createdAt: Instant,
     val revokedAt: Instant?,
@@ -53,7 +59,8 @@ class ObsSourceKeyService internal constructor(
     private val derivation: ObsSourceKeyDerivation,
 ) {
     @Transactional
-    fun rotate(matchId: UUID, operationId: UUID, scope: ObsSourceKeyScope): ObsCurrentSourceKey {
+    fun rotate(matchId: UUID?, operationId: UUID, scope: ObsSourceKeyScope): ObsCurrentSourceKey {
+        requireBinding(matchId, scope)
         // Serialize first pin and operation-ID resolution across scopes and instances.
         val pinned = jdbc.queryForObject(
             "SELECT fingerprint FROM obs_source_key_material WHERE singleton = 1 FOR UPDATE", String::class.java,
@@ -63,7 +70,7 @@ class ObsSourceKeyService internal constructor(
                 previous.metadata.revokedAt != null)) {
             throw AuthProblem(409, "OBS_SOURCE_OPERATION_CONFLICT")
         }
-        requireMatch(matchId, lock = true)
+        matchId?.let { requireMatch(it, lock = true) }
 
         val material = derivation.load(authStore.installationId())
         if (previous != null) return restore(previous, material, pinned)
@@ -82,7 +89,7 @@ class ObsSourceKeyService internal constructor(
                 jdbc.update("UPDATE obs_source_key_material SET fingerprint = ? WHERE singleton = 1", fingerprint)
             }
             jdbc.update(
-                "UPDATE obs_source_keys SET revoked_at = ? WHERE match_id = ? AND scope = ? AND revoked_at IS NULL",
+                "UPDATE obs_source_keys SET revoked_at = ? WHERE match_id IS NOT DISTINCT FROM CAST(? AS UUID) AND scope = ? AND revoked_at IS NULL",
                 createdAt, matchId, scope.name,
             )
             jdbc.update(
@@ -100,9 +107,10 @@ class ObsSourceKeyService internal constructor(
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    fun current(matchId: UUID, scope: ObsSourceKeyScope): ObsCurrentSourceKey {
-        requireMatch(matchId)
-        val current = findKey("match_id = ? AND scope = ? AND revoked_at IS NULL", matchId, scope.name)
+    fun current(matchId: UUID?, scope: ObsSourceKeyScope): ObsCurrentSourceKey {
+        requireBinding(matchId, scope)
+        matchId?.let { requireMatch(it) }
+        val current = findKey("match_id IS NOT DISTINCT FROM CAST(? AS UUID) AND scope = ? AND revoked_at IS NULL", matchId, scope.name)
             ?: return ObsCurrentSourceKey(ObsCurrentSourceKeyStatus.NO_ACTIVE_LINK, null, null)
         if (current.version == null) return ObsCurrentSourceKey(ObsCurrentSourceKeyStatus.REISSUE_REQUIRED, current.metadata, null)
 
@@ -122,8 +130,13 @@ class ObsSourceKeyService internal constructor(
     private fun activeLink(metadata: ObsSourceKeyMetadata, secret: String): ObsCurrentSourceKey {
         val origin = origins.secureOrigin()
         if (!origin.startsWith("https://")) keyMaterialUnavailable()
-        val url = "$origin/obs-sources/${metadata.scope.page}.html?matchId=${metadata.matchId}#key=$secret"
+        val query = if (metadata.scope.auto) "mode=auto" else "matchId=${metadata.matchId}"
+        val url = "$origin/obs-sources/${metadata.scope.page}.html?$query#key=$secret"
         return ObsCurrentSourceKey(ObsCurrentSourceKeyStatus.ACTIVE, metadata, url)
+    }
+
+    private fun requireBinding(matchId: UUID?, scope: ObsSourceKeyScope) {
+        if (scope.auto != (matchId == null)) throw AuthProblem(400, "OBS_SOURCE_INVALID_BINDING")
     }
 
     private fun requireMatch(matchId: UUID, lock: Boolean = false) {
@@ -135,7 +148,7 @@ class ObsSourceKeyService internal constructor(
 
     private class StoredKey(val metadata: ObsSourceKeyMetadata, val digest: String, val version: Int?)
 
-    private fun findKey(predicate: String, vararg args: Any): StoredKey? = jdbc.query(
+    private fun findKey(predicate: String, vararg args: Any?): StoredKey? = jdbc.query(
         """
             SELECT key_id, match_id, scope, created_at, revoked_at, secret_digest, derivation_version
             FROM obs_source_keys WHERE $predicate
@@ -184,7 +197,7 @@ class ObsSourceKeyService internal constructor(
     }
 
     // Call inside the same read transaction used for the protected data.
-    internal fun authorizeSource(matchId: UUID, scope: ObsSourceKeyScope, authorization: List<String>) {
+    internal fun authorizeSource(matchId: UUID?, scope: ObsSourceKeyScope, authorization: List<String>) {
         val header = authorization.singleOrNull()
         val secret = header?.let(bearer::matchEntire)?.groupValues?.get(1) ?: invalidKey()
         val (boundMatch, boundScope) = jdbc.query(

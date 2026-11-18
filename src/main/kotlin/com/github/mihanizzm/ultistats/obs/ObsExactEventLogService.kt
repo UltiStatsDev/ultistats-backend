@@ -79,6 +79,11 @@ class ObsExactEventLogService(
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     fun snapshot(matchId: UUID, authorization: List<String>): ObsExactEventLogSnapshot {
         keys.authorizeSource(matchId, ObsSourceKeyScope.EXACT_EVENT_LOG, authorization)
+        return buildSnapshot(matchId)
+    }
+
+    // Reused by AUTO inside its authorization/selection repeatable-read transaction.
+    internal fun buildSnapshot(matchId: UUID): ObsExactEventLogSnapshot {
         val match = matches.findByIdAndDeletedAtIsNull(matchId) ?: throw AuthProblem(404, "OBS_SOURCE_MATCH_NOT_FOUND")
         val now = clock.instant().truncatedTo(ChronoUnit.MICROS)
         val active = events.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(matchId)

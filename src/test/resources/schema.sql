@@ -217,8 +217,10 @@ ALTER TABLE match_point_lineup_entries ADD CONSTRAINT fk_lineup_entries_introduc
 ALTER TABLE match_point_lineup_entries ADD CONSTRAINT chk_lineup_entries_introduction_slot CHECK (introduced_by_event_id IS NULL OR slot_id IS NOT NULL);
 CREATE TABLE obs_source_keys (
     key_id UUID PRIMARY KEY,
-    match_id UUID NOT NULL REFERENCES matches(id),
-    scope VARCHAR(32) NOT NULL CHECK (scope IN ('EXACT_SCOREBOARD', 'EXACT_EVENT_LOG')),
+    match_id UUID REFERENCES matches(id),
+    scope VARCHAR(32) NOT NULL CHECK (scope IN ('EXACT_SCOREBOARD', 'EXACT_EVENT_LOG', 'AUTO_SCOREBOARD', 'AUTO_EVENT_LOG')),
+    CHECK ((scope IN ('EXACT_SCOREBOARD', 'EXACT_EVENT_LOG') AND match_id IS NOT NULL) OR
+           (scope IN ('AUTO_SCOREBOARD', 'AUTO_EVENT_LOG') AND match_id IS NULL)),
     secret_digest VARCHAR(64) NOT NULL UNIQUE CHECK (CHAR_LENGTH(secret_digest) = 64),
     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
     revoked_at TIMESTAMP WITH TIME ZONE
