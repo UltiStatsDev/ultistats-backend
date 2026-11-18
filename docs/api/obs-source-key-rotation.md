@@ -81,3 +81,20 @@ Recover against the same database with a V18-compatible backend and the same
 key file. Keep issuance closed during recovery and avoid reverting to the V17
 writer or restoring revoked keys from an older database snapshot. If the file is
 lost, plan an explicit key-material replacement and link reissue.
+
+AUTO sources use independent `AUTO_SCOREBOARD` and `AUTO_EVENT_LOG` scopes.
+POST the same rotation route with `{operationId, scope}` and no `matchId`;
+EXACT still requires `matchId` and omitted scope still means `EXACT_SCOREBOARD`.
+Copy with `GET /api/v1/obs/source-keys/current?scope=AUTO_SCOREBOARD` (or
+`AUTO_EVENT_LOG`). AUTO metadata always includes `matchId: null`, and the private
+HTML URL reserves `?mode=auto#key=<bearer>` for the later UI stage.
+
+Read `/api/v1/obs/sources/scoreboard/auto` or `/event-log/auto` with the matching
+AUTO bearer over HTTPS. The no-store response always includes `snapshot`, either
+the existing exact payload (including `matchId`) or explicit `null`. Valid keys
+for another scope or mode receive 403; missing, invalid and revoked keys get 401.
+Authorization, selection and payload reads share one read-only repeatable-read
+transaction. Both sources select an undeleted match with a real start, preferring
+active over finished, then latest validated effective start, then canonical UUID
+ascending. Planned matches are excluded. Subsequent polls reflect committed
+start, finish, delete and import commands without changing the AUTO URL.

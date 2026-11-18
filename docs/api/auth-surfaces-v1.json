@@ -676,6 +676,31 @@
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsSourceKeyController.kt",
       "line": 87
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/obs/source-keys/current",
+      "policy": "OBS_ADMIN",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsSourceKeyController.kt",
+      "line": 61,
+      "secureOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/obs/sources/scoreboard/auto",
+      "policy": "OBS_SOURCE_BEARER",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsAutoSourceController.kt",
+      "line": 20
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/obs/sources/event-log/auto",
+      "policy": "OBS_SOURCE_BEARER",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsAutoSourceController.kt",
+      "line": 37
     }
   ],
   "static": [

@@ -309,4 +309,50 @@ class ObsSourceKeysIntegrationTest {
         expect(read(secondToken), 404)
         expect(mutation(HttpMethod.POST, keys), 404)
     }
+    @Test
+    fun `auto sources share deterministic actual start selection and explicit empty envelopes`() {
+        jdbc.update("UPDATE matches SET deleted_at = CURRENT_TIMESTAMP")
+        val secret = "Z".repeat(43)
+        val logSecret = "Y".repeat(43)
+        val digest = { value: String -> HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.toByteArray())) }
+        listOf("AUTO_SCOREBOARD" to secret, "AUTO_EVENT_LOG" to logSecret).forEach { (scope, value) ->
+            jdbc.update("INSERT INTO obs_source_keys(key_id, scope, secret_digest, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                UUID.randomUUID(), scope, digest(value))
+        }
+        fun read(page: String, value: String, status: Int = 200): JsonNode {
+            val response = mvc.perform(request(HttpMethod.GET, "/api/v1/obs/sources/$page/auto")
+                .header("Authorization", "Bearer $value")).andReturn().response
+            assertEquals(status, response.status)
+            assertEquals("no-store", response.getHeader("Cache-Control"))
+            return json.readTree(response.contentAsString)
+        }
+        assertEquals(json.readTree("{\"snapshot\":null}"), read("scoreboard", secret))
+        assertEquals(json.readTree("{\"snapshot\":null}"), read("event-log", logSecret))
+        read("scoreboard", logSecret, 403)
+        read("event-log", secret, 403)
+        read("event-log", "X".repeat(43), 401)
+        val low = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        val high = UUID.fromString("ffffffff-ffff-ffff-ffff-ffffffffffff")
+        val started = Instant.parse("2026-01-01T00:00:00.123456789Z")
+        listOf(high, low).forEach { id ->
+            jdbc.update("INSERT INTO matches(id, players_per_team, started_at, original_started_at_second, original_started_at_nano) VALUES (?, 7, ?, ?, ?)",
+                id, Timestamp.from(started), started.epochSecond, started.nano)
+        }
+        fun selected(id: UUID) {
+            assertEquals(id.toString(), read("scoreboard", secret)["snapshot"]["matchId"].asText())
+            assertEquals(id.toString(), read("event-log", logSecret)["snapshot"]["matchId"].asText())
+        }
+        selected(low)
+        jdbc.update("UPDATE matches SET original_started_at_nano = ? WHERE id = ?", started.nano + 1, high)
+        selected(high)
+        jdbc.update("UPDATE matches SET ended_at = CURRENT_TIMESTAMP WHERE id = ?", high)
+        selected(low)
+        jdbc.update("UPDATE matches SET ended_at = CURRENT_TIMESTAMP WHERE id = ?", low)
+        selected(high)
+        jdbc.update("UPDATE matches SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", high)
+        selected(low)
+        jdbc.update("UPDATE matches SET started_at = NULL WHERE id = ?", low)
+        assertTrue(read("scoreboard", secret)["snapshot"].isNull)
+    }
+
 }
