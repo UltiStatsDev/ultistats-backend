@@ -8,3 +8,5 @@
 .feed-row.leaving{pointer-events:none;position:absolute;opacity:0;transition:opacity .18s}
 @keyframes enter{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){.feed-row{animation:none}.feed-row.leaving{transition:none}}
+
+#status:not(:empty){display:block;padding:12px;color:#fff;background:#17202e;font:16px system-ui,sans-serif}

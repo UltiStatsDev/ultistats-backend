@@ -5,12 +5,13 @@ const labels={GOAL:'Гол',BLOCK:'Блок',INTERCEPTION:'Перехват',CAL
 const paths={GOAL:'M4 12h16m-6-6 6 6-6 6',BLOCK:'M12 3 4 7v5c0 5 8 9 8 9s8-4 8-9V7z',
  INTERCEPTION:'M10 11c0 1-2 1.8-4.5 1.8S1 12 1 11s2-1.8 4.5-1.8S10 10 10 11ZM13 12V6a1.5 1.5 0 0 1 3 0v4-6a1.5 1.5 0 0 1 3 0v6-4a1.5 1.5 0 0 1 3 0v9c0 4-2 6-5 6h-1c-2 0-3-1-4-3l-2-4a1.3 1.3 0 0 1 2-1.5l2 2.5',CALLAHAN:'m13 2-9 12h7l-1 8 10-13h-7z'};
 export class Renderer {
- constructor(root) {this.root=root;this.nodes=new Map();}
+ constructor(root) {this.root=root;this.nodes=new Map();this.timers=new Set();}
+ dispose() {for(const timer of this.timers)clearTimeout(timer);this.timers.clear();this.nodes.clear();this.root.replaceChildren();}
  render(rows,match,config,autoColors={}) {
   this.root.dataset.corner=config.corner;
   const ids=new Set(rows.map(row=>row.event.id));
   for(const [id,node] of this.nodes) if(!ids.has(id)) {
-   this.nodes.delete(id);node.classList.add('leaving');setTimeout(()=>node.remove(),180);
+   this.nodes.delete(id);node.classList.add('leaving');const timer=setTimeout(()=>{node.remove();this.timers.delete(timer);},180);this.timers.add(timer);
   }
   for(const entry of rows) {
    const row=resolveRow(entry.event,match);if(!row)continue;

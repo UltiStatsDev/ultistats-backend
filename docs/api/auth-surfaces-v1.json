@@ -753,6 +753,14 @@
       "policy": "PUBLIC"
     },
     {
+      "path": "/obs/protected-event-log-model.mjs",
+      "policy": "PUBLIC"
+    },
+    {
+      "path": "/obs/protected-event-log.mjs",
+      "policy": "PUBLIC"
+    },
+    {
       "path": "/obs/protected-scoreboard.mjs",
       "policy": "PUBLIC"
     },
@@ -810,6 +818,10 @@
     },
     {
       "path": "/obs-scoreboard.html",
+      "policy": "PUBLIC"
+    },
+    {
+      "path": "/obs-sources/event-log.html",
       "policy": "PUBLIC"
     },
     {

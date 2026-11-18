@@ -3,7 +3,7 @@ const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 const invalid = () => {
   throw Error('Некорректная ссылка или данные табло');
 };
-export function parseSource(url) {
+export function parseSource(url, kind = 'scoreboard') {
   const query = url.searchParams,
     fragment = new URLSearchParams(url.hash.slice(1));
   const auto = query.get('mode') === 'auto',
@@ -13,7 +13,8 @@ export function parseSource(url) {
     url.protocol !== 'https:' ||
     url.username ||
     url.password ||
-    url.pathname !== '/obs-sources/scoreboard.html' ||
+    !['scoreboard', 'event-log'].includes(kind) ||
+    url.pathname !== `/obs-sources/${kind}.html` ||
     [...query].length !== 1 ||
     [...fragment].length !== 1 ||
     !fragment.has('key') ||
@@ -21,7 +22,7 @@ export function parseSource(url) {
     (auto ? !query.has('mode') : !uuid.test(matchId ?? ''))
   )
     invalid();
-  return { path: `/api/v1/obs/sources/scoreboard/${auto ? 'auto' : matchId}`, matchId: auto ? null : matchId, key, origin: url.origin };
+  return { path: `/api/v1/obs/sources/${kind}/${auto ? 'auto' : matchId}`, matchId: auto ? null : matchId, key, origin: url.origin };
 }
 const record = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 export function validateScoreboard(value, matchId = value?.matchId, origin = globalThis.location?.origin ?? 'https://localhost') {
@@ -61,7 +62,7 @@ export function validateScoreboard(value, matchId = value?.matchId, origin = glo
 }
 // One request at a time; no public REST/SSE/worker fallback. Errors never interpolate response or token data.
 export function watchProtectedSource(source, onSnapshot, onStatus = () => {}, options = {}) {
-  const { fetch: request = globalThis.fetch, pollMs = 1000, retryMs = 1000, timeoutMs = 3000 } = options;
+  const { fetch: request = globalThis.fetch, pollMs = 1000, retryMs = 1000, timeoutMs = 3000, validate = validateScoreboard, retryMessage = 'Табло: переподключение…' } = options;
   let closed = false,
     timer = null,
     controller = null;
@@ -100,13 +101,13 @@ export function watchProtectedSource(source, onSnapshot, onStatus = () => {}, op
       const value =
         snapshot === null && source.matchId === null
           ? null
-          : validateScoreboard(snapshot, source.matchId ?? snapshot?.matchId, source.origin);
+          : validate(snapshot, source.matchId ?? snapshot?.matchId, source.origin);
       onSnapshot(value);
       onStatus(value ? '' : 'Нет матча для трансляции');
     } catch {
       if (!closed) {
         delay = retryMs;
-        onStatus('Табло: переподключение…');
+        onStatus(retryMessage);
       }
     } finally {
       clearTimeout(timeout);
