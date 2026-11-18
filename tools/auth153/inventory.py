@@ -27,7 +27,7 @@ def inventory():
                 permission = 'CORE'
             elif path.startswith('/swagger-ui'):
                 permission = 'API_DOCS'
-            elif path == '/api/v1/obs/sources/scoreboard/{matchId}':
+            elif path.startswith('/api/v1/obs/sources/'):
                 permission = 'OBS_SOURCE_BEARER'
             elif path == '/api/v1/obs/source-keys' or path.startswith('/api/v1/obs/source-keys/'):
                 permission = 'OBS_ADMIN'
@@ -44,6 +44,7 @@ def inventory():
                          source=str(source.relative_to(ROOT)),
                          line=text.count('\n', 0, mapping.start()) + 1)
             if (method, path) in {('GET', '/api/v1/obs/source-keys/current/{matchId}'),
+                                  ('GET', '/api/v1/obs/source-keys/current'),
                                   ('POST', '/api/v1/obs/source-keys')}:
                 route['secureOnly'] = True
             routes.append(route)
