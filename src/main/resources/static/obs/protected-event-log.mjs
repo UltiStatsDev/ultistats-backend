@@ -8,7 +8,7 @@ const root = document.getElementById("feed"),
 const photos = new Map(),
   autoColors = {};
 let generation = 0;
-let feed = new Feed(),
+let feed = new Feed(undefined, () => performance.now(), { protected: true }),
   renderer = new Renderer(root),
   match = null,
   disposed = false,
@@ -19,7 +19,7 @@ function reset() {
   photos.clear();
   for (const id of Object.keys(autoColors)) delete autoColors[id];
   renderer.dispose();
-  feed = new Feed();
+  feed = new Feed(undefined, () => performance.now(), { protected: true });
   renderer = new Renderer(root);
   match = null;
   delete root.dataset.corner;
@@ -93,13 +93,17 @@ function accept(snapshot) {
   // Work on copies only; original event identities and canonical payloads remain intact.
   feed.reconcile({
     ...snapshot,
-    events: snapshot.events.map((event) => ({
+    events: snapshot.events.map(displayEvent),
+    retractions: snapshot.retractions.map((r) => ({ ...r, event: displayEvent(r.event) })),
+  });
+  render();
+}
+function displayEvent(event) {
+  return {
       ...event,
       fromParticipantId: event.fromSlotId ?? event.fromParticipantId,
       toParticipantId: event.toSlotId ?? event.toParticipantId,
-    })),
-  });
-  render();
+  };
 }
 try {
   stop = watchProtectedSource(
