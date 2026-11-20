@@ -25,6 +25,12 @@ export function renderScoreboard(root,snapshot,profile=snapshot.profile,auto={})
  const middle=element('div','scoreboard-middle');middle.append(element('span','scoreboard-score',`${teams[0].score} : ${teams[1].score}`));
  bar.append(middle,plate(teams[1],'right'));
  const clock=element('div','scoreboard-clock','00:00');clock.setAttribute('aria-label','Время матча');
- root.replaceChildren(bar,clock);root.hidden=false;
+ const timing=element('div','scoreboard-timing');timing.append(clock);
+ const labels={TIMEOUT:'Таймаут',HALFTIME:'Халфтайм',ANNOUNCEMENT:'Объявление'};
+ // Older public snapshots omit activePauses. Never infer a phase from the clock.
+ const notices=snapshot.status==='FINISHED'?['Матч завершён']:
+  snapshot.status==='IN_PROGRESS'?[...new Set((snapshot.activePauses??[]).map(p=>labels[p.type]).filter(Boolean))]:[];
+ for(const label of notices) timing.append(element('span','scoreboard-notice',label));
+ root.replaceChildren(bar,timing);root.hidden=false;
  return clock;
 }
