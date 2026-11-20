@@ -33,7 +33,7 @@ function reset() {
 }
 function render() {
   if (!snapshot || disposed) return;
-  // The shared renderer remains unchanged. Only owned credentialless blob images enter this page.
+  // Only owned credentialless blob images enter this page.
   clockNode = renderScoreboard(root, { ...snapshot, teams: snapshot.teams.map((t) => ({ ...t, photoUrl: null })) }, snapshot.profile, auto);
   clockNode.textContent = clock.label();
   for (const team of snapshot.teams) {
@@ -96,7 +96,7 @@ function accept(value) {
   snapshot = value;
   if (!value) return;
   clock.accept(value);
-  const key = JSON.stringify([value.teams, value.profile]);
+  const key = JSON.stringify([value.teams, value.profile, value.status, value.activePauses]);
   if (key !== viewKey) {
     viewKey = key;
     for (const team of value.teams) {
