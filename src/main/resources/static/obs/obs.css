@@ -10,3 +10,7 @@
 @media(prefers-reduced-motion:reduce){.feed-row{animation:none}.feed-row.leaving{transition:none}}
 
 #status:not(:empty){display:block;padding:12px;color:#fff;background:#17202e;font:16px system-ui,sans-serif}
+
+.feed-row[data-kind=cancellation]{flex-wrap:wrap;gap:0 16px}
+.feed-row[data-kind=cancellation] .player{text-decoration:line-through}
+.cancel-label{flex-basis:100%;padding:8px 16px 0;font-size:14px;font-weight:650}

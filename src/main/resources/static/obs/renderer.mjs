@@ -9,14 +9,16 @@ export class Renderer {
  dispose() {for(const timer of this.timers)clearTimeout(timer);this.timers.clear();this.nodes.clear();this.root.replaceChildren();}
  render(rows,match,config,autoColors={}) {
   this.root.dataset.corner=config.corner;
-  const ids=new Set(rows.map(row=>row.event.id));
+  const ids=new Set(rows.map(row=>row.key??row.event.id));
   for(const [id,node] of this.nodes) if(!ids.has(id)) {
    this.nodes.delete(id);node.classList.add('leaving');const timer=setTimeout(()=>{node.remove();this.timers.delete(timer);},180);this.timers.add(timer);
   }
   for(const entry of rows) {
    const row=resolveRow(entry.event,match);if(!row)continue;
-   let node=this.nodes.get(row.id);
-   if(!node) {node=document.createElement('div');node.className='feed-row';node.dataset.eventId=row.id;this.nodes.set(row.id,node);}
+   const identity=entry.key??row.id;
+   let node=this.nodes.get(identity);
+   if(!node) {node=document.createElement('div');node.className='feed-row';node.dataset.eventId=row.id;this.nodes.set(identity,node);}
+   if(entry.kind)node.dataset.kind=entry.kind;
    node.style.backgroundColor=config.backgroundColor;
    node.style.color=readableText(config.backgroundColor,config.textColor);
    const side=(player,which)=>{
@@ -29,13 +31,16 @@ export class Renderer {
    const title=document.createElementNS(icon.namespaceURI,'title');title.textContent=labels[row.category];
    const path=document.createElementNS(icon.namespaceURI,'path');path.setAttribute('d',paths[row.category]);
    icon.append(title,path);node.replaceChildren(side(row.left,'left'),icon,side(row.right,'right'));
+   if(entry.kind==='cancellation') {
+    const label=document.createElement('span');label.className='cancel-label';label.textContent=`Отмена: ${labels[row.category]}`;node.prepend(label);
+   }
   }
   // Reinserting even the same node restarts its CSS entrance in Chromium.
   // Only insert new/out-of-order rows; leave correctly placed rows connected.
   let cursor=this.root.firstElementChild;
   for(const row of rows) {
    while(cursor?.classList.contains('leaving'))cursor=cursor.nextElementSibling;
-   const node=this.nodes.get(row.event.id);if(!node)continue;
+   const node=this.nodes.get(row.key??row.event.id);if(!node)continue;
    if(node===cursor)cursor=cursor.nextElementSibling;
    else this.root.insertBefore(node,cursor);
   }

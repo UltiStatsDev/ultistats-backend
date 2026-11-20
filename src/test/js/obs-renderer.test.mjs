@@ -110,3 +110,23 @@ test('defensive renderer accents follow attacker left and defender right; GOAL k
   });
  } finally {globalThis.document=oldDocument;}
 });
+
+test('protected cancellation has its own identity and label without striking original',()=>{
+ const oldDocument=globalThis.document;
+ globalThis.document={createElement:()=>new Element(),createElementNS:ns=>new Element(ns)};
+ try {
+  const root=new Element(),renderer=new Renderer(root);
+  const original={...row('same'),key:'match:same:original',kind:'original'};
+  const cancel={...row('same'),key:'match:same:cancellation',kind:'cancellation'};
+  renderer.render([cancel,original],{teams:[]},defaults);
+  assert.equal(root.children.length,2);
+  assert.equal(root.children[0].dataset.kind,'cancellation');
+  assert.equal(root.children[0].children[0].textContent,'Отмена: Гол');
+  assert.equal(root.children[1].dataset.kind,'original');
+  assert.equal(root.children[1].children.length,3);
+  renderer.render([cancel,original],{teams:[]},defaults);
+  assert.equal(root.children.length,2);
+  assert.equal(root.children[1].moves,0);
+  renderer.dispose();
+ } finally {globalThis.document=oldDocument;}
+});
