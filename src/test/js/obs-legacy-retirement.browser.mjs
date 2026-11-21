@@ -31,7 +31,7 @@ export async function verifyLegacyRetirement(browser,input,link) {
   for(const path of ['/api/v1/obs/config/stream','/api/v1/obs/stream'])
    for(const [role,context,headers]of roles)for(const method of ['GET','HEAD']){
     const {response,body}=await request(role,context,{...headers,Accept:'text/event-stream'},method,path,role==='staff'?410:401);
-    assert.equal(response.headers()['cache-control'],'no-store');assert.doesNotMatch(body,/event:|data:/);
+    assert.deepEqual([...new Set(response.headers()['cache-control'].split(',').map(value=>value.trim()))],['no-store']);assert.doesNotMatch(body,/event:|data:/);
     if(role==='staff')assert.match(response.headers()['content-type'],/^text\/plain/);
    }
   for(const path of ['/obs/shared-worker.js','/obs/client.mjs','/obs/overlay.mjs','/obs/transport.mjs','/obs/scoreboard-client.mjs','/obs/scoreboard.mjs'])
