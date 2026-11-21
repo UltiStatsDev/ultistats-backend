@@ -25,16 +25,19 @@ export function dominantColor(pixels) {
     const best=[...buckets.values()].sort((a,b)=>b.count-a.count)[0];
     return best?'#'+[best.r,best.g,best.b].map(v=>Math.round(v/best.count).toString(16).padStart(2,'0')).join(''):FALLBACK;
 }
-export async function imageAccent(url) {
-    if(!url) return FALLBACK;
+export async function imageAccent(url,signal) {
+    if(!url||signal?.aborted) return FALLBACK;
     try {
         const parsed=new URL(url,location.href);
         if(parsed.origin!==location.origin) return FALLBACK;
-        const image=new Image(); image.src=parsed.href;
-        let timeout;
+        const image=new Image();
+        let timeout,rejectAbort;
+        const abort=()=>{image.src='';rejectAbort?.(Error('image canceled'));};
+        signal?.addEventListener('abort',abort,{once:true});image.src=parsed.href;
         try {
-            await Promise.race([image.decode(),new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('image timeout')),5000);})]);
-        } finally { clearTimeout(timeout); }
+            await Promise.race([image.decode(),new Promise((_,reject)=>{rejectAbort=reject;timeout=setTimeout(()=>reject(Error('image timeout')),5000);})]);
+            if(signal?.aborted)return FALLBACK;
+        } finally { clearTimeout(timeout);signal?.removeEventListener('abort',abort); }
         const canvas=document.createElement('canvas');canvas.width=64;canvas.height=64;
         const context=canvas.getContext('2d',{willReadFrequently:true});
         context.drawImage(image,0,0,64,64);

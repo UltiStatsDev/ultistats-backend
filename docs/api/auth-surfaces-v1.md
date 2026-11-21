@@ -126,3 +126,13 @@ remain in memory, mutated credential headers are omitted from displayed curl,
 external validator disabled; try-it-out has one attempt and no owner adoption.
 Primary supported async interceptor interface:
 https://swagger.io/docs/open-source-tools/swagger-ui/usage/configuration/ .
+
+Private editor frames use `/obs-editor/event-log.html?matchId=UUID` and
+`/obs-editor/scoreboard.html?matchId=UUID` (HTTPS OBS_ADMIN). They reuse the
+confirmed `/api/v1/obs/previews/{kind}/{matchId}` staff builders and captured
+Web session transport. The admin config/profile readers use captured bounded
+polls, with no OBS SharedWorker/SSE. Test cards and profile drafts are local
+to these staff frames; source-link AUTO selection never retargets saves.
+The ordinary old HTML/API/SSE/worker routes remain available in this leaf;
+retirement is a separate G2 change. Shared rendering/model assets stay public
+for bearer viewers. Editor messages contain no source keys or credentials.
