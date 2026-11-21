@@ -46,6 +46,11 @@ export function mountActiveLinks(session, {document = globalThis.document, clipb
     else {selection++;$('links-context').textContent = 'Введите UUID и нажмите «Открыть контекст». До этого открыт прежний контекст ссылок.';}
   });
   $('links-kind').addEventListener('change', preview);
+  $('links-matches').addEventListener('change', () => {
+    if (!$('links-matches').value) return;
+    $('links-mode').value = 'exact';$('links-match-label').hidden = false;
+    $('links-match').value = $('links-matches').value;void select();
+  });
   for (const kind of ['scoreboard', 'event-log']) {
     const prefix = `link-${kind}`;
     $(prefix+'-copy').addEventListener('click', async () => {

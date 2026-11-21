@@ -2,6 +2,7 @@
 
 The private `/obs-admin.html` page exposes two independent protected source cards
 (scoreboard and Event Log), with AUTO or an explicitly opened exact match binding.
+Exact selection reuses the existing named match list, with UUID as an alternative.
 Opening a context or reopening the page reads existing current links; it never
 issues or rotates them. Copy uses only a validated HTTPS URL returned by the
 source-key API. Clipboard denial selects the readonly field for manual copy.

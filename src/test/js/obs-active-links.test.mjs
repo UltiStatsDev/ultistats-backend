@@ -123,3 +123,14 @@ test('late DOM selection completion cannot relabel a newer AUTO context as anoth
  gates.forEach(g=>g.resolve(response(active())));await first;
  assert.match(element('links-context').textContent,/Автоматический/);control.dispose();
 });
+test('named match link selector opens EXACT without changing explicitly opened editors',async()=>{
+ const {mountActiveLinks}=await import('../../main/resources/static/obs/active-links-admin.mjs');
+ const elements=new Map();const element=id=>elements.get(id)??elements.set(id,{value:'',textContent:'',addEventListener(type,fn){this[type]=fn;},close(){},showModal(){}}).get(id);
+ const calls=[];const session={capture:()=>1,isCurrent:()=>true,subscribe:()=>()=>{},protectedFetch:async path=>{calls.push(path);return response({status:'NO_ACTIVE_LINK',key:null,url:null});}};
+ element('links-mode').value='auto';element('links-kind').value='scoreboard';element('match-id').value='2ae4da9a-213b-4445-9e49-d6fe86bba3f5';
+ const control=mountActiveLinks(session,{document:{getElementById:element},listen:()=>{}});await new Promise(r=>setImmediate(r));
+ element('links-matches').value=match;element('links-matches').selectedOptions=[{textContent:'Left — Right'}];
+ element('links-matches').change();await new Promise(r=>setImmediate(r));
+ assert.equal(control.state.matchId,match);assert.equal(element('links-mode').value,'exact');assert.equal(element('match-id').value,'2ae4da9a-213b-4445-9e49-d6fe86bba3f5');
+ assert.ok(calls.slice(-2).every(path=>path.includes('/current/'+match)));control.dispose();
+});

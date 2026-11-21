@@ -49,7 +49,11 @@ async function loadMatches() {
  try {
   const data=await readJson(`/api/v1/matches?page=${page}&size=20&sortBy=PLANNED_START_TIMESTAMP&sortDirection=DESC`);
   $('matches').replaceChildren(new Option('Выберите матч',''));
-  for(const match of data.content)$('matches').add(new Option(`${match.teams.map(t=>t.teamName).join(' — ')} · ${match.status}`,match.id));
+  $('links-matches').replaceChildren(new Option('Выберите матч',''));
+  for(const match of data.content) {
+   const label=`${match.teams.map(t=>t.teamName).join(' — ')} · ${match.status}`;
+   $('matches').add(new Option(label,match.id));$('links-matches').add(new Option(label,match.id));
+  }
   $('page').textContent=String(page+1);$('previous').disabled=page===0;$('next').disabled=page+1>=data.totalPages;
  }catch(error){$('status').textContent=`Список матчей: ${error.message}`;}
 }
