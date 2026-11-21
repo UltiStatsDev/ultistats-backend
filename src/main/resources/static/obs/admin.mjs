@@ -7,7 +7,7 @@ const $=id=>document.getElementById(id),uuid=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0
 let openGeneration=0;
 let config=null,draftColors={},teams=[],auto={},page=0,dirty=false,disposed=false,stop=()=>{};
 const images=new AbortController();
-const readJson=async path=>{assertObsPage();if(disposed)throw Error('Страница закрыта');const value=await readStaffJson(obsSession,path);assertObsPage();if(disposed)throw Error('Страница закрыта');return value;};
+const readJson=async path=>{assertObsPage();if(disposed)throw Error('Страница закрыта');const value=await readStaffJson(obsSession,path,images.signal);assertObsPage();if(disposed)throw Error('Страница закрыта');return value;};
 function end(clearDraft=false) {
  if(disposed)return;disposed=true;stop();images.abort();openGeneration++;
  config=null;teams=[];auto={};if(clearDraft){draftColors={};$('teams').replaceChildren();}
@@ -51,7 +51,7 @@ $('settings').addEventListener('submit',async event=>{
  $('save').disabled=true;
  try {
   assertObsPage();
-  const response=await obsSession.protectedFetch('/api/v1/obs/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});
+  const response=await obsSession.protectedFetch('/api/v1/obs/config',{method:'PUT',signal:AbortSignal.any([images.signal,AbortSignal.timeout(5000)]),headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});
   if(!response.ok){const error=await response.json();throw Error(error.detail??`HTTP ${response.status}`);}
   const saved=await response.json();assertObsPage();if(disposed)return;config=saved;dirty=false;message('Сохранено для всех OBS-источников.');
  }catch(error){if(!disposed)message(error.message);}finally{$('save').disabled=disposed||!obsPageCurrent();}

@@ -31,3 +31,9 @@ test('poll timeout aborts request and retries serially; stop cancels retry',asyn
  const stop=watchStaffJson(f.session,'/api/v1/obs/config',()=>assert.fail(),()=>{},()=>{},{pollMs:1,timeoutMs:2});
  await pause();stop();const before=calls;await pause();assert.ok(aborted>0);assert.equal(calls,before);
 });
+test('one-shot parent read aborts immediately with page disposal',async()=>{
+ const controller=new AbortController();let aborted=false;
+ const f=fixture((path,init)=>new Promise((_,reject)=>init.signal.addEventListener('abort',()=>{aborted=true;reject(Error('aborted'))},{once:true})));
+ const result=readStaffJson(f.session,'/api/v1/matches',controller.signal);
+ controller.abort();assert.equal(aborted,true);await assert.rejects(result,/aborted/);
+});

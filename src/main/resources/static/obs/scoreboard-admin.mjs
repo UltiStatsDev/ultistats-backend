@@ -69,7 +69,7 @@ $('scoreboard-form').addEventListener('submit',async event=>{
  const selected=generation,id=matchId,value=structuredClone(draft);saving=true;$('scoreboard-fields').disabled=true;
  try {
   assertObsPage();
-  const response=await obsSession.protectedFetch(`/api/v1/obs/scoreboard/${encodeURIComponent(id)}/profile`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(value),signal:AbortSignal.timeout(5000)});
+  const response=await obsSession.protectedFetch(`/api/v1/obs/scoreboard/${encodeURIComponent(id)}/profile`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(value),signal:AbortSignal.any([images.signal,AbortSignal.timeout(5000)])});
   if(!response.ok){const problem=await response.json();throw Error(problem.detail??`HTTP ${response.status}`);}
   const saved=await response.json();assertObsPage();if(selected!==generation||!obsPageCurrent())return;
   draft=saved;dirty=false;fieldsKey=null;message('Профиль сохранён для всех источников этого матча.');postDraft();

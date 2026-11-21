@@ -9,8 +9,8 @@ async function read(session, captured, path, signal) {
   if (!current()) throw Error('Сессия изменилась');
   return value;
 }
-export function readStaffJson(session, path) {
-  return read(session, session.capture(), path, AbortSignal.timeout(3000));
+export function readStaffJson(session, path, signal) {
+  return read(session, session.capture(), path, AbortSignal.any([AbortSignal.timeout(3000), ...(signal ? [signal] : [])]));
 }
 export function watchStaffJson(session, path, onValue, onStatus, onEnd, {pollMs = 1000, timeoutMs = 3000} = {}) {
   const captured = session.capture();
