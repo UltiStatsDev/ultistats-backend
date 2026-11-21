@@ -113,13 +113,6 @@ function accept(value) {
 }
 addEventListener('resize', scale);
 scale();
-try {
-  stop = watchProtectedSource(parseSource(new URL(location.href)), accept, (message) => {
-    if (!disposed) status.textContent = message;
-  });
-} catch {
-  status.textContent = 'Некорректная ссылка табло';
-}
 const tick = setInterval(() => {
   if (clockNode && !disposed) clockNode.textContent = clock.label();
 }, 1000);
@@ -134,3 +127,19 @@ addEventListener(
   },
   { once: true },
 );
+
+async function start() {
+try {
+  const url = new URL(location.href);
+  const preview = url.pathname === '/obs-preview/scoreboard.html'
+    ? await (await import('./staff-preview.mjs')).openPreview(url, 'scoreboard', () => disposed) : null;
+  if (disposed) preview?.transport.dispose();
+  else stop = watchProtectedSource(preview?.source ?? parseSource(url), accept, (message) => {
+    if (!disposed) status.textContent = message;
+  }, { transport: preview?.transport });
+} catch {
+  if (disposed) return;
+  status.textContent = 'Некорректная ссылка табло';
+}
+}
+void start();
