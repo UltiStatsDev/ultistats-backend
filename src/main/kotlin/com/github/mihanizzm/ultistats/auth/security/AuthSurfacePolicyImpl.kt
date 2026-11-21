@@ -18,10 +18,6 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
         }
         val method = if (request.method == "HEAD") "GET" else request.method
         if (method == "GET") {
-            if (path == "/obs-battle-log.html" || path == "/obs-scoreboard.html") {
-                return if (request.getParameterValues("preview")?.any { it == "1" } == true)
-                    AuthRequirement.Permission(AuthPermission.OBS_ADMIN) else AuthRequirement.PublicRead
-            }
             if (path in previewAssets) return AuthRequirement.Permission(AuthPermission.OBS_ADMIN, secureOnly = true)
             if (path in obsStaffAssets) return AuthRequirement.Permission(AuthPermission.OBS_ADMIN)
             if (path in docsAssets || path == "/swagger-ui.html" || path.startsWith("/swagger-ui/") ||
@@ -116,11 +112,11 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
         rule("GET", "/api/v1/obs/source-keys/current/{matchId}", AuthPermission.OBS_ADMIN, secureOnly = true),
         rule("POST", "/api/v1/obs/source-keys", AuthPermission.OBS_ADMIN, secureOnly = true),
         rule("DELETE", "/api/v1/obs/source-keys/{keyId}", AuthPermission.OBS_ADMIN),
-        rule("GET", "/api/v1/obs/config"),
+        rule("GET", "/api/v1/obs/config", AuthPermission.OBS_ADMIN),
         rule("PUT", "/api/v1/obs/config", AuthPermission.OBS_ADMIN),
-        rule("GET", "/api/v1/obs/config/stream"),
-        rule("GET", "/api/v1/obs/stream"),
-        rule("GET", "/api/v1/obs/scoreboard/{matchId}"),
+        rule("GET", "/api/v1/obs/config/stream", AuthPermission.OBS_ADMIN),
+        rule("GET", "/api/v1/obs/stream", AuthPermission.OBS_ADMIN),
+        rule("GET", "/api/v1/obs/scoreboard/{matchId}", AuthPermission.OBS_ADMIN),
         rule("PUT", "/api/v1/obs/scoreboard/{matchId}/profile", AuthPermission.OBS_ADMIN),
     )
 
@@ -131,26 +127,21 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
         "/obs/protected-event-log-model.mjs",
         "/obs/protected-source-client.mjs",
         "/obs/protected-scoreboard.mjs",
-        "/obs/client.mjs",
         "/obs/colors.mjs",
         "/obs/feed.mjs",
         "/obs/obs.css",
-        "/obs/overlay.mjs",
         "/obs/renderer.mjs",
-        "/obs/scoreboard-client.mjs",
         "/obs/scoreboard-model.mjs",
         "/obs/scoreboard-renderer.mjs",
         "/obs/scoreboard.css",
-        "/obs/scoreboard.mjs",
-        "/obs/shared-worker.js",
-        "/obs/transport.mjs",
-        "/obs-diagnostic.html",
+        "/obs-diagnostic.html", "/obs-battle-log.html", "/obs-scoreboard.html",
     )
     private val previewAssets = setOf(
         "/obs-preview/scoreboard.html", "/obs-preview/event-log.html", "/obs/staff-preview.mjs",
         "/obs-editor/scoreboard.html", "/obs-editor/event-log.html", "/obs/staff-reader.mjs",
     )
     private val obsStaffAssets = setOf(
+        "/obs/client.mjs", "/obs/overlay.mjs", "/obs/scoreboard-client.mjs", "/obs/scoreboard.mjs", "/obs/shared-worker.js", "/obs/transport.mjs",
         "/obs-admin.html", "/obs/admin.mjs", "/obs/scoreboard-admin.mjs", "/obs/active-links.mjs", "/obs/active-links-admin.mjs",
         "/auth/obs-session.mjs", "/auth/staff-session.mjs", "/auth/public-sources.mjs",
     )

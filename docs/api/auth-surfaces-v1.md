@@ -136,3 +136,21 @@ to these staff frames; source-link AUTO selection never retargets saves.
 The ordinary old HTML/API/SSE/worker routes remain available in this leaf;
 retirement is a separate G2 change. Shared rendering/model assets stay public
 for bearer viewers. Editor messages contain no source keys or credentials.
+
+G2 exact OBS retirement (source delivery; environment activation is separate):
+
+| Exact path | GET/HEAD policy and response |
+| --- | --- |
+| `/obs-battle-log.html`, `/obs-scoreboard.html`, `/obs-diagnostic.html` | Public static replacement instructions for every query; no script, reflection or redirect |
+| `/api/v1/obs/config`, `/api/v1/obs/scoreboard/{matchId}` | Existing OBS_ADMIN staff read and unchanged payload |
+| `/api/v1/obs/config/stream`, `/api/v1/obs/stream` | OBS_ADMIN gate, then 410 text/plain/no-store; no emitter subscription, including SSE Accept |
+| `/obs/shared-worker.js` | OBS_ADMIN retired stub; tells ports `retired`, closes them, no fetch/EventSource/cache |
+| `/obs/client.mjs`, `/obs/transport.mjs`, `/obs/overlay.mjs`, `/obs/scoreboard-client.mjs`, `/obs/scoreboard.mjs` | Obsolete staff-only network modules; no current protected viewer/editor imports them |
+
+Protected viewer APIs remain GET-only bearer routes (staff cookies alone grant no
+viewer access). F1/private editor pages remain secure OBS_ADMIN; pure shared
+models, renderers, colors and CSS remain public. Config/profile PUT retains its
+existing session/CSRF and explicit match target. General sports/events/SSE,
+auth/login/return and uploads/photos retain their existing policy. No namespace
+blanket deny is used. An already cached old worker can survive static changes;
+server stream refusal is the material closure, not a claim of cache eviction.

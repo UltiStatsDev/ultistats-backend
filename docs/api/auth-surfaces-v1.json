@@ -598,10 +598,10 @@
     {
       "method": "GET",
       "path": "/api/v1/obs/config",
-      "policy": "PUBLIC",
+      "policy": "OBS_ADMIN",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsConfigController.kt",
-      "line": 13
+      "line": 15
     },
     {
       "method": "PUT",
@@ -609,15 +609,16 @@
       "policy": "OBS_ADMIN",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsConfigController.kt",
-      "line": 17
+      "line": 19
     },
     {
       "method": "GET",
       "path": "/api/v1/obs/config/stream",
-      "policy": "PUBLIC",
+      "policy": "OBS_ADMIN",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsConfigController.kt",
-      "line": 21
+      "line": 23,
+      "retiredStatus": 410
     },
     {
       "method": "GET",
@@ -638,10 +639,11 @@
     {
       "method": "GET",
       "path": "/api/v1/obs/stream",
-      "policy": "PUBLIC",
+      "policy": "OBS_ADMIN",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsNotificationStream.kt",
-      "line": 75
+      "line": 74,
+      "retiredStatus": 410
     },
     {
       "method": "GET",
@@ -682,10 +684,10 @@
     {
       "method": "GET",
       "path": "/api/v1/obs/scoreboard/{matchId}",
-      "policy": "PUBLIC",
+      "policy": "OBS_ADMIN",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsScoreboardController.kt",
-      "line": 20
+      "line": 22
     },
     {
       "method": "PUT",
@@ -693,7 +695,7 @@
       "policy": "OBS_ADMIN",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsScoreboardController.kt",
-      "line": 24
+      "line": 26
     },
     {
       "method": "GET",
@@ -778,7 +780,7 @@
     },
     {
       "path": "/obs/client.mjs",
-      "policy": "PUBLIC"
+      "policy": "OBS_ADMIN"
     },
     {
       "path": "/obs/colors.mjs",
@@ -794,7 +796,7 @@
     },
     {
       "path": "/obs/overlay.mjs",
-      "policy": "PUBLIC"
+      "policy": "OBS_ADMIN"
     },
     {
       "path": "/obs/protected-event-log-model.mjs",
@@ -822,7 +824,7 @@
     },
     {
       "path": "/obs/scoreboard-client.mjs",
-      "policy": "PUBLIC"
+      "policy": "OBS_ADMIN"
     },
     {
       "path": "/obs/scoreboard-model.mjs",
@@ -838,11 +840,11 @@
     },
     {
       "path": "/obs/scoreboard.mjs",
-      "policy": "PUBLIC"
+      "policy": "OBS_ADMIN"
     },
     {
       "path": "/obs/shared-worker.js",
-      "policy": "PUBLIC"
+      "policy": "OBS_ADMIN"
     },
     {
       "path": "/obs/staff-preview.mjs",
@@ -856,7 +858,7 @@
     },
     {
       "path": "/obs/transport.mjs",
-      "policy": "PUBLIC"
+      "policy": "OBS_ADMIN"
     },
     {
       "path": "/obs-admin.html",

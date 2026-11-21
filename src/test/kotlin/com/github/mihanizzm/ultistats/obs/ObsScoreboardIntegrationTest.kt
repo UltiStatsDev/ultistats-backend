@@ -28,6 +28,9 @@ import java.util.UUID
 @AutoConfigureMockMvc
 class ObsScoreboardIntegrationTest {
     @Autowired lateinit var mvc: MockMvc
+    @Autowired lateinit var configStream: ObsConfigStream
+    @Autowired lateinit var notifications: ObsNotificationStream
+    private fun internalStream(path: String) = ObsInternalStreamProbe(configStream, notifications).open(path)
     @Autowired lateinit var json: ObjectMapper
     @Autowired lateinit var jdbc: JdbcTemplate
     @Autowired lateinit var teams: TeamService
@@ -101,7 +104,7 @@ class ObsScoreboardIntegrationTest {
     }
 
     @Test fun `profile and actual start notify only after commit and rollback leaks nothing`() {
-        val stream = mvc.perform(get("/api/v1/obs/stream")).andExpect(request().asyncStarted()).andReturn()
+        val stream = internalStream("notifications")
         try {
             transaction.executeWithoutResult {
                 save(profile()).andExpect(status().isOk)
@@ -121,7 +124,7 @@ class ObsScoreboardIntegrationTest {
         } finally { runCatching { stream.request.asyncContext?.complete() } }
     }
     @Test fun `accepted planned metadata change invalidates scoreboard but rejected lifecycle does not`() {
-        val stream = mvc.perform(get("/api/v1/obs/stream")).andReturn()
+        val stream = internalStream("notifications")
         try {
             transaction.executeWithoutResult {
                 matches.update(match, listOf(second, first), null, null)
