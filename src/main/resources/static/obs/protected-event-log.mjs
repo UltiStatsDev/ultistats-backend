@@ -7,6 +7,8 @@ const root = document.getElementById("feed"),
   status = document.getElementById("status");
 const photos = new Map(),
   autoColors = {};
+const editor = location.pathname === '/obs-editor/event-log.html';
+let editorCurrent = () => false, testUntil = 0;
 let generation = 0;
 let feed = new Feed(undefined, () => performance.now(), { protected: true }),
   renderer = new Renderer(root),
@@ -14,6 +16,7 @@ let feed = new Feed(undefined, () => performance.now(), { protected: true }),
   disposed = false,
   stop = () => {};
 function reset() {
+  testUntil = 0;
   generation++;
   for (const photo of photos.values()) photo.controller.abort();
   photos.clear();
@@ -25,7 +28,14 @@ function reset() {
   delete root.dataset.corner;
 }
 function render() {
-  if (match && !disposed) renderer.render(feed.rows(), match, feed.config, autoColors);
+  if (match && !disposed) {
+    const test = editor && editorCurrent() && Date.now() < testUntil;
+    const rows = test ? [{event:{id:'preview-test',type:'GOAL',fromParticipantId:'preview-a',toParticipantId:'preview-b'}}] : [];
+    const display = test ? {...match,teams:[...match.teams,{teamId:'preview-team',participants:[
+      {participantId:'preview-a',kind:'PLAYER',number:22,lastName:'Сартаков',firstName:'Михаил'},
+      {participantId:'preview-b',kind:'PLAYER',number:44,lastName:'Братчиков',firstName:'Денис'}]}]} : match;
+    renderer.render(test ? [...rows,...feed.rows()].slice(0,feed.config.maxRows) : feed.rows(), display, feed.config, autoColors);
+  }
 }
 function photoSource(value) {
   if (typeof value !== "string") return null;
@@ -121,17 +131,20 @@ addEventListener(
 async function start() {
 try {
   const url = new URL(location.href);
-  const preview = url.pathname === '/obs-preview/event-log.html'
+  const preview = (url.pathname === '/obs-preview/event-log.html' || editor)
     ? await (await import('./staff-preview.mjs')).openPreview(url, 'event-log', () => disposed) : null;
   if (disposed) preview?.transport.dispose();
-  else stop = watchProtectedSource(
+  else {
+  if (editor) editorCurrent = preview.transport.isCurrent;
+  stop = watchProtectedSource(
     preview?.source ?? parseSource(url, "event-log"),
     accept,
     (message) => {
-      if (!disposed) status.textContent = message;
+      if (!disposed) {status.textContent = message; if (editor && editorCurrent()) parent.postMessage({type:'obs-status',message:message || 'Синхронизировано'},location.origin);}
     },
     { transport: preview?.transport, validate: validateEventLog, retryMessage: "Журнал: переподключение…" },
   );
+}
 } catch {
   if (disposed) return;
   reset();
@@ -139,3 +152,8 @@ try {
 }
 }
 void start();
+
+if (editor) addEventListener('message', event => {
+  if (disposed || !match || !editorCurrent() || event.origin !== location.origin || event.source !== parent || parent === window || event.data?.type !== 'obs-test') return;
+  testUntil = Date.now() + feed.config.ttlSeconds * 1000; render();
+});

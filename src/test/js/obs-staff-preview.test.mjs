@@ -97,3 +97,12 @@ test('pagehide during private helper import prevents late bootstrap entirely', a
   await assert.rejects(flight);
   assert.equal(calls, 0);
 });
+
+test('private editor entries are explicit-match only and cannot become AUTO or viewer entries', () => {
+  for (const kind of ['scoreboard','event-log']) {
+    const editor = new URL(`https://localhost/obs-editor/${kind}.html?matchId=${id}`);
+    assert.equal(parsePreview(editor,kind).path,`/api/v1/obs/previews/${kind}/${id}`);
+    for(const query of ['mode=auto',`matchId=${id}&preview=1`,`matchId=${id}&matchId=${id}`])
+      assert.throws(()=>parsePreview(new URL(`https://localhost/obs-editor/${kind}.html?${query}`),kind));
+  }
+});

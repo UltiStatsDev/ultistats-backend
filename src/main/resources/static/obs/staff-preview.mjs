@@ -1,8 +1,9 @@
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 export function parsePreview(url, kind = 'scoreboard') {
   const query = url.searchParams, auto = query.get('mode') === 'auto', matchId = query.get('matchId')?.toLowerCase();
+  const editor = url.pathname === `/obs-editor/${kind}.html`;
   if (url.protocol !== 'https:' || url.username || url.password || url.hash ||
-      !['scoreboard', 'event-log'].includes(kind) || url.pathname !== `/obs-preview/${kind}.html` ||
+      !['scoreboard', 'event-log'].includes(kind) || (!editor && url.pathname !== `/obs-preview/${kind}.html`) || (editor && auto) ||
       [...query].length !== 1 || (auto ? !query.has('mode') : !uuid.test(matchId ?? '')))
     throw Error('Некорректная ссылка предпросмотра');
   return { path: `/api/v1/obs/previews/${kind}/${auto ? 'auto' : matchId}`, matchId: auto ? null : matchId, origin: url.origin };

@@ -148,6 +148,7 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
     )
     private val previewAssets = setOf(
         "/obs-preview/scoreboard.html", "/obs-preview/event-log.html", "/obs/staff-preview.mjs",
+        "/obs-editor/scoreboard.html", "/obs-editor/event-log.html", "/obs/staff-reader.mjs",
     )
     private val obsStaffAssets = setOf(
         "/obs-admin.html", "/obs/admin.mjs", "/obs/scoreboard-admin.mjs", "/obs/active-links.mjs", "/obs/active-links-admin.mjs",

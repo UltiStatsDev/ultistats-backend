@@ -69,6 +69,7 @@ class AuthSurfacePolicyTest {
                 assertEquals(AuthRequirement.ObsSourceBearer, requirement("GET", "/api/v1/obs/sources/$kind/$scope"))
             }
             assertEquals(AuthRequirement.Permission(AuthPermission.OBS_ADMIN, true), requirement("GET", "/obs-preview/$kind.html"))
+            assertEquals(AuthRequirement.Permission(AuthPermission.OBS_ADMIN, true), requirement("GET", "/obs-editor/$kind.html"))
         }
         assertEquals(AuthRequirement.Permission(AuthPermission.OBS_ADMIN, true), requirement("GET", "/obs/staff-preview.mjs"))
         assertEquals(AuthRequirement.Deny, requirement("GET", "/obs-preview/unknown.html"))

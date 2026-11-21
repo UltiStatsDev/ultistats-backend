@@ -55,9 +55,9 @@ def inventory():
         if source.is_file():
             path = '/' + str(source.relative_to(ROOT / 'src/main/resources/static'))
             policy = ('API_DOCS' if path.startswith('/auth/swagger') else
-                      'OBS_ADMIN' if path.startswith('/obs-preview/') or path == '/obs/staff-preview.mjs' or path in ['/obs-admin.html', '/obs/admin.mjs', '/obs/scoreboard-admin.mjs', '/obs/active-links.mjs', '/obs/active-links-admin.mjs', '/auth/obs-session.mjs', '/auth/staff-session.mjs', '/auth/public-sources.mjs'] else 'PUBLIC')
+                      'OBS_ADMIN' if path.startswith(('/obs-preview/', '/obs-editor/')) or path in ['/obs/staff-preview.mjs', '/obs/staff-reader.mjs'] or path in ['/obs-admin.html', '/obs/admin.mjs', '/obs/scoreboard-admin.mjs', '/obs/active-links.mjs', '/obs/active-links-admin.mjs', '/auth/obs-session.mjs', '/auth/staff-session.mjs', '/auth/public-sources.mjs'] else 'PUBLIC')
             row = dict(path=path, policy=policy)
-            if path.startswith('/obs-preview/') or path == '/obs/staff-preview.mjs':
+            if path.startswith(('/obs-preview/', '/obs-editor/')) or path in ['/obs/staff-preview.mjs', '/obs/staff-reader.mjs']:
                 row['secureOnly'] = True
             static.append(row)
     return dict(inventoryVersion=1, baseline='5c9781f2895141ca7a430588873c764d8c1e2dd6',

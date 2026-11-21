@@ -31,3 +31,13 @@ test('failed same-origin image produces a fallback contrasting with current back
   assert.ok(contrast(FALLBACK,teamAccent('a',{},auto,FALLBACK))>=3);
  }finally{globalThis.location=oldLocation;globalThis.Image=oldImage;}
 });
+test('disposing staff image load cancels decode and never draws late pixels',async()=>{
+ const oldLocation=globalThis.location,oldImage=globalThis.Image;let image,resolve;
+ globalThis.location={origin:'https://localhost',href:'https://localhost/obs-admin.html'};
+ globalThis.Image=class{constructor(){image=this}decode(){return new Promise(r=>resolve=r)}};
+ try {
+  const controller=new AbortController(),result=imageAccent('/fixture.svg',controller.signal);
+  controller.abort();assert.equal(image.src,'');assert.equal(await result,FALLBACK);
+  resolve();assert.equal(await result,FALLBACK);
+ }finally{globalThis.location=oldLocation;globalThis.Image=oldImage;}
+});

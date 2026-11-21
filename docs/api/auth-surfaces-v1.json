@@ -850,6 +850,11 @@
       "secureOnly": true
     },
     {
+      "path": "/obs/staff-reader.mjs",
+      "policy": "OBS_ADMIN",
+      "secureOnly": true
+    },
+    {
       "path": "/obs/transport.mjs",
       "policy": "PUBLIC"
     },
@@ -864,6 +869,16 @@
     {
       "path": "/obs-diagnostic.html",
       "policy": "PUBLIC"
+    },
+    {
+      "path": "/obs-editor/event-log.html",
+      "policy": "OBS_ADMIN",
+      "secureOnly": true
+    },
+    {
+      "path": "/obs-editor/scoreboard.html",
+      "policy": "OBS_ADMIN",
+      "secureOnly": true
     },
     {
       "path": "/obs-preview/event-log.html",
