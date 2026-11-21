@@ -63,30 +63,45 @@ export function validateScoreboard(value, matchId = value?.matchId, origin = glo
 // One request at a time; no public REST/SSE/worker fallback. Errors never interpolate response or token data.
 export function watchProtectedSource(source, onSnapshot, onStatus = () => {}, options = {}) {
   const { fetch: request = globalThis.fetch, pollMs = 1000, retryMs = 1000, timeoutMs = 3000, validate = validateScoreboard, retryMessage = 'Табло: переподключение…' } = options;
+  const transport = options.transport;
+  let unsubscribe = () => {};
   let closed = false,
     timer = null,
     controller = null;
   const stop = () => {
+    if (closed) return;
     closed = true;
+    unsubscribe();
+    transport?.dispose();
     clearTimeout(timer);
     controller?.abort();
   };
+  const current = () => {
+    if (closed) return false;
+    if (transport && !transport.isCurrent()) {
+      stop();
+      onSnapshot(null);
+      onStatus('Сессия изменилась. Откройте предпросмотр заново');
+      return false;
+    }
+    return true;
+  };
+  if (transport) unsubscribe = transport.subscribe(current);
   async function read() {
-    if (closed) return;
+    if (!current()) return;
     const active = new AbortController();
     controller = active;
     const timeout = setTimeout(() => active.abort(), timeoutMs);
     let delay = pollMs;
     try {
-      const response = await request(source.path, {
-        headers: { Authorization: `Bearer ${source.key}` },
-        credentials: 'omit',
+      const response = await (transport?.request ?? request)(source.path, {
+        ...(transport ? {} : { headers: { Authorization: `Bearer ${source.key}` }, credentials: 'omit' }),
         cache: 'no-store',
         redirect: 'error',
         referrerPolicy: 'no-referrer',
         signal: active.signal,
       });
-      if (closed) return;
+      if (!current()) return;
       if ([401, 403, 404].includes(response.status)) {
         stop();
         onSnapshot(null);
@@ -95,7 +110,7 @@ export function watchProtectedSource(source, onSnapshot, onStatus = () => {}, op
       }
       if (!response.ok) throw Error();
       const payload = await response.json();
-      if (closed) return;
+      if (!current()) return;
       if (source.matchId === null && (!record(payload) || !Object.hasOwn(payload, 'snapshot'))) invalid();
       const snapshot = source.matchId === null ? payload.snapshot : payload;
       const value =
@@ -105,7 +120,7 @@ export function watchProtectedSource(source, onSnapshot, onStatus = () => {}, op
       onSnapshot(value);
       onStatus(value ? '' : 'Нет матча для трансляции');
     } catch {
-      if (!closed) {
+      if (current()) {
         delay = retryMs;
         onStatus(retryMessage);
       }

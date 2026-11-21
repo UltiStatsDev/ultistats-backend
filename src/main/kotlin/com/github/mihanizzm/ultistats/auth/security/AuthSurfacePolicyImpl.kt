@@ -22,6 +22,7 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
                 return if (request.getParameterValues("preview")?.any { it == "1" } == true)
                     AuthRequirement.Permission(AuthPermission.OBS_ADMIN) else AuthRequirement.PublicRead
             }
+            if (path in previewAssets) return AuthRequirement.Permission(AuthPermission.OBS_ADMIN, secureOnly = true)
             if (path in obsStaffAssets) return AuthRequirement.Permission(AuthPermission.OBS_ADMIN)
             if (path in docsAssets || path == "/swagger-ui.html" || path.startsWith("/swagger-ui/") ||
                 path == "/v3/api-docs" || path.startsWith("/v3/api-docs/") || path == "/v3/api-docs.yaml")
@@ -108,6 +109,8 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
         rule("DELETE", "/api/v1/teams/{teamId}/photoUrl", AuthPermission.SPORTS_WRITE),
         rule("POST", "/api/v2/matches/{matchId}/events/undo", AuthPermission.SPORTS_WRITE),
         rule("GET", "/api/v2/matches/{matchId}/events/undo/{commandId}", AuthPermission.SPORTS_WRITE),
+        rule("GET", "/api/v1/obs/previews/scoreboard/{matchId}", AuthPermission.OBS_ADMIN, secureOnly = true),
+        rule("GET", "/api/v1/obs/previews/event-log/{matchId}", AuthPermission.OBS_ADMIN, secureOnly = true),
         rule("GET", "/api/v1/obs/source-keys", AuthPermission.OBS_ADMIN),
         rule("GET", "/api/v1/obs/source-keys/current", AuthPermission.OBS_ADMIN, secureOnly = true),
         rule("GET", "/api/v1/obs/source-keys/current/{matchId}", AuthPermission.OBS_ADMIN, secureOnly = true),
@@ -142,6 +145,9 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
         "/obs/shared-worker.js",
         "/obs/transport.mjs",
         "/obs-diagnostic.html",
+    )
+    private val previewAssets = setOf(
+        "/obs-preview/scoreboard.html", "/obs-preview/event-log.html", "/obs/staff-preview.mjs",
     )
     private val obsStaffAssets = setOf(
         "/obs-admin.html", "/obs/admin.mjs", "/obs/scoreboard-admin.mjs",

@@ -50,13 +50,28 @@ class AuthSurfacePolicyTest {
         val inventory = jacksonObjectMapper().readTree(Path.of("docs/api/auth-surfaces-v1.json").toFile())
         return inventory["static"].flatMap { row ->
             val expected = if (row["policy"].asText() == "PUBLIC") AuthRequirement.PublicRead
-                else AuthRequirement.Permission(AuthPermission.valueOf(row["policy"].asText()))
+                else AuthRequirement.Permission(AuthPermission.valueOf(row["policy"].asText()), row.path("secureOnly").asBoolean())
             listOf("GET", "HEAD").map { verb ->
                 DynamicTest.dynamicTest("$verb ${row["path"].asText()}") {
                     assertEquals(expected, requirement(verb, row["path"].asText()))
                 }
             }
         }
+    }
+
+    @Test
+    fun `preview reads and pages are secure staff only and viewer policy is unchanged`() {
+        for (kind in listOf("scoreboard", "event-log")) {
+            for (scope in listOf(matchId.toString(), "auto")) {
+                val path = "/api/v1/obs/previews/$kind/$scope"
+                assertEquals(AuthRequirement.Permission(AuthPermission.OBS_ADMIN, true), requirement("GET", path))
+                assertEquals(AuthRequirement.Deny, requirement("POST", path))
+                assertEquals(AuthRequirement.ObsSourceBearer, requirement("GET", "/api/v1/obs/sources/$kind/$scope"))
+            }
+            assertEquals(AuthRequirement.Permission(AuthPermission.OBS_ADMIN, true), requirement("GET", "/obs-preview/$kind.html"))
+        }
+        assertEquals(AuthRequirement.Permission(AuthPermission.OBS_ADMIN, true), requirement("GET", "/obs/staff-preview.mjs"))
+        assertEquals(AuthRequirement.Deny, requirement("GET", "/obs-preview/unknown.html"))
     }
 
     @Test

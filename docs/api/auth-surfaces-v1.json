@@ -645,6 +645,42 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/obs/previews/scoreboard/{matchId}",
+      "policy": "OBS_ADMIN",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsPreviewController.kt",
+      "line": 22,
+      "secureOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/obs/previews/event-log/{matchId}",
+      "policy": "OBS_ADMIN",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsPreviewController.kt",
+      "line": 26,
+      "secureOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/obs/previews/scoreboard/auto",
+      "policy": "OBS_ADMIN",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsPreviewController.kt",
+      "line": 30,
+      "secureOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/obs/previews/event-log/auto",
+      "policy": "OBS_ADMIN",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsPreviewController.kt",
+      "line": 34,
+      "secureOnly": true
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/obs/scoreboard/{matchId}",
       "policy": "PUBLIC",
       "owner": "enforcement",
@@ -801,6 +837,11 @@
       "policy": "PUBLIC"
     },
     {
+      "path": "/obs/staff-preview.mjs",
+      "policy": "OBS_ADMIN",
+      "secureOnly": true
+    },
+    {
       "path": "/obs/transport.mjs",
       "policy": "PUBLIC"
     },
@@ -815,6 +856,16 @@
     {
       "path": "/obs-diagnostic.html",
       "policy": "PUBLIC"
+    },
+    {
+      "path": "/obs-preview/event-log.html",
+      "policy": "OBS_ADMIN",
+      "secureOnly": true
+    },
+    {
+      "path": "/obs-preview/scoreboard.html",
+      "policy": "OBS_ADMIN",
+      "secureOnly": true
     },
     {
       "path": "/obs-scoreboard.html",

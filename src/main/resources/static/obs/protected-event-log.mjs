@@ -105,19 +105,6 @@ function displayEvent(event) {
       toParticipantId: event.toSlotId ?? event.toParticipantId,
   };
 }
-try {
-  stop = watchProtectedSource(
-    parseSource(new URL(location.href), "event-log"),
-    accept,
-    (message) => {
-      if (!disposed) status.textContent = message;
-    },
-    { validate: validateEventLog, retryMessage: "Журнал: переподключение…" },
-  );
-} catch {
-  reset();
-  status.textContent = "Некорректная ссылка журнала";
-}
 const tick = setInterval(render, 100);
 addEventListener(
   "pagehide",
@@ -130,3 +117,25 @@ addEventListener(
   },
   { once: true },
 );
+
+async function start() {
+try {
+  const url = new URL(location.href);
+  const preview = url.pathname === '/obs-preview/event-log.html'
+    ? await (await import('./staff-preview.mjs')).openPreview(url, 'event-log', () => disposed) : null;
+  if (disposed) preview?.transport.dispose();
+  else stop = watchProtectedSource(
+    preview?.source ?? parseSource(url, "event-log"),
+    accept,
+    (message) => {
+      if (!disposed) status.textContent = message;
+    },
+    { transport: preview?.transport, validate: validateEventLog, retryMessage: "Журнал: переподключение…" },
+  );
+} catch {
+  if (disposed) return;
+  reset();
+  status.textContent = "Некорректная ссылка журнала";
+}
+}
+void start();
