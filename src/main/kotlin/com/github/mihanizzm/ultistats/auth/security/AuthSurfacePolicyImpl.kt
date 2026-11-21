@@ -150,7 +150,7 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
         "/obs-preview/scoreboard.html", "/obs-preview/event-log.html", "/obs/staff-preview.mjs",
     )
     private val obsStaffAssets = setOf(
-        "/obs-admin.html", "/obs/admin.mjs", "/obs/scoreboard-admin.mjs",
+        "/obs-admin.html", "/obs/admin.mjs", "/obs/scoreboard-admin.mjs", "/obs/active-links.mjs", "/obs/active-links-admin.mjs",
         "/auth/obs-session.mjs", "/auth/staff-session.mjs", "/auth/public-sources.mjs",
     )
     private val docsAssets = setOf("/auth/swagger.html", "/auth/swagger.mjs", "/auth/swagger-adapter.mjs")

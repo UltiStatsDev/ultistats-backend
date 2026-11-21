@@ -127,7 +127,7 @@ class AuthSurfacePolicyTest {
     fun `effective OBS data and streams stay public while editors are private`() {
         for (path in listOf("/api/v1/obs/config", "/api/v1/obs/config/stream", "/api/v1/obs/stream", "/api/v1/obs/scoreboard/$matchId", "/uploads/photo.png"))
             assertEquals(AuthRequirement.PublicRead, requirement("GET", path))
-        for (path in listOf("/obs-admin.html", "/obs/admin.mjs", "/obs/scoreboard-admin.mjs"))
+        for (path in listOf("/obs-admin.html", "/obs/admin.mjs", "/obs/scoreboard-admin.mjs", "/obs/active-links.mjs", "/obs/active-links-admin.mjs"))
             assertEquals(AuthRequirement.Permission(AuthPermission.OBS_ADMIN), requirement("GET", path))
     }
 }

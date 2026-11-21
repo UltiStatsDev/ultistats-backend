@@ -55,7 +55,7 @@ def inventory():
         if source.is_file():
             path = '/' + str(source.relative_to(ROOT / 'src/main/resources/static'))
             policy = ('API_DOCS' if path.startswith('/auth/swagger') else
-                      'OBS_ADMIN' if path.startswith('/obs-preview/') or path == '/obs/staff-preview.mjs' or path in ['/obs-admin.html', '/obs/admin.mjs', '/obs/scoreboard-admin.mjs', '/auth/obs-session.mjs', '/auth/staff-session.mjs', '/auth/public-sources.mjs'] else 'PUBLIC')
+                      'OBS_ADMIN' if path.startswith('/obs-preview/') or path == '/obs/staff-preview.mjs' or path in ['/obs-admin.html', '/obs/admin.mjs', '/obs/scoreboard-admin.mjs', '/obs/active-links.mjs', '/obs/active-links-admin.mjs', '/auth/obs-session.mjs', '/auth/staff-session.mjs', '/auth/public-sources.mjs'] else 'PUBLIC')
             row = dict(path=path, policy=policy)
             if path.startswith('/obs-preview/') or path == '/obs/staff-preview.mjs':
                 row['secureOnly'] = True
