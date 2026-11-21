@@ -765,6 +765,14 @@
       "policy": "API_DOCS"
     },
     {
+      "path": "/obs/active-links-admin.mjs",
+      "policy": "OBS_ADMIN"
+    },
+    {
+      "path": "/obs/active-links.mjs",
+      "policy": "OBS_ADMIN"
+    },
+    {
       "path": "/obs/admin.mjs",
       "policy": "OBS_ADMIN"
     },

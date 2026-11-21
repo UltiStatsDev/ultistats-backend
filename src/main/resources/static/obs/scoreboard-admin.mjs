@@ -32,10 +32,9 @@ function fields() {
 }
 export function mountScoreboardAdmin(id) {
  dispose();const selected=++generation;matchId=id;snapshot=null;draft=null;dirty=false;saving=false;fieldsKey=null;auto={};
- $('scoreboard-settings').hidden=false;$('scoreboard-fields').disabled=true;$('scoreboard-url').value='';$('scoreboard-copy').disabled=true;
+ $('scoreboard-settings').hidden=false;$('scoreboard-fields').disabled=true;
  $('scoreboard-teams').replaceChildren();$('scoreboard-preview').src='about:blank';
  if(!uuid.test(id)){message('Введите корректный UUID матча');return;}
- // Published source link arrives only after parent validates installation.publicOrigin.
  $('scoreboard-preview').src=`/obs-scoreboard.html?matchId=${id}&preview=1`;message('Подключение табло…');
  dispose=watchScoreboard(id,value=>{
   if(selected!==generation)return;
@@ -54,10 +53,6 @@ export function mountScoreboardAdmin(id) {
   }
  },text=>{if(selected===generation)message(dirty?`${text} · Черновик остаётся на странице`:text);});
 }
-export function setScoreboardSourceUrl(id,url) {
- if(id!==matchId)return;
- $('scoreboard-url').value=url;$('scoreboard-copy').disabled=!url;
-}
 $('scoreboard-preview').addEventListener('load',postDraft);
 $('scoreboard-swap').onclick=()=>{if(!draft)return;draft.swapped=!draft.swapped;dirty=true;fields();postDraft();};
 $('scoreboard-reset').onclick=()=>{if(!snapshot)return;draft=defaultProfile();dirty=true;fields();postDraft();message('Сброс только в предпросмотре. Сохраните для эфира.');};
@@ -73,11 +68,6 @@ $('scoreboard-form').addEventListener('submit',async event=>{
  }catch(error){if(selected===generation)message(`Результат сохранения не подтверждён: ${error.message} Черновик остаётся на странице. Проверьте актуальный профиль перед повтором.`);}
  finally{if(selected===generation){saving=false;fields();}}
 });
-$('scoreboard-copy').onclick=async()=>{
- if(!$('scoreboard-url').value)return;
- try{await navigator.clipboard.writeText($('scoreboard-url').value);message('Ссылка табло скопирована');}
- catch{$('scoreboard-url').select();message('Скопируйте выделенную ссылку табло');}
-};
 addEventListener('message',event=>{
  if(event.origin===location.origin&&event.source===$('scoreboard-preview').contentWindow&&event.data?.type==='scoreboard-status')
   message(dirty?`${event.data.message} · Черновик остаётся на странице`:event.data.message);
