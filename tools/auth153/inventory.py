@@ -29,7 +29,7 @@ def inventory():
                 permission = 'API_DOCS'
             elif path.startswith('/api/v1/obs/sources/'):
                 permission = 'OBS_SOURCE_BEARER'
-            elif path.startswith('/api/v1/obs/previews/'):
+            elif path.startswith('/api/v1/obs/previews/') or path in ['/api/v1/obs/config', '/api/v1/obs/config/stream', '/api/v1/obs/stream'] or path.startswith('/api/v1/obs/scoreboard/'):
                 permission = 'OBS_ADMIN'
             elif path == '/api/v1/obs/source-keys' or path.startswith('/api/v1/obs/source-keys/'):
                 permission = 'OBS_ADMIN'
@@ -49,13 +49,15 @@ def inventory():
                                   ('GET', '/api/v1/obs/source-keys/current'),
                                   ('POST', '/api/v1/obs/source-keys')}:
                 route['secureOnly'] = True
+            if path in ['/api/v1/obs/config/stream', '/api/v1/obs/stream']:
+                route['retiredStatus'] = 410
             routes.append(route)
     static = []
     for source in sorted((ROOT / 'src/main/resources/static').rglob('*')):
         if source.is_file():
             path = '/' + str(source.relative_to(ROOT / 'src/main/resources/static'))
             policy = ('API_DOCS' if path.startswith('/auth/swagger') else
-                      'OBS_ADMIN' if path.startswith(('/obs-preview/', '/obs-editor/')) or path in ['/obs/staff-preview.mjs', '/obs/staff-reader.mjs'] or path in ['/obs-admin.html', '/obs/admin.mjs', '/obs/scoreboard-admin.mjs', '/obs/active-links.mjs', '/obs/active-links-admin.mjs', '/auth/obs-session.mjs', '/auth/staff-session.mjs', '/auth/public-sources.mjs'] else 'PUBLIC')
+                      'OBS_ADMIN' if path.startswith(('/obs-preview/', '/obs-editor/')) or path in ['/obs/staff-preview.mjs', '/obs/staff-reader.mjs'] or path in ['/obs-admin.html', '/obs/admin.mjs', '/obs/scoreboard-admin.mjs', '/obs/active-links.mjs', '/obs/active-links-admin.mjs', '/auth/obs-session.mjs', '/auth/staff-session.mjs', '/auth/public-sources.mjs', '/obs/client.mjs', '/obs/overlay.mjs', '/obs/scoreboard-client.mjs', '/obs/scoreboard.mjs', '/obs/shared-worker.js', '/obs/transport.mjs'] else 'PUBLIC')
             row = dict(path=path, policy=policy)
             if path.startswith(('/obs-preview/', '/obs-editor/')) or path in ['/obs/staff-preview.mjs', '/obs/staff-reader.mjs']:
                 row['secureOnly'] = True

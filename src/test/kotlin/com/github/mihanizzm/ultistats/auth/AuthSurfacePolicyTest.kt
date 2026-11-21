@@ -89,11 +89,11 @@ class AuthSurfacePolicyTest {
     }
 
     @Test
-    fun `source pages public but any preview one requires OBS admin`() {
+    fun `retired HTML stays public regardless of obsolete preview values`() {
         for (path in listOf("/obs-battle-log.html", "/obs-scoreboard.html")) {
             assertEquals(AuthRequirement.PublicRead, requirement("GET", path))
-            assertEquals(AuthRequirement.Permission(AuthPermission.OBS_ADMIN), requirement("GET", path, "1"))
-            assertEquals(AuthRequirement.Permission(AuthPermission.OBS_ADMIN), requirement("HEAD", path, "0", "1"))
+            assertEquals(AuthRequirement.PublicRead, requirement("GET", path, "1"))
+            assertEquals(AuthRequirement.PublicRead, requirement("HEAD", path, "0", "1"))
         }
     }
 
@@ -125,10 +125,12 @@ class AuthSurfacePolicyTest {
     }
 
     @Test
-    fun `effective OBS data and streams stay public while editors are private`() {
-        for (path in listOf("/api/v1/obs/config", "/api/v1/obs/config/stream", "/api/v1/obs/stream", "/api/v1/obs/scoreboard/$matchId", "/uploads/photo.png"))
+    fun `legacy OBS data streams and raw network assets are staff only while sports remain public`() {
+        for (path in listOf("/api/v1/obs/config", "/api/v1/obs/config/stream", "/api/v1/obs/stream", "/api/v1/obs/scoreboard/$matchId"))
+            for (verb in listOf("GET", "HEAD")) assertEquals(AuthRequirement.Permission(AuthPermission.OBS_ADMIN), requirement(verb, path))
+        for (path in listOf("/uploads/photo.png", "/api/v1/matches/$matchId", "/api/v1/matches/$matchId/events/stream", "/api/v2/matches/$matchId/events"))
             assertEquals(AuthRequirement.PublicRead, requirement("GET", path))
-        for (path in listOf("/obs-admin.html", "/obs/admin.mjs", "/obs/scoreboard-admin.mjs", "/obs/active-links.mjs", "/obs/active-links-admin.mjs"))
+        for (path in listOf("/obs-admin.html", "/obs/admin.mjs", "/obs/scoreboard-admin.mjs", "/obs/active-links.mjs", "/obs/active-links-admin.mjs", "/obs/client.mjs", "/obs/transport.mjs", "/obs/shared-worker.js", "/obs/overlay.mjs", "/obs/scoreboard.mjs", "/obs/scoreboard-client.mjs"))
             assertEquals(AuthRequirement.Permission(AuthPermission.OBS_ADMIN), requirement("GET", path))
     }
 }

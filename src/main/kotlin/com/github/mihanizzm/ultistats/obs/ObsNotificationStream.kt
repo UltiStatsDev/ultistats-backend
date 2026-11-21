@@ -6,11 +6,9 @@ import com.github.mihanizzm.ultistats.realtime.EventLogChangedSignal
 import com.github.mihanizzm.ultistats.realtime.MatchChangedSignal
 import com.github.mihanizzm.ultistats.realtime.MatchFinishedSignal
 import io.swagger.v3.oas.annotations.Operation
-import io.swagger.v3.oas.annotations.media.Content
-import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import org.springframework.http.CacheControl
-import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
@@ -71,11 +69,10 @@ class ObsNotificationStream {
 }
 
 @RestController
-class ObsNotificationController(private val stream: ObsNotificationStream) {
-    @GetMapping("/api/v1/obs/stream", produces = [MediaType.TEXT_EVENT_STREAM_VALUE])
-    @Operation(summary = "Общий поток уведомлений OBS для SharedWorker", description = "Один поток на browser context: connected/config-changed/event-log-changed/match-finished/match-changed/scoreboard-profile-changed. Только AFTER_COMMIT invalidations; canonical данные читаются через REST. Match-события содержат matchId для фильтрации. После match-finished поток остаётся открыт для общей конфигурации и других матчей. Process-local без durable replay; connected требует повторной сверки всех подписок. Доверенная сеть без авторизации.")
-    @ApiResponse(responseCode = "200", description = "OBS notification SSE", content = [Content(
-        mediaType = MediaType.TEXT_EVENT_STREAM_VALUE, schema = Schema(type = "string"),
-    )])
-    fun subscribe(): ResponseEntity<SseEmitter> = ResponseEntity.ok().cacheControl(CacheControl.noCache()).body(stream.subscribe())
+@SecurityRequirement(name = "staffSession")
+class ObsNotificationController {
+    @GetMapping("/api/v1/obs/stream")
+    @Operation(summary = "Retired shared OBS stream", description = "OBS_ADMIN only. Always 410; cached legacy workers cannot open an event channel. General sports streams are unchanged.", deprecated = true)
+    @ApiResponse(responseCode = "410", description = "Retired; no event channel")
+    fun subscribe() = retiredObsStream()
 }

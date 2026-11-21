@@ -21,6 +21,9 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
 @Import(LegacyDomainHttpSecurity::class, ObsDatabaseHelper::class)
 class ObsConfigIntegrationTest {
     @Autowired lateinit var mvc: MockMvc
+    @Autowired lateinit var configStream: ObsConfigStream
+    @Autowired lateinit var notifications: ObsNotificationStream
+    private fun internalStream(path: String) = ObsInternalStreamProbe(configStream, notifications).open(path)
     @Autowired lateinit var json: ObjectMapper
     @Autowired lateinit var database: ObsDatabaseHelper
     @Autowired lateinit var service: ObsConfigService
@@ -62,9 +65,9 @@ class ObsConfigIntegrationTest {
         org.junit.jupiter.api.Assertions.assertEquals("{}", database.persistedConfig())
     }
 
-    @Test fun `stream greets then notifies saved config without creating gaming events`() {
+    @Test fun `internal config publisher greets then notifies without creating gaming events`() {
         val count = database.gameState()
-        val stream = mvc.perform(get("/api/v1/obs/config/stream")).andExpect(request().asyncStarted()).andReturn()
+        val stream = internalStream("config")
         mvc.perform(put("/api/v1/obs/config").contentType(MediaType.APPLICATION_JSON).content(defaults()))
             .andExpect(status().isOk)
         org.junit.jupiter.api.Assertions.assertTrue(stream.response.contentAsString.contains("event:connected"))
@@ -77,7 +80,7 @@ class ObsConfigIntegrationTest {
             .andExpect(content().string(containsString("/api/v1/obs/config/stream")))
     }
     @Test fun `rolled back config does not leak notification or changed state`() {
-        val stream = mvc.perform(get("/api/v1/obs/config/stream")).andReturn()
+        val stream = internalStream("config")
         transaction.executeWithoutResult { status ->
             service.save(ObsConfig(maxRows = 19))
             status.setRollbackOnly()
@@ -85,9 +88,8 @@ class ObsConfigIntegrationTest {
         org.junit.jupiter.api.Assertions.assertEquals(5, service.get().maxRows)
         org.junit.jupiter.api.Assertions.assertFalse(stream.response.contentAsString.contains("config-changed"))
     }
-    @Test fun `shared OBS transport documents raw schema and delivers only committed notifications`() {
-        val stream = mvc.perform(get("/api/v1/obs/stream")).andExpect(status().isOk)
-            .andExpect(request().asyncStarted()).andReturn()
+    @Test fun `internal OBS publisher keeps commit semantics while HTTP stream is retired`() {
+        val stream = internalStream("notifications")
         try {
             val matchId = java.util.UUID.randomUUID()
             val eventId = java.util.UUID.randomUUID()
@@ -114,7 +116,7 @@ class ObsConfigIntegrationTest {
             org.assertj.core.api.Assertions.assertThat(stream.response.contentAsString).isEqualTo(committed)
             org.assertj.core.api.Assertions.assertThat(service.get().maxRows).isEqualTo(10)
             mvc.perform(get("/v3/api-docs")).andExpect(status().isOk)
-                .andExpect(jsonPath("$.paths['/api/v1/obs/stream'].get.responses['200'].content['text/event-stream'].schema.type").value("string"))
+                .andExpect(jsonPath("$.paths['/api/v1/obs/stream'].get.responses['410']").exists())
         } finally { runCatching { stream.request.asyncContext?.complete() } }
     }
 

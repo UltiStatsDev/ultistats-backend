@@ -1,8 +1,9 @@
+// Frozen landed G1 worker bytes retained only as an old-cache simulator; current stub tested separately.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
-const script=()=>readFileSync(new URL('../../main/resources/static/obs/shared-worker.js',import.meta.url),'utf8');
+const script=()=>readFileSync(new URL('./fixtures/obs-pre-g2-cached-worker.js',import.meta.url),'utf8');
 function worker(failConstruct=0) {
  const sources=[],timers=new Map();let now=0,timerId=0;
  class Source {
@@ -25,7 +26,7 @@ function worker(failConstruct=0) {
  return {sources,timers,connect,retries:()=>[...timers.values()].filter(t=>!t.interval).map(t=>t.ms),tick:ms=>{now+=ms;for(const [id,t]of [...timers])if(t.at<=now){if(t.interval)t.at=now+t.ms;else timers.delete(id);t.fn();}}};
 }
 const events=p=>p.out.filter(x=>x.type==='event').map(x=>x.name);
-test('six match ports plus admin/preview share one SSE, with filtered notifications and reconnect bootstrap',()=>{
+test('simulated pre-G2 cache: six match ports plus admin/preview share one SSE, with filtered notifications and reconnect bootstrap',()=>{
  const w=worker(),ports=Array.from({length:6},(_,i)=>w.connect('match-'+i)),admin=w.connect();
  assert.equal(w.sources.length,1,'all consumers must share a single notification connection');
  assert.equal(w.sources[0].url,'/api/v1/obs/stream');
@@ -42,7 +43,7 @@ test('six match ports plus admin/preview share one SSE, with filtered notificati
  source.emit('connected');for(const p of [...ports,admin,preview])assert.equal(events(p).at(-1),'connected');
  assert.equal(w.sources.length,1);
 });
-test('unregister, silent port expiry and reconnect do not grow listeners or keep unused SSE alive',()=>{
+test('simulated pre-G2 cache: unregister, silent port expiry and reconnect do not grow listeners or keep unused SSE alive',()=>{
  const w=worker(),first=w.connect('one'),second=w.connect('two',false);
  const source=w.sources[0];assert.ok(source,'registered ports need a stream');source.emit('connected');
  first.send({type:'unsubscribe'});assert.equal(source.closed,undefined,'other port retains shared source');
@@ -52,7 +53,7 @@ test('unregister, silent port expiry and reconnect do not grow listeners or keep
  assert.deepEqual(events(reopened),['connected']);
  reopened.send({type:'unsubscribe'});assert.equal(w.sources[1].closed,true);assert.equal(w.timers.size,0);
 });
-test('scoreboard profile and lifecycle invalidations are routed to matching match only through existing single stream',()=>{
+test('simulated pre-G2 cache: scoreboard profile and lifecycle invalidations are routed to matching match only through existing single stream',()=>{
  const w=worker(),one=w.connect('one'),two=w.connect('two'),eventLog=w.connect('one'),admin=w.connect();
  const source=w.sources[0];source.emit('connected');
  source.emit('match-changed',{matchId:'one'});source.emit('scoreboard-profile-changed',{matchId:'two'});
@@ -62,7 +63,7 @@ test('scoreboard profile and lifecycle invalidations are routed to matching matc
  assert.deepEqual(events(admin),['connected']);assert.equal(w.sources.length,1);
 });
 
-test('terminal CLOSED stream is recreated once while CONNECTING remains browser-managed and stale callbacks cannot damage recovery',()=>{
+test('simulated pre-G2 cache: terminal CLOSED stream is recreated once while CONNECTING remains browser-managed and stale callbacks cannot damage recovery',()=>{
  const w=worker(),one=w.connect('one'),two=w.connect('two'),admin=w.connect();const old=w.sources[0];old.emit('connected');
  old.error(0);assert.equal(w.sources.length,1);assert.deepEqual(w.retries(),[],'CONNECTING must not add a second reconnect loop');
  const staleError=old.onerror;old.error(2);assert.deepEqual(w.retries(),[1000]);
@@ -76,7 +77,7 @@ test('terminal CLOSED stream is recreated once while CONNECTING remains browser-
  assert.deepEqual(events(admin),['connected','connected','config-changed']);
  assert.equal(w.sources.filter(s=>!s.closed).length,1);
 });
-test('initial terminal failures use bounded exponential retry reset by real connected and final unsubscribe cancels it',()=>{
+test('simulated pre-G2 cache: initial terminal failures use bounded exponential retry reset by real connected and final unsubscribe cancels it',()=>{
  const w=worker(),port=w.connect('one');
  for(const delay of [1000,2000,4000,8000,15000,15000]){
   const source=w.sources.at(-1),before=w.sources.length;source.error(2);source.error(2);
@@ -86,12 +87,12 @@ test('initial terminal failures use bounded exponential retry reset by real conn
  port.send({type:'unsubscribe'});assert.equal(w.timers.size,0);const count=w.sources.length;w.tick(120000);assert.equal(w.sources.length,count);
  const reopened=w.connect('two');assert.equal(w.sources.length,count+1);reopened.send({type:'unsubscribe'});assert.equal(w.timers.size,0);
 });
-test('expired last silent subscriber cancels terminal retry without resurrecting an unused connection',()=>{
+test('simulated pre-G2 cache: expired last silent subscriber cancels terminal retry without resurrecting an unused connection',()=>{
  const w=worker(),port=w.connect('one',false);w.sources[0].error(2);w.tick(45001);
  assert.equal(port.closed,true);assert.equal(w.timers.size,0);const count=w.sources.length;w.tick(120000);assert.equal(w.sources.length,count);
 });
 
-test('synchronous EventSource construction failure is retried without uncaught error or retry after final unsubscribe',()=>{
+test('simulated pre-G2 cache: synchronous EventSource construction failure is retried without uncaught error or retry after final unsubscribe',()=>{
  const w=worker(1),port=w.connect('one');assert.equal(w.sources.length,0);assert.deepEqual(w.retries(),[1000]);
  w.tick(1000);assert.equal(w.sources.length,1);w.sources[0].emit('connected');assert.deepEqual(events(port),['connected']);
  port.send({type:'unsubscribe'});assert.equal(w.timers.size,0);w.tick(60000);assert.equal(w.sources.length,1);
