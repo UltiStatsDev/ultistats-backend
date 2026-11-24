@@ -56,11 +56,12 @@ test("historical actors and slot aliases preserve defensive left/right and raw p
     before = JSON.stringify(value);
   let row = resolveRow(value.events[0], eventLogMatch(value));
   assert.equal(row.left.label, "7 Исторический И.");
-  assert.equal(row.right.label, "Неизвестный игрок");
+  assert.equal(row.right.label, "Запасной №8");
   assert.equal(row.right.teamId, other);
   value.temporarySlots[0].resolvedParticipantId = id;
   row = resolveRow(value.events[0], eventLogMatch(value));
-  assert.equal(row.right.label, row.left.label);
+  assert.equal(row.right.label, "Запасной №8", "opposing team PLAYER cannot resolve this slot");
+  assert.equal(row.right.teamId, other);
   value.temporarySlots[0].resolvedParticipantId = null;
   assert.equal(JSON.stringify(value), before);
 });

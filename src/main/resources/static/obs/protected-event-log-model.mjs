@@ -79,11 +79,15 @@ export function validateEventLog(value, matchId) {
   return value;
 }
 export function eventLogMatch(snapshot) {
-  const participants = new Map(snapshot.participants.map((p) => [p.participantId, p]));
+  const canonical = new Map(snapshot.participants.map((p) => [p.participantId, p]));
+  const participants = new Map(canonical);
   for (const slot of snapshot.temporarySlots) {
     // Canonical EventResponse uses the slot UUID in the participant reference fields.
-    const resolved = participants.get(slot.resolvedParticipantId);
-    participants.set(slot.slotId, { ...(resolved ?? { kind: "UNKNOWN", teamId: slot.teamId }), participantId: slot.slotId });
+    const resolved = canonical.get(slot.resolvedParticipantId);
+    const player = resolved?.kind === "PLAYER" && resolved.teamId === slot.teamId ? resolved : null;
+    participants.set(slot.slotId, {
+      ...(player ?? { kind: "TEMPORARY", teamId: slot.teamId, number: slot.number }), participantId: slot.slotId,
+    });
   }
   return {
     teams: snapshot.teams.map((team) => ({
