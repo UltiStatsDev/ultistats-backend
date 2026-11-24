@@ -90,6 +90,8 @@ export function resolveRow(event,match) {
     const player=id=>{
         const p=participants.get(id);
         if (!p || p.kind==='UNKNOWN') return {label:'Неизвестный игрок',teamId:p?.teamId};
+        if (p.kind==='TEMPORARY') return {
+            label:Number.isSafeInteger(p.number)&&p.number>=0 ? `Запасной №${p.number}` : 'Неизвестный игрок',teamId:p.teamId};
         const name=[p.lastName?.trim(),p.firstName?.trim() ? `${Array.from(p.firstName.trim())[0]}.` : ''].filter(Boolean).join(' ');
         return {label:[p.number??'',name||'Игрок без имени'].filter(v=>v!=='').join(' '),teamId:p.teamId};
     };
