@@ -10,6 +10,7 @@ import com.github.mihanizzm.ultistats.service.PointLineupService
 import com.github.mihanizzm.ultistats.repository.jpa.PointLineupRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataEventRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchRepository
+import io.swagger.v3.oas.annotations.media.Schema
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Isolation
@@ -40,6 +41,9 @@ data class ObsInfographicsSnapshot(
     val settings: ObsInfographicsSettings = ObsInfographicsSettings(),
     @get:JsonInclude(JsonInclude.Include.ALWAYS)
     val leaderPresentation: ObsLeaderPresentation? = null,
+    @get:JsonInclude(JsonInclude.Include.ALWAYS)
+    @field:Schema(description = "Canonical team comparisons for the selected FINISHED match", nullable = true)
+    val postmatch: ObsInfographicsPostmatch? = null,
 )
 @JsonInclude(JsonInclude.Include.ALWAYS)
 data class ObsAutoInfographicsSnapshot(val snapshot: ObsInfographicsSnapshot?)
@@ -47,6 +51,7 @@ data class ObsAutoInfographicsSnapshot(val snapshot: ObsInfographicsSnapshot?)
 @Service
 class ObsInfographicsService(
     private val presentations: ObsInfographicsPresentationService,
+    private val postmatchService: ObsInfographicsPostmatchService,
     private val settingsService: ObsInfographicsSettingsService,
     private val keys: ObsSourceKeyService,
     private val auto: ObsAutoSourceService,
@@ -111,6 +116,7 @@ class ObsInfographicsService(
         val pointSeconds = lineupStart?.let { settingsService.at(it).pointPageSeconds }
         val active = match.status == MatchStatus.IN_PROGRESS && next != null
         val kind = when {
+            match.status == MatchStatus.FINISHED -> "POSTMATCH"
             !active -> "HIDDEN"
             selected != null && lineupStart != null && !now.isBefore(lineupStart) -> "LINEUP"
             next?.number == 1 -> "ROSTER"
@@ -131,9 +137,10 @@ class ObsInfographicsService(
                 }
             })
         }
-        val input = "${match.eventLogRevision}:${match.status}:${match.effectiveStartedAt}:$phase:$projected:${settings.revision}"
+        val postmatch = if (kind == "POSTMATCH") postmatchService.finished(matchId, teams.map { it.teamId }) else null
+        val input = "${match.eventLogRevision}:${match.status}:${match.effectiveStartedAt}:$phase:$projected:${settings.revision}:$postmatch"
         val revision = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8)))
         val leaders = presentations.effective(matchId, isAuto, settings.revision, now)
-        return ObsInfographicsSnapshot(matchId, now, revision, match.status, phase, projected, settings, leaders)
+        return ObsInfographicsSnapshot(matchId, now, revision, match.status, phase, projected, settings, leaders, postmatch)
     }
 }

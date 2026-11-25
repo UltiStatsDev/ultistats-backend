@@ -1,12 +1,19 @@
+import {validatePostmatch} from './infographics-postmatch.mjs';
+
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 const invalid = () => { throw Error('Некорректные данные инфографики'); };
 export function validateInfographics(value, matchId, origin = globalThis.location?.origin ?? 'https://localhost') {
   if (!value || value.matchId !== matchId || !uuid.test(matchId) || !Number.isFinite(Date.parse(value.serverNow)) ||
       typeof value.presentationRevision !== 'string' || !['PLANNED','IN_PROGRESS','FINISHED'].includes(value.status) ||
-      !['ROSTER','LINEUP','HIDDEN'].includes(value.phase?.kind) ||
-      (value.phase.kind !== 'HIDDEN' ? value.status !== 'IN_PROGRESS' || !Number.isFinite(Date.parse(value.phase.startedAt)) : value.phase.startedAt !== null) ||
+      !['ROSTER','LINEUP','HIDDEN','POSTMATCH'].includes(value.phase?.kind) ||
       !value.settings || ['rosterPageSeconds','pointPageSeconds','leaderPageSeconds'].some(k => !Number.isInteger(value.settings[k]) || value.settings[k] < 2 || value.settings[k] > 15) ||
       !Array.isArray(value.teams) || value.teams.length !== 2 || new Set(value.teams.map(t=>t.teamId)).size !== 2) invalid();
+  const kind = value.phase.kind;
+  if (kind === 'HIDDEN' || kind === 'POSTMATCH') {
+    if (value.phase.startedAt !== null) invalid();
+  } else if (value.status !== 'IN_PROGRESS' || !Number.isFinite(Date.parse(value.phase.startedAt))) invalid();
+  if (kind === 'POSTMATCH' ? value.status !== 'FINISHED' : value.postmatch != null) invalid();
+  const postmatch = kind === 'POSTMATCH' ? validatePostmatch(value.postmatch,value.teams) : null;
   if (value.phase.lineupStartedAt != null && (!Number.isFinite(Date.parse(value.phase.lineupStartedAt)) ||
       !uuid.test(value.phase.pointId) || !Number.isSafeInteger(value.phase.lineupRevision) ||
       !['CONFIRMED','LEGACY_POINT_OPEN'].includes(value.phase.anchorKind))) invalid();
@@ -15,7 +22,7 @@ export function validateInfographics(value, matchId, origin = globalThis.locatio
   if (value.phase.lineupPageSeconds != null && (!Number.isInteger(value.phase.lineupPageSeconds) || value.phase.lineupPageSeconds < 2 || value.phase.lineupPageSeconds > 15)) invalid();
   validatePresentation(value.leaderPresentation, value.teams);
   const identities = new Set();
-  return {...value, teams:value.teams.map(team => {
+  return {...value, postmatch, teams:value.teams.map(team => {
     if (!uuid.test(team.teamId) || typeof team.name !== 'string' || !Array.isArray(team.roster)) invalid();
     const players = (entries, selected = false) => entries.map(player => {
       if (!uuid.test(player.participantId) || (!selected && identities.has(player.participantId)) || typeof player.name !== 'string' ||
@@ -77,12 +84,12 @@ export function infographicsPage(snapshot, serverNow) {
       page -= slots;
     }
   }
-  return rosterPage(snapshot, serverNow);
+  return snapshot?.phase.kind === 'POSTMATCH' ? snapshot : rosterPage(snapshot, serverNow);
 }
 
 // Stable phase epochs govern both polls and reconnects; each team holds its last page within a cycle.
 export function rosterPage(snapshot, serverNow) {
-  if (!snapshot || snapshot.phase.kind === 'HIDDEN') return null;
+  if (!snapshot || !['ROSTER','LINEUP'].includes(snapshot.phase.kind)) return null;
   const lineup = snapshot.phase.lineupStartedAt != null && serverNow >= Date.parse(snapshot.phase.lineupStartedAt);
   const kind = lineup ? 'LINEUP' : snapshot.phase.kind;
   const startedAt = lineup ? snapshot.phase.lineupStartedAt : snapshot.phase.startedAt;

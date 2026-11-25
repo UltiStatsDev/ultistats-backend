@@ -1,5 +1,6 @@
 import {parseSource,watchProtectedSource} from './protected-source-client.mjs';
 import {validateInfographics,infographicsPage,RosterClock} from './infographics-model.mjs';
+import {renderPostmatch} from './infographics-postmatch.mjs';
 const root = document.getElementById('infographics'), status = document.getElementById('status');
 const clock=new RosterClock();
 let snapshot=null, disposed=false, viewKey='', stop=()=>{};
@@ -57,6 +58,11 @@ function render() {
   if (page.generation) {renderLeaders(page);return;}
   delete root.dataset.category;
   root.dataset.graphicKind = page.phase.kind.toLowerCase();
+  if (page.phase.kind === 'POSTMATCH') {
+    root.replaceChildren(renderPostmatch(node,page.teams,page.postmatch));
+    root.hidden = false;
+    return;
+  }
   const pair=node('div','','team-pair');
   for (const team of page.teams) {
     const side=node('section','','team-side'), strip=node('header','','team-strip'), grid=node('div','','team-grid');

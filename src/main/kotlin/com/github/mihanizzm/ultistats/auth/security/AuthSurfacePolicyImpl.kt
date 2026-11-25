@@ -129,6 +129,7 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
 
     private val publicAssets = setOf(
         "/obs-sources/infographics.html", "/obs/infographics.mjs", "/obs/infographics-model.mjs", "/obs/infographics.css",
+        "/obs/infographics-postmatch.mjs", "/obs/infographics-postmatch.css",
         "/obs-sources/scoreboard.html",
         "/obs-sources/event-log.html",
         "/obs/protected-event-log.mjs",

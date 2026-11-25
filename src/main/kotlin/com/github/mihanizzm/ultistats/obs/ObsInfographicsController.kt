@@ -19,11 +19,11 @@ import org.springframework.web.bind.annotation.RestController
 @ApiResponse(responseCode = "404", description = "Exact match removed or not found")
 class ObsInfographicsController(private val service: ObsInfographicsService) {
     @GetMapping("/{matchId}")
-    @Operation(summary = "Read the exact match roster with an EXACT_INFOGRAPHICS bearer")
+    @Operation(summary = "Read the exact match infographic snapshot with an EXACT_INFOGRAPHICS bearer")
     fun exact(@PathVariable matchId: String, request: HttpServletRequest) =
         service.exact(sourceUuid(matchId), request.getHeaders(HttpHeaders.AUTHORIZATION).toList())
 
     @GetMapping("/auto")
-    @Operation(summary = "Read the AUTO roster with an AUTO_INFOGRAPHICS bearer")
+    @Operation(summary = "Read the AUTO infographic snapshot with an AUTO_INFOGRAPHICS bearer")
     fun auto(request: HttpServletRequest) = service.auto(request.getHeaders(HttpHeaders.AUTHORIZATION).toList())
 }
