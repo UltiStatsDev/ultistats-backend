@@ -282,10 +282,14 @@ try {
   await page.reload();
   await show(['50.0 %','60.0 %','0.0 %','40.0 %']);
   assert.equal((await read(exact,main.id)).statsPresentation,null);
+  await hidden();
+  assert.ok(Date.now() >= Date.parse(first.expiresAt));
+  assert.equal((await read(auto,'auto')).statsPresentation,null);
+  const replacement = await sendShow(await showRequest(main.id,'AUTO'));
   const {kind: unusedKind, ...legacyShow} = await showRequest(main.id,'AUTO','LEADERS');
   const leader = await sendShow(legacyShow);
   assert.equal(leader.kind,'LEADERS');
-  assert.equal((await hide(first.generation,409)).data.code,'OBS_PRESENTATION_GENERATION_STALE');
+  assert.equal((await hide(replacement.generation,409)).data.code,'OBS_PRESENTATION_GENERATION_STALE');
   assert.equal((await read(auto,'auto')).leaderPresentation.generation,leader.generation);
   await page.waitForSelector('[data-graphic-kind="leaders"]');
   await hide(leader.generation);
@@ -298,7 +302,10 @@ try {
   const contenders = await Promise.all([current,{...current,operationId:randomUUID()}].map(body =>
     call(commands,{method:'POST',body,status:[200,409]})));
   assert.deepEqual(contenders.map(r=>r.status).sort(),[200,409]);
-  await hide(contenders.find(r=>r.status===200).data.generation);
+  const winner = contenders.find(r=>r.status===200).data;
+  assert.equal((await read(auto,'auto')).statsPresentation.generation,winner.generation);
+  await hide(winner.generation);
+  assert.equal((await read(auto,'auto')).statsPresentation,null);
   await call(settings,{method:'PUT',body:{...intervals,statsSeconds:30}});
 
   const next = await matchAt(epoch+950000);
