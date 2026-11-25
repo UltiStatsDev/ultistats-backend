@@ -26,8 +26,15 @@ class FileUploadExceptionHandler {
     )
 
     @ExceptionHandler(MaxUploadSizeExceededException::class)
-    fun handleOversizedFile(request: HttpServletRequest): ResponseEntity<ProblemDetail> =
-        badRequest("File exceeds maximum size of 10 MiB", request)
+    fun handleOversizedFile(request: HttpServletRequest): ResponseEntity<ProblemDetail> {
+        if (request.requestURI.removePrefix(request.contextPath) == "/api/v1/imports/teams-players/csv") {
+            val problem = ProblemDetail.forStatusAndDetail(HttpStatus.PAYLOAD_TOO_LARGE, "CSV import size limit exceeded")
+            problem.setProperty("errors", listOf(com.github.mihanizzm.ultistats.csvimport.CsvImportError(
+                "applications", null, null, "FILE_TOO_LARGE")))
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(problem)
+        }
+        return badRequest("File exceeds maximum size of 10 MiB", request)
+    }
 
     @ExceptionHandler(FileStorageException::class)
     fun handleStorageFailure(exception: FileStorageException, request: HttpServletRequest): ResponseEntity<ProblemDetail> {

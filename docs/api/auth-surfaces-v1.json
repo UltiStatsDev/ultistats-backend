@@ -116,6 +116,14 @@
       "line": 14
     },
     {
+      "method": "POST",
+      "path": "/api/v1/imports/teams-players/csv",
+      "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/CsvImportController.kt",
+      "line": 30
+    },
+    {
       "method": "GET",
       "path": "/api/v2/matches/{matchId}/events",
       "policy": "PUBLIC",

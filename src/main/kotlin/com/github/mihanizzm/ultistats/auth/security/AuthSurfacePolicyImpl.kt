@@ -47,6 +47,7 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
     private val exactSource = Regex("/api/v1/obs/sources/(?:scoreboard|event-log)/[^/]+")
 
     private val rules = listOf(
+        rule("POST", "/api/v1/imports/teams-players/csv", AuthPermission.SPORTS_WRITE),
         rule("GET", "/api/v2/matches/{matchId}/events"),
         rule("POST", "/api/v2/matches/{matchId}/events/batch", AuthPermission.SPORTS_WRITE),
         rule("GET", "/api/v1/matches/{matchId}/events"),
