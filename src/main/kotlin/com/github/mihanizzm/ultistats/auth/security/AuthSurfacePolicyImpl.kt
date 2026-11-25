@@ -106,6 +106,7 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
         rule("DELETE", "/api/v1/teams/{teamId}/photoUrl", AuthPermission.SPORTS_WRITE),
         rule("POST", "/api/v2/matches/{matchId}/events/undo", AuthPermission.SPORTS_WRITE),
         rule("GET", "/api/v2/matches/{matchId}/events/undo/{commandId}", AuthPermission.SPORTS_WRITE),
+        rule("GET", "/api/v1/obs/infographics/leaders/{matchId}", AuthPermission.OBS_ADMIN, secureOnly = true),
         rule("GET", "/api/v1/obs/previews/infographics/{matchId}", AuthPermission.OBS_ADMIN, secureOnly = true),
         rule("GET", "/api/v1/obs/previews/scoreboard/{matchId}", AuthPermission.OBS_ADMIN, secureOnly = true),
         rule("GET", "/api/v1/obs/previews/event-log/{matchId}", AuthPermission.OBS_ADMIN, secureOnly = true),
@@ -140,6 +141,7 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
         "/obs-diagnostic.html", "/obs-battle-log.html", "/obs-scoreboard.html",
     )
     private val previewAssets = setOf(
+        "/obs-leaders.html", "/obs/leaders.mjs", "/obs/leaders.css",
         "/obs-preview/infographics.html", "/obs-preview/scoreboard.html", "/obs-preview/event-log.html", "/obs/staff-preview.mjs",
         "/obs-editor/scoreboard.html", "/obs-editor/event-log.html", "/obs/staff-reader.mjs",
     )

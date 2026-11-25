@@ -1,0 +1,7 @@
+:root {font-family:system-ui,sans-serif;color:#eaf0f8;background:#0c1220;color-scheme:dark}
+* {box-sizing:border-box} body {margin:0;padding:32px} main {max-width:1000px;margin:auto}
+a {color:#8dd9ed} h1 {margin-bottom:8px} fieldset {display:flex;gap:16px;flex-wrap:wrap;border:0;padding:0}
+label {display:flex;flex-direction:column;gap:6px} input,select,button {font:inherit;padding:9px;border:1px solid #43536d;border-radius:6px;background:#1d2a40;color:inherit}
+input {width:340px;max-width:100%} button {align-self:end;cursor:pointer} #status {min-height:1.5em;color:#a7b5ca}
+section {padding:20px;border:1px solid #43536d;border-radius:10px;margin:16px 0;background:#141e30} li {padding:6px 0;overflow-wrap:anywhere}
+@media(max-width:600px) {body {padding:16px} fieldset,label {width:100%}}

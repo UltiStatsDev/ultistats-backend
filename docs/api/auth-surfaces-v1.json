@@ -662,6 +662,24 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/obs/infographics/leaders/{matchId}",
+      "policy": "OBS_ADMIN",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsInfographicsLeadersController.kt",
+      "line": 19,
+      "secureOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/obs/infographics/leaders/auto",
+      "policy": "OBS_ADMIN",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsInfographicsLeadersController.kt",
+      "line": 23,
+      "secureOnly": true
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/obs/stream",
       "policy": "OBS_ADMIN",
       "owner": "enforcement",
@@ -845,6 +863,16 @@
       "policy": "PUBLIC"
     },
     {
+      "path": "/obs/leaders.css",
+      "policy": "OBS_ADMIN",
+      "secureOnly": true
+    },
+    {
+      "path": "/obs/leaders.mjs",
+      "policy": "OBS_ADMIN",
+      "secureOnly": true
+    },
+    {
       "path": "/obs/obs.css",
       "policy": "PUBLIC"
     },
@@ -933,6 +961,11 @@
     },
     {
       "path": "/obs-editor/scoreboard.html",
+      "policy": "OBS_ADMIN",
+      "secureOnly": true
+    },
+    {
+      "path": "/obs-leaders.html",
       "policy": "OBS_ADMIN",
       "secureOnly": true
     },
