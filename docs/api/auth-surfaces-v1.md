@@ -38,6 +38,10 @@ mode. Public payloads never acquire account/private fields through cookies.
 
 ## Application families and unusual cases
 
+- CSV team/player import: `POST /api/v1/imports/teams-players/csv`, SPORTS_WRITE,
+  ordinary CSRF/captured identity guards and domain transaction fence. Disabled
+  by default; see [CSV contract](csv-team-player-import.md).
+
 - Teams: collection/detail CRUD, membership PUT/DELETE; photo GET/PUT/DELETE and
   legacy POST uploadPhoto, GET/DELETE photoUrl. Players have collection/detail
   CRUD, teams GET and the same six photo methods. Uploads are sports mutations.

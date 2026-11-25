@@ -30,6 +30,7 @@ repositories {
 }
 
 dependencies {
+	implementation("org.apache.commons:commons-csv:1.14.1")
 	implementation("org.springframework.boot:spring-boot-starter-web")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-data-jpa")
