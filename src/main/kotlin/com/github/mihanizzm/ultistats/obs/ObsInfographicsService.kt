@@ -48,6 +48,7 @@ data class ObsInfographicsSnapshot(
     @field:Schema(description = "Canonical team comparisons for the selected FINISHED match", nullable = true)
     val postmatch: ObsInfographicsPostmatch? = null,
     @get:JsonInclude(JsonInclude.Include.ALWAYS)
+    @field:Schema(description = "Active timed final statistics for this binding", nullable = true)
     val statsPresentation: ObsPresentationReceipt? = null,
 )
 @JsonInclude(JsonInclude.Include.ALWAYS)

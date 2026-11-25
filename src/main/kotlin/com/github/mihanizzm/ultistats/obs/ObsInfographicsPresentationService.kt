@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.github.mihanizzm.ultistats.auth.security.AuthProblem
 import com.github.mihanizzm.ultistats.model.MatchStatus
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchRepository
-import com.github.mihanizzm.ultistats.realtime.MatchFinishedSignal
+import com.github.mihanizzm.ultistats.service.MatchFinishApplied
 import io.swagger.v3.oas.annotations.media.Schema
 import org.springframework.context.event.EventListener
 import org.springframework.jdbc.core.JdbcTemplate
@@ -36,6 +36,7 @@ data class ObsPresentationRequest(
     @field:Schema(types = ["string", "null"], format = "uuid")
     val expectedGeneration: UUID?,
     val operationId: UUID,
+    @field:Schema(defaultValue = "LEADERS", requiredMode = Schema.RequiredMode.NOT_REQUIRED)
     val kind: ObsPresentationKind = ObsPresentationKind.LEADERS,
 )
 
@@ -50,6 +51,7 @@ data class ObsPresentationControl(
     val canShow: Boolean,
     val canShowStats: Boolean,
     val serverNow: Instant,
+    @field:Schema(nullable = true, requiredMode = Schema.RequiredMode.REQUIRED)
     val activePresentation: ObsPresentationReceipt?,
 )
 
@@ -124,7 +126,7 @@ class ObsInfographicsPresentationService(
     // The original finish, both generation writes and their deadlines commit or roll back together.
     @EventListener
     @Transactional(propagation = Propagation.MANDATORY)
-    fun autoShowStats(signal: MatchFinishedSignal) {
+    fun autoShowStats(signal: MatchFinishApplied) {
         val matchId = signal.matchId
         val exact = binding(matchId, false)
         val automatic = binding(matchId, true)

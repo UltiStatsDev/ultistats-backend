@@ -56,18 +56,17 @@ class ObsInfographicsPresentationTest : MatchAbstractTest() {
 
         val before = Instant.now().minusSeconds(1)
         assertIs<MatchCommandResult.Success<*>>(matchService.endMatch(MATCH.id, Instant.parse(END_DATE)))
-        val exact = json.valueToTree<com.fasterxml.jackson.databind.JsonNode>(preview.infographics(MATCH.id))
-        val auto = json.valueToTree<com.fasterxml.jackson.databind.JsonNode>(preview.autoInfographics().snapshot)
-        assertEquals("HIDDEN", exact.path("phase").path("kind").asText())
+        val exact = preview.infographics(MATCH.id)
+        val auto = assertNotNull(preview.autoInfographics().snapshot)
+        assertEquals("HIDDEN", exact.phase.kind)
         for (snapshot in listOf(exact, auto)) {
-            val active = snapshot.path("statsPresentation")
-            assertEquals("STATS", active.path("kind").asText())
-            assertEquals("AUTO", active.path("origin").asText())
-            val start = Instant.parse(active.path("startedAt").asText())
-            assertTrue(start >= before)
-            assertEquals(start.plusSeconds(active.path("pageSeconds").asLong()), Instant.parse(active.path("expiresAt").asText()))
+            val active = assertNotNull(snapshot.statsPresentation)
+            assertEquals(ObsPresentationKind.STATS, active.kind)
+            assertEquals(ObsPresentationOrigin.AUTO, active.origin)
+            assertTrue(active.startedAt >= before)
+            assertEquals(active.startedAt.plusSeconds(active.pageSeconds.toLong()), active.expiresAt)
         }
-        assertNotEquals(exact.path("statsPresentation").path("generation"), auto.path("statsPresentation").path("generation"))
+        assertNotEquals(exact.statsPresentation?.generation, auto.statsPresentation?.generation)
     }
 
     @Test fun `only newest durable command is effective and retry is the original receipt`() {

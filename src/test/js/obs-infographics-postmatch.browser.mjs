@@ -366,6 +366,10 @@ try {
 
 const openapi = (await call('/v3/api-docs')).data;
 assert.ok(openapi.components.schemas.ObsInfographicsSnapshot.properties.postmatch);
+assert.ok(openapi.components.schemas.ObsInfographicsSnapshot.properties.statsPresentation);
+const {properties, required} = openapi.components.schemas.ObsPresentationRequest;
+assert.equal(properties.kind.default,'LEADERS');
+assert.ok(!required.includes('kind'));
 assert.ok(openapi.components.schemas.ObsInfographicsPostmatch.properties.statsAsOfEventAt);
 writeFileSync(`${evidence}/openapi.json`,JSON.stringify(openapi));
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
