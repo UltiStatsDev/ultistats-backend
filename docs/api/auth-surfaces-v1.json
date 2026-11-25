@@ -799,6 +799,24 @@
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsSourceKeyController.kt",
       "line": 91
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/obs/infographics/settings",
+      "policy": "OBS_ADMIN",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsInfographicsSettingsController.kt",
+      "line": 28,
+      "secureOnly": true
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/obs/infographics/settings",
+      "policy": "OBS_ADMIN",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsInfographicsSettingsController.kt",
+      "line": 32,
+      "secureOnly": true
     }
   ],
   "static": [
@@ -999,6 +1017,10 @@
     {
       "path": "/obs-sources/scoreboard.html",
       "policy": "PUBLIC"
+    },
+    {
+      "path": "/obs/infographics-settings-admin.mjs",
+      "policy": "OBS_ADMIN"
     }
   ]
 }

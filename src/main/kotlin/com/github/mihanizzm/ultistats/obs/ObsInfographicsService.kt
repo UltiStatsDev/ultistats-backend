@@ -27,9 +27,9 @@ data class ObsInfographicsTeam(val teamId: UUID, val name: String, val roster: L
 data class ObsInfographicsPhase(
     val kind: String, val startedAt: Instant?, val pointId: UUID? = null,
     val lineupRevision: Long? = null, val lineupStartedAt: Instant? = null, val anchorKind: String? = null,
-    val pageSeconds: Int = 5,
+    val pageSeconds: Int = 5, val lineupPageSeconds: Int? = null,
 )
-data class ObsInfographicsSettings(val rosterPageSeconds: Int = 5, val pointPageSeconds: Int = 5, val leaderPageSeconds: Int = 5)
+data class ObsInfographicsSettings(val rosterPageSeconds: Int = 5, val pointPageSeconds: Int = 5, val leaderPageSeconds: Int = 5, val revision: Long = 0)
 data class ObsInfographicsSnapshot(
     val matchId: UUID,
     val serverNow: Instant,
@@ -44,6 +44,7 @@ data class ObsAutoInfographicsSnapshot(val snapshot: ObsInfographicsSnapshot?)
 
 @Service
 class ObsInfographicsService(
+    private val settingsService: ObsInfographicsSettingsService,
     private val keys: ObsSourceKeyService,
     private val auto: ObsAutoSourceService,
     private val matches: SpringDataMatchRepository,
@@ -97,11 +98,14 @@ class ObsInfographicsService(
             if (next.number == 1) match.effectiveStartedAt else events.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(matchId)
                 .firstOrNull { it.id == points.getOrNull(next.number - 2)?.closingEventId }?.effectiveOccurredAt
         }
+        val settings = settingsService.get()
+        val rosterSeconds = settingsService.at(match.effectiveStartedAt).rosterPageSeconds
         val firstPassEnd = match.effectiveStartedAt?.plusSeconds(
-            5L * maxOf(1, teams.maxOf { (it.roster.size + 4) / 5 }),
+            rosterSeconds.toLong() * maxOf(1, teams.maxOf { (it.roster.size + 4) / 5 }),
         )
         val anchor = confirmedAt ?: openingAt
         val lineupStart = anchor?.let { if (next?.number == 1 && firstPassEnd != null) maxOf(it, firstPassEnd) else it }
+        val pointSeconds = lineupStart?.let { settingsService.at(it).pointPageSeconds }
         val active = match.status == MatchStatus.IN_PROGRESS && next != null
         val kind = when {
             !active -> "HIDDEN"
@@ -113,6 +117,7 @@ class ObsInfographicsService(
             kind, when (kind) { "ROSTER" -> match.effectiveStartedAt; "LINEUP" -> lineupStart; else -> null },
             next?.pointId, selected?.revision, lineupStart,
             selected?.let { if (confirmedAt != null) "CONFIRMED" else "LEGACY_POINT_OPEN" },
+            if (kind == "LINEUP") pointSeconds ?: 5 else rosterSeconds, pointSeconds,
         )
         val projected = teams.map { team ->
             val players = team.roster.associateBy { it.participantId }
@@ -123,8 +128,8 @@ class ObsInfographicsService(
                 }
             })
         }
-        val input = "${match.eventLogRevision}:${match.status}:${match.effectiveStartedAt}:$phase:$projected"
+        val input = "${match.eventLogRevision}:${match.status}:${match.effectiveStartedAt}:$phase:$projected:${settings.revision}"
         val revision = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8)))
-        return ObsInfographicsSnapshot(matchId, now, revision, match.status, phase, projected)
+        return ObsInfographicsSnapshot(matchId, now, revision, match.status, phase, projected, settings)
     }
 }

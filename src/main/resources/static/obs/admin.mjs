@@ -1,5 +1,6 @@
 import {obsSession,bindObsPage,obsPageCurrent,assertObsPage} from '../auth/obs-session.mjs';
 import {mountScoreboardAdmin,bindScoreboardSession} from './scoreboard-admin.mjs';
+import {mountInfographicsSettings} from './infographics-settings-admin.mjs';
 import {mountActiveLinks} from './active-links-admin.mjs';
 import {readStaffJson,watchStaffJson} from './staff-reader.mjs';
 import {teamAccent,imageAccent} from './colors.mjs';
@@ -19,7 +20,7 @@ function end(clearDraft=false) {
 }
 addEventListener('pagehide',()=>end(true),{once:true});
 const message=text=>$('save-status').textContent=text;
-try {await obsSession.bootstrap('OBS_ADMIN');if(disposed){obsSession.dispose();throw Error('Страница закрыта');}bindObsPage();bindScoreboardSession();mountActiveLinks(obsSession);$('auth-status').textContent='Организатор: защищённая сессия проверена.';}
+try {await obsSession.bootstrap('OBS_ADMIN');if(disposed){obsSession.dispose();throw Error('Страница закрыта');}bindObsPage();bindScoreboardSession();mountActiveLinks(obsSession);mountInfographicsSettings(obsSession);$('auth-status').textContent='Организатор: защищённая сессия проверена.';}
 catch(error){if(disposed)throw error;$('auth-status').textContent=error.message;message('Изменения не отправляются. Войдите и откройте страницу заново.');throw error;}
 obsSession.subscribe(()=>{if(!obsPageCurrent())end();});
 function renderTeams() {

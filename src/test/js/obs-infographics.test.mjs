@@ -89,3 +89,14 @@ test('lineup validates phase metadata and anonymous temporary tiles', () => {
   value.teams[0].places[0].number=7;assert.throws(()=>validateInfographics(value,id(1)));
   value.teams[0].places[0].number=null;value.phase.anchorKind='fabricated';assert.throws(()=>validateInfographics(value,id(1)));
 });
+
+test('scheduled lineup uses its own captured interval, independent of roster and latest settings', () => {
+  const value=fixture();
+  value.phase={kind:'ROSTER',startedAt:started,pageSeconds:2,lineupPageSeconds:7,
+    pointId:id(50),lineupRevision:1,lineupStartedAt:'2026-01-01T00:00:06Z',anchorKind:'CONFIRMED'};
+  value.settings={rosterPageSeconds:15,pointPageSeconds:3,leaderPageSeconds:8};
+  value.teams.forEach(team=>team.places=team.roster);
+  assert.equal(rosterPage(value,Date.parse(started)+12000).page,0);
+  assert.equal(rosterPage(value,Date.parse(started)+13000).page,1);
+  assert.equal(rosterPage(value,Date.parse(started)+5000).page,2);
+});
