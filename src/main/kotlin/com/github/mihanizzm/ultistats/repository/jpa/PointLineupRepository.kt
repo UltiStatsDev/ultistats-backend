@@ -10,10 +10,16 @@ import com.github.mihanizzm.ultistats.model.events.PointBoundary
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Repository
 import java.sql.ResultSet
+import java.time.Instant
 import java.util.UUID
 
 @Repository
 class PointLineupRepository(private val jdbc: JdbcTemplate) {
+    fun confirmedAt(matchId: UUID, pointId: UUID): Instant? = jdbc.query(
+        "SELECT confirmed_at FROM match_point_lineups WHERE match_id = ? AND point_id = ?",
+        { row, _ -> row.getTimestamp("confirmed_at")?.toInstant() }, matchId, pointId,
+    ).firstOrNull()
+
     fun exists(matchId: UUID): Boolean = jdbc.queryForObject(
         "SELECT EXISTS (SELECT 1 FROM match_point_lineups WHERE match_id = ?)", Boolean::class.java, matchId,
     ) == true
@@ -115,10 +121,10 @@ class PointLineupRepository(private val jdbc: JdbcTemplate) {
     }
 
     /** The caller holds the match lock and supplies the canonical opening boundary. */
-    fun insert(matchId: UUID, point: PointBoundary, lineup: PointLineup) {
+    fun insert(matchId: UUID, point: PointBoundary, lineup: PointLineup, confirmedAt: Instant? = null) {
         jdbc.update(
-            "INSERT INTO match_point_lineups (match_id, point_id, opening_event_id, revision) VALUES (?, ?, ?, ?)",
-            matchId, point.pointId, point.openingEventId, lineup.revision,
+            "INSERT INTO match_point_lineups (match_id, point_id, opening_event_id, revision, confirmed_at) VALUES (?, ?, ?, ?, ?)",
+            matchId, point.pointId, point.openingEventId, lineup.revision, confirmedAt?.let(java.sql.Timestamp::from),
         )
         val rows = lineup.teams.flatMap { team ->
             team.entries.mapIndexed { index, entry ->

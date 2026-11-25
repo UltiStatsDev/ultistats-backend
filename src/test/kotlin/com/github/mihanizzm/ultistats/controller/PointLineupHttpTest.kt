@@ -99,6 +99,10 @@ class PointLineupHttpTest {
         assertTrue(saved["lineup"]["teams"][0]["entries"][1]["resolvedParticipantId"].isNull)
         assertTrue(saved["lineup"]["teams"][1]["entries"].isEmpty)
         assertEquals(saved, get(fixture.path)["points"].single())
+        val epoch = jdbc.queryForObject("SELECT confirmed_at FROM match_point_lineups WHERE match_id = ?", java.sql.Timestamp::class.java, fixture.id)
+        assertTrue(epoch != null, "A new actual confirmation must persist a server epoch")
+        response(send("PUT", pointPath, request, login), 200)
+        assertEquals(epoch, jdbc.queryForObject("SELECT confirmed_at FROM match_point_lineups WHERE match_id = ?", java.sql.Timestamp::class.java, fixture.id))
 
         val pullActor = matches.getOrThrow(fixture.id).participantsByTeam.getValue(fixture.teamIds[1])
             .first { it.kind == MatchParticipantKind.UNKNOWN }.participantId

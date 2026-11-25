@@ -402,7 +402,7 @@ class ObsSourceKeysIntegrationTest {
         assertEquals(42, snapshot["teams"][0]["roster"][0]["number"].asInt())
         assertEquals(match.toString(), read("auto", auto)["snapshot"]["matchId"].asText())
         val pull = UUID.randomUUID()
-        events.save(EventEntity(pull, match, 1, EventType.PULL, started.plusSeconds(1), teamId = teams[0]))
+        events.save(EventEntity(pull, match, 1, EventType.PULL, started.plusSeconds(1), fromParticipantId = player, teamId = teams[0]))
         assertEquals("HIDDEN", read("$match", token)["phase"]["kind"].asText())
         jdbc.update("UPDATE events SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", pull)
         assertEquals("ROSTER", read("$match", token)["phase"]["kind"].asText())
