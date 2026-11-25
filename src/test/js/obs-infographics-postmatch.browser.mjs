@@ -146,6 +146,16 @@ for (const args of [
   [430,'INCOMPLETE_PASS',l0], [440,'PICKUP',r0], [500,'INTERCEPTION',r0,l0],
   [560,'PASS',l0,l1], [620,'GOAL',l1,l0], [630,'PULL',l0], [640,'PICKUP',r0], [700,'CALLAHAN',r0,l0],
 ]) await main.event(...args);
+// Force failure on the second finish write, after the EXACT command was inserted.
+sql("ALTER TABLE obs_infographics_presentations ADD CONSTRAINT obs270_force_auto_rollback CHECK (origin <> 'AUTO' OR binding <> 'AUTO') NOT VALID");
+try {
+  await call(main.path+'/end',{method:'POST',body:{timestamp:timestamp(epoch,790)},status:500});
+} finally {
+  sql("ALTER TABLE obs_infographics_presentations DROP CONSTRAINT obs270_force_auto_rollback");
+}
+assert.equal(tally(),1);
+assert.equal((await read(exact,main.id)).status,'IN_PROGRESS');
+assert.equal((await read(exact,main.id)).statsPresentation,null);
 const finishRequestedAt = Date.now();
 await main.finish(790);
 
@@ -272,7 +282,9 @@ try {
   await page.reload();
   await show(['50.0 %','60.0 %','0.0 %','40.0 %']);
   assert.equal((await read(exact,main.id)).statsPresentation,null);
-  const leader = await sendShow(await showRequest(main.id,'AUTO','LEADERS'));
+  const {kind: unusedKind, ...legacyShow} = await showRequest(main.id,'AUTO','LEADERS');
+  const leader = await sendShow(legacyShow);
+  assert.equal(leader.kind,'LEADERS');
   assert.equal((await hide(first.generation,409)).data.code,'OBS_PRESENTATION_GENERATION_STALE');
   assert.equal((await read(auto,'auto')).leaderPresentation.generation,leader.generation);
   await page.waitForSelector('[data-graphic-kind="leaders"]');
@@ -372,6 +384,6 @@ for (const path of ['obs-sources/infographics.html','obs-preview/infographics.ht
 writeFileSync(`${evidence}/artifact-bytes.json`,JSON.stringify({jarSHA256:sha(readFileSync(jar)),helperSHA256:helperHash,assets},null,2));
 writeFileSync(`${evidence}/http-browser-proof.json`,JSON.stringify({
   postmatch:proof, normalAPI:true, normalTLS:true, ownedSyntheticOnly:true, frozenHelperVerified:true,
-  checks:['six counters + scales','protection + preview','same panel bounds','reduced motion + narrow frames','bounded AUTO and manual timing + actual reload','legacy V24 replay + no historical autoplay','settings capture + stale commands','generation races and hide','AUTO switch + deletion without revival'],
+  checks:['six counters + scales','protection + preview','same panel bounds','reduced motion + narrow frames','bounded AUTO and manual timing + actual reload','legacy V24 replay + no historical autoplay','normal finish atomic rollback on PG','settings capture + stale commands','generation races and hide','AUTO switch + deletion without revival'],
 },null,2));
 console.log('Canonical PostgreSQL statistics, actual HTTPS infographic renderer and frozen-helper preview verified.');
