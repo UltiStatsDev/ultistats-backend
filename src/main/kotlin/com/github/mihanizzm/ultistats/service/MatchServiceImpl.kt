@@ -207,7 +207,8 @@ class MatchServiceImpl(
         }
 
         announcements.closeAtFinish(matchId, timestamp)
-        matchRepository.save(match.copy(endedAt = timestamp, originalEndedAtSecond = timestamp.epochSecond, originalEndedAtNano = timestamp.nano))
+        // A synchronous finish subscriber selects the OBS source from the persisted lifecycle.
+        matchRepository.saveAndFlush(match.copy(endedAt = timestamp, originalEndedAtSecond = timestamp.epochSecond, originalEndedAtNano = timestamp.nano))
         val finished = readHydratedForUpdate(matchId)
         realtimePublisher.matchFinished(matchId)
         return MatchCommandResult.Success(finished)

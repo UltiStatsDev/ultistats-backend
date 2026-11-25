@@ -12,7 +12,7 @@ import java.sql.Timestamp
 @Service
 class ObsInfographicsSettingsService(private val jdbc: JdbcTemplate, private val clock: Clock) {
     private val mapper = org.springframework.jdbc.core.RowMapper { rs, _ -> ObsInfographicsSettings(
-        rs.getInt("roster_page_seconds"), rs.getInt("point_page_seconds"), rs.getInt("leader_page_seconds"), rs.getLong("revision"),
+        rs.getInt("roster_page_seconds"), rs.getInt("point_page_seconds"), rs.getInt("leader_page_seconds"), rs.getLong("revision"), rs.getInt("stats_seconds"),
     ) }
 
     fun get(): ObsInfographicsSettings = jdbc.query("SELECT * FROM obs_infographics_settings WHERE id = 1", mapper).single()
@@ -29,14 +29,19 @@ class ObsInfographicsSettingsService(private val jdbc: JdbcTemplate, private val
             val value = body.get(name)
             value == null || !value.isIntegralNumber || !value.canConvertToInt() || value.intValue() !in 2..15
         }) throw InvalidPatchException("Infographics intervals must be JSON integers from 2 to 15; all three fields are required")
+        val stats = body.get("statsSeconds")
+        if (stats != null && (!stats.isIntegralNumber || !stats.canConvertToInt() || stats.intValue() <= 0)) {
+            throw InvalidPatchException("statsSeconds must be a positive JSON integer")
+        }
         val current = jdbc.query("SELECT * FROM obs_infographics_settings WHERE id = 1 FOR UPDATE", mapper).single()
-        val next = ObsInfographicsSettings(body[fields[0]].intValue(), body[fields[1]].intValue(), body[fields[2]].intValue(), current.revision)
+        val next = ObsInfographicsSettings(body[fields[0]].intValue(), body[fields[1]].intValue(), body[fields[2]].intValue(), current.revision,
+            stats?.intValue() ?: current.statsSeconds)
         if (next == current) return current
         val changed = next.copy(revision = Math.addExact(current.revision, 1))
-        jdbc.update("UPDATE obs_infographics_settings SET roster_page_seconds=?, point_page_seconds=?, leader_page_seconds=?, revision=? WHERE id=1",
-            changed.rosterPageSeconds, changed.pointPageSeconds, changed.leaderPageSeconds, changed.revision)
-        jdbc.update("INSERT INTO obs_infographics_settings_history(revision,effective_at,roster_page_seconds,point_page_seconds,leader_page_seconds) VALUES (?,?,?,?,?)",
-            changed.revision, Timestamp.from(clock.instant()), changed.rosterPageSeconds, changed.pointPageSeconds, changed.leaderPageSeconds)
+        jdbc.update("UPDATE obs_infographics_settings SET roster_page_seconds=?, point_page_seconds=?, leader_page_seconds=?, stats_seconds=?, revision=? WHERE id=1",
+            changed.rosterPageSeconds, changed.pointPageSeconds, changed.leaderPageSeconds, changed.statsSeconds, changed.revision)
+        jdbc.update("INSERT INTO obs_infographics_settings_history(revision,effective_at,roster_page_seconds,point_page_seconds,leader_page_seconds,stats_seconds) VALUES (?,?,?,?,?,?)",
+            changed.revision, Timestamp.from(clock.instant()), changed.rosterPageSeconds, changed.pointPageSeconds, changed.leaderPageSeconds, changed.statsSeconds)
         return changed
     }
 }

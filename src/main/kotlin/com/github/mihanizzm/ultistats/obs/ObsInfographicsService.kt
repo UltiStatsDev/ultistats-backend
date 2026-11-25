@@ -30,7 +30,10 @@ data class ObsInfographicsPhase(
     val lineupRevision: Long? = null, val lineupStartedAt: Instant? = null, val anchorKind: String? = null,
     val pageSeconds: Int = 5, val lineupPageSeconds: Int? = null,
 )
-data class ObsInfographicsSettings(val rosterPageSeconds: Int = 5, val pointPageSeconds: Int = 5, val leaderPageSeconds: Int = 5, val revision: Long = 0)
+data class ObsInfographicsSettings(
+    val rosterPageSeconds: Int = 5, val pointPageSeconds: Int = 5, val leaderPageSeconds: Int = 5,
+    val revision: Long = 0, val statsSeconds: Int = 10,
+)
 data class ObsInfographicsSnapshot(
     val matchId: UUID,
     val serverNow: Instant,
@@ -44,6 +47,8 @@ data class ObsInfographicsSnapshot(
     @get:JsonInclude(JsonInclude.Include.ALWAYS)
     @field:Schema(description = "Canonical team comparisons for the selected FINISHED match", nullable = true)
     val postmatch: ObsInfographicsPostmatch? = null,
+    @get:JsonInclude(JsonInclude.Include.ALWAYS)
+    val statsPresentation: ObsPresentationReceipt? = null,
 )
 @JsonInclude(JsonInclude.Include.ALWAYS)
 data class ObsAutoInfographicsSnapshot(val snapshot: ObsInfographicsSnapshot?)
@@ -116,7 +121,6 @@ class ObsInfographicsService(
         val pointSeconds = lineupStart?.let { settingsService.at(it).pointPageSeconds }
         val active = match.status == MatchStatus.IN_PROGRESS && next != null
         val kind = when {
-            match.status == MatchStatus.FINISHED -> "POSTMATCH"
             !active -> "HIDDEN"
             selected != null && lineupStart != null && !now.isBefore(lineupStart) -> "LINEUP"
             next?.number == 1 -> "ROSTER"
@@ -137,10 +141,11 @@ class ObsInfographicsService(
                 }
             })
         }
-        val postmatch = if (kind == "POSTMATCH") postmatchService.finished(matchId, teams.map { it.teamId }) else null
+        val postmatch = if (match.status == MatchStatus.FINISHED) postmatchService.finished(matchId, teams.map { it.teamId }) else null
         val input = "${match.eventLogRevision}:${match.status}:${match.effectiveStartedAt}:$phase:$projected:${settings.revision}:$postmatch"
         val revision = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8)))
-        val leaders = presentations.effective(matchId, isAuto, settings.revision, now)
-        return ObsInfographicsSnapshot(matchId, now, revision, match.status, phase, projected, settings, leaders, postmatch)
+        val presentation = presentations.effective(matchId, isAuto, settings.revision, now)
+        return ObsInfographicsSnapshot(matchId, now, revision, match.status, phase, projected, settings,
+            presentation?.leaders, postmatch, presentation?.stats)
     }
 }

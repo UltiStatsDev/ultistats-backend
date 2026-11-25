@@ -18,11 +18,11 @@ import org.springframework.web.bind.annotation.RestController
 @ApiResponse(responseCode = "400", description = "Недопустимые поля команды или поколение")
 @ApiResponse(responseCode = "401", description = "Нет действующей staff session")
 @ApiResponse(responseCode = "403", description = "Требуются OBS_ADMIN, HTTPS, текущая сессия и CSRF")
-@ApiResponse(responseCode = "409", description = "Изменился контекст, ревизия или поколение, конфликт operationId либо нет лидеров")
+@ApiResponse(responseCode = "409", description = "Изменился контекст, ревизия или поколение, конфликт operationId либо запрошенный показ недоступен")
 class ObsInfographicsPresentationController(private val presentations: ObsInfographicsPresentationService) {
     @PostMapping
     @ApiResponse(responseCode = "200", description = "Зафиксированный ответ команды показа", useReturnTypeSchema = true)
-    @Operation(summary = "Показать лидеров", description = "EXACT/AUTO с захваченными матчем, ревизиями и поколением. Повтор той же операции возвращает исходные времена и не продлевает показ.")
+    @Operation(summary = "Показать лидеров или итоги матча", description = "kind LEADERS (по умолчанию) или STATS. EXACT/AUTO с захваченными матчем, ревизиями и поколением. Повтор той же операции возвращает исходные времена и не продлевает показ.")
     fun show(@RequestBody request: ObsPresentationRequest) = presentations.show(request)
 
     @DeleteMapping("/{generation}")

@@ -64,7 +64,7 @@ test('accepts the finished postmatch for the exact snapshot and rejects live or 
   panel.teams.forEach((team,i) => { team.teamId = sides[i].teamId; });
   const snapshot = {
     matchId:uuid(3), serverNow:'2026-01-02T00:12:00Z', presentationRevision:'revision',
-    status:'FINISHED', phase:{kind:'POSTMATCH',startedAt:null}, teams:sides,
+    status:'FINISHED', phase:{kind:'HIDDEN',startedAt:null}, teams:sides,
     settings:{rosterPageSeconds:5,pointPageSeconds:5,leaderPageSeconds:5},
     postmatch:panel,
   };
@@ -73,6 +73,6 @@ test('accepts the finished postmatch for the exact snapshot and rejects live or 
   assert.equal(rosterPage(accepted,Date.parse(snapshot.serverNow)),null);
   assert.throws(() => validateInfographics({...snapshot,status:'IN_PROGRESS'},snapshot.matchId), /инфографики/);
   assert.throws(() => validateInfographics({...snapshot,postmatch:null},snapshot.matchId), /инфографики/);
-  assert.throws(() => validateInfographics({...snapshot,phase:{kind:'HIDDEN',startedAt:null}},snapshot.matchId), /инфографики/);
+  assert.throws(() => validateInfographics({...snapshot,phase:{kind:'POSTMATCH',startedAt:null}},snapshot.matchId), /инфографики/);
   assert.throws(() => validateInfographics(snapshot,uuid(4)), /инфографики/);
 });
