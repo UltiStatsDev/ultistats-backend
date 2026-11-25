@@ -27,6 +27,7 @@ import java.util.UUID
 import kotlin.test.*
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = [
+    "spring.config.additional-location=file:src/main/resources/application.yaml",
     "server.tomcat.max-swallow-size=12MB", "server.tomcat.max-http-form-post-size=12MB",
     "spring.servlet.multipart.max-file-size=11MB", "spring.servlet.multipart.max-request-size=12MB",
     "ultistats.csv-import.enabled=true", "app.auth.ingress.loopback-mode=true", "app.auth.ingress.private-port=0",
@@ -40,7 +41,6 @@ class CsvImportPostgresTest {
             r.add("spring.datasource.url") { System.getenv("TEST_POSTGRES_URL") }
             r.add("spring.datasource.username") { System.getenv("TEST_POSTGRES_USERNAME") }
             r.add("spring.datasource.password") { System.getenv("TEST_POSTGRES_PASSWORD") }
-            r.add("spring.datasource.hikari.data-source-properties.logServerErrorDetail") { false }
             r.add("spring.datasource.driver-class-name") { "org.postgresql.Driver" }
             r.add("spring.datasource.hikari.connection-init-sql") { "SET search_path TO $schema" }
             r.add("spring.jpa.properties.hibernate.dialect") { "org.hibernate.dialect.PostgreSQLDialect" }
