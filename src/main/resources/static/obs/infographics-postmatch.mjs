@@ -50,13 +50,11 @@ export function renderPostmatch(node, teams, postmatch) {
   }
 
   function bar(value, scale) {
-    const group = node('div', '', 'postmatch-bar');
     const track = node('div', '', 'postmatch-track');
     const fill = node('span', '', 'postmatch-fill');
     fill.style.width = `${value === null || scale === null ? 0 : value / scale * 100}%`;
     track.append(fill);
-    group.append(node('b', display(value), 'postmatch-count'), track);
-    return group;
+    return track;
   }
 
   summary.append(node('strong', postmatch.teams.map(team => display(team.score)).join(' : '), 'postmatch-score'));
@@ -77,7 +75,13 @@ export function renderPostmatch(node, teams, postmatch) {
     const row = node('div', '', 'postmatch-row');
     row.setAttribute('role', 'img');
     row.setAttribute('aria-label', `${name} · ${teams[0].name} ${spoken(left)}, ${teams[1].name} ${spoken(right)}`);
-    row.append(bar(left, scale), node('h3', name), bar(right, scale));
+    row.append(
+      bar(left, scale),
+      node('b', display(left), 'postmatch-count'),
+      node('h3', name),
+      node('b', display(right), 'postmatch-count'),
+      bar(right, scale),
+    );
     comparison.append(row);
   }
   panel.append(node('h2', 'Матч завершён'), summary, comparison);
