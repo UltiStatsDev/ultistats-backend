@@ -106,6 +106,8 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
         rule("DELETE", "/api/v1/teams/{teamId}/photoUrl", AuthPermission.SPORTS_WRITE),
         rule("POST", "/api/v2/matches/{matchId}/events/undo", AuthPermission.SPORTS_WRITE),
         rule("GET", "/api/v2/matches/{matchId}/events/undo/{commandId}", AuthPermission.SPORTS_WRITE),
+        rule("POST", "/api/v1/obs/infographics/presentations", AuthPermission.OBS_ADMIN, secureOnly = true),
+        rule("DELETE", "/api/v1/obs/infographics/presentations/{generation}", AuthPermission.OBS_ADMIN, secureOnly = true),
         rule("GET", "/api/v1/obs/infographics/leaders/{matchId}", AuthPermission.OBS_ADMIN, secureOnly = true),
         rule("GET", "/api/v1/obs/previews/infographics/{matchId}", AuthPermission.OBS_ADMIN, secureOnly = true),
         rule("GET", "/api/v1/obs/previews/scoreboard/{matchId}", AuthPermission.OBS_ADMIN, secureOnly = true),

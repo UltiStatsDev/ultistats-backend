@@ -661,6 +661,24 @@
       "line": 26
     },
     {
+      "method": "POST",
+      "path": "/api/v1/obs/infographics/presentations",
+      "policy": "OBS_ADMIN",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsInfographicsPresentationController.kt",
+      "line": 23,
+      "secureOnly": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/obs/infographics/presentations/{generation}",
+      "policy": "OBS_ADMIN",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsInfographicsPresentationController.kt",
+      "line": 28,
+      "secureOnly": true
+    },
+    {
       "method": "GET",
       "path": "/api/v1/obs/infographics/leaders/{matchId}",
       "policy": "OBS_ADMIN",

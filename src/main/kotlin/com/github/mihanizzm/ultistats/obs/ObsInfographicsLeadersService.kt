@@ -14,7 +14,10 @@ import java.security.MessageDigest
 import java.util.HexFormat
 import java.util.UUID
 
-data class ObsLeadersSnapshot(val matchId: UUID, val status: MatchStatus, val inputRevision: String, val teams: List<ObsTeamLeaders>)
+data class ObsLeadersSnapshot(
+    val matchId: UUID, val status: MatchStatus, val inputRevision: String, val teams: List<ObsTeamLeaders>,
+    val presentation: ObsPresentationControl? = null,
+)
 @JsonInclude(JsonInclude.Include.ALWAYS)
 data class ObsAutoLeadersSnapshot(val snapshot: ObsLeadersSnapshot?)
 
@@ -25,10 +28,7 @@ class ObsInfographicsLeadersService(
     private val mapper: ObjectMapper,
     private val jdbc: JdbcTemplate,
     private val matches: SpringDataMatchRepository,
-    private val auto: ObsAutoSourceService,
 ) {
-    fun auto() = ObsAutoLeadersSnapshot(auto.selectMatch()?.let(::exact))
-
     fun exact(matchId: UUID): ObsLeadersSnapshot {
         val match = matches.findByIdAndDeletedAtIsNull(matchId) ?: throw AuthProblem(404, "OBS_SOURCE_MATCH_NOT_FOUND")
         val stats = statistics.get(matchId) ?: throw AuthProblem(404, "OBS_SOURCE_MATCH_NOT_FOUND")
@@ -45,7 +45,13 @@ class ObsInfographicsLeadersService(
                FROM match_point_lineup_entries WHERE match_id = ? ORDER BY point_id, team_id, position""",
             { rs, _ -> (1..6).map { rs.getObject(it)?.toString() } }, matchId,
         )
-        val bytes = mapper.writeValueAsBytes(listOf(matchId, match.status, match.eventLogRevision, identities, inputs))
+        // Identify then unidentify can restore both names and counters, but a lineup revision never rewinds.
+        val lineupRevisions = jdbc.query(
+            "SELECT point_id, revision FROM match_point_lineups WHERE match_id = ? ORDER BY point_id",
+            { rs, _ -> rs.getObject(1).toString() to rs.getLong(2) }, matchId,
+        )
+        val bytes = mapper.writeValueAsBytes(listOf(matchId, match.status, match.effectiveStartedAt, match.effectiveEndedAt,
+            match.eventLogRevision, lineupRevisions, identities, inputs))
         val revision = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes))
         return ObsLeadersSnapshot(matchId, match.status, revision, teams)
     }

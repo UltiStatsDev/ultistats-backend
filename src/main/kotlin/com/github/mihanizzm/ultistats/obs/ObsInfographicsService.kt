@@ -38,12 +38,15 @@ data class ObsInfographicsSnapshot(
     val phase: ObsInfographicsPhase,
     val teams: List<ObsInfographicsTeam>,
     val settings: ObsInfographicsSettings = ObsInfographicsSettings(),
+    @get:JsonInclude(JsonInclude.Include.ALWAYS)
+    val leaderPresentation: ObsLeaderPresentation? = null,
 )
 @JsonInclude(JsonInclude.Include.ALWAYS)
 data class ObsAutoInfographicsSnapshot(val snapshot: ObsInfographicsSnapshot?)
 
 @Service
 class ObsInfographicsService(
+    private val presentations: ObsInfographicsPresentationService,
     private val settingsService: ObsInfographicsSettingsService,
     private val keys: ObsSourceKeyService,
     private val auto: ObsAutoSourceService,
@@ -67,10 +70,10 @@ class ObsInfographicsService(
         return buildAuto()
     }
 
-    internal fun buildAuto() = ObsAutoInfographicsSnapshot(auto.selectMatch()?.let(::buildSnapshot))
+    internal fun buildAuto() = ObsAutoInfographicsSnapshot(auto.selectMatch()?.let { buildSnapshot(it, isAuto = true) })
 
     // Staff calls also arrive inside the preview service's original repeatable-read transaction.
-    internal fun buildSnapshot(matchId: UUID): ObsInfographicsSnapshot {
+    internal fun buildSnapshot(matchId: UUID, isAuto: Boolean = false): ObsInfographicsSnapshot {
         val match = matches.findByIdAndDeletedAtIsNull(matchId) ?: throw AuthProblem(404, "OBS_SOURCE_MATCH_NOT_FOUND")
         val roster = jdbc.query(
             """
@@ -130,6 +133,7 @@ class ObsInfographicsService(
         }
         val input = "${match.eventLogRevision}:${match.status}:${match.effectiveStartedAt}:$phase:$projected:${settings.revision}"
         val revision = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8)))
-        return ObsInfographicsSnapshot(matchId, now, revision, match.status, phase, projected, settings)
+        val leaders = presentations.effective(matchId, isAuto, settings.revision, now)
+        return ObsInfographicsSnapshot(matchId, now, revision, match.status, phase, projected, settings, leaders)
     }
 }

@@ -15,12 +15,12 @@ import org.springframework.web.bind.annotation.RestController
 @ApiResponse(responseCode = "401", description = "Нет действующей staff session")
 @ApiResponse(responseCode = "403", description = "Требуется OBS_ADMIN и HTTPS; viewer bearer не даёт доступа")
 @ApiResponse(responseCode = "404", description = "Матч удалён или не найден")
-class ObsInfographicsLeadersController(private val leaders: ObsInfographicsLeadersService) {
+class ObsInfographicsLeadersController(private val presentations: ObsInfographicsPresentationService) {
     @GetMapping("/{matchId}")
     @Operation(summary = "Прочитать текущих идентифицированных лидеров матча, без команд эфира")
-    fun exact(@PathVariable matchId: String) = leaders.exact(sourceUuid(matchId))
+    fun exact(@PathVariable matchId: String) = presentations.exactLeaders(sourceUuid(matchId))
 
     @GetMapping("/auto")
     @Operation(summary = "Прочитать лидеров текущего AUTO матча; пустой выбор даёт snapshot:null")
-    fun auto() = leaders.auto()
+    fun auto() = presentations.autoLeaders()
 }
