@@ -891,6 +891,14 @@
       "policy": "PUBLIC"
     },
     {
+      "path": "/obs/infographics-postmatch.css",
+      "policy": "PUBLIC"
+    },
+    {
+      "path": "/obs/infographics-postmatch.mjs",
+      "policy": "PUBLIC"
+    },
+    {
       "path": "/obs/infographics.css",
       "policy": "PUBLIC"
     },
