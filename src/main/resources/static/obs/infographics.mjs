@@ -17,9 +17,9 @@ function render() {
   for (const team of page.teams) {
     const side=node('section','','team-side'), strip=node('header','','team-strip'), grid=node('div','','team-grid');
     strip.append(node('h3',team.name),node('p',team.total ? `${team.first+1}–${team.first+team.roster.length} из ${team.total}` : 'Нет игроков'));
-    grid.setAttribute('aria-label',`Ростер · ${team.name}`);
+    grid.setAttribute('aria-label',`${page.phase.kind === 'LINEUP' ? 'Состав поинта' : 'Ростер'} · ${team.name}`);
     for (const player of team.roster) {
-      const card=node('article','','person'), photo=node('div',player.name.split(/\s+/).filter(Boolean).map(n=>n[0]).slice(0,2).join(''),'photo');
+      const card=node('article','','person'), photo=node('div',player.temporary ? '?' : player.name.split(/\s+/).filter(Boolean).map(n=>n[0]).slice(0,2).join(''),'photo');
       // Photos are optional. Initials avoid credentialed image loads or global roster dependencies.
       card.dataset.participantId=player.participantId;
       const name=node('p',player.name,'name');
@@ -29,12 +29,12 @@ function render() {
     }
     side.append(strip,grid);pair.append(side);
   }
-  root.replaceChildren(node('h2','Ростер команд'),pair);root.hidden=false;
+  root.replaceChildren(node('h2',page.phase.kind === 'LINEUP' ? 'Состав поинта' : 'Ростер команд'),pair);root.hidden=false;
 }
 function accept(value) {
   if (disposed) return;
-  snapshot=value;
-  clock.accept(value);render();
+  if (!clock.accept(value)) return;
+  snapshot=value;render();
 }
 const tick=setInterval(render,100);
 addEventListener('pagehide',()=>{disposed=true;stop();clearInterval(tick);snapshot=null;clear();},{once:true});

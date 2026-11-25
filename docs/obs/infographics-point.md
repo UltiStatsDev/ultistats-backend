@@ -1,0 +1,11 @@
+# Инфографика: подтверждённый состав поинта
+
+Защищённые EXACT/AUTO и staff preview сохраняют прежние маршруты и права. Снимок добавляет `teams[].places` в порядке фактически выбранных мест канонического NEXT из PointLineupService. Это отдельный список от `roster`; substitutionSlots и глобальный ростер не являются выбором. PLAYER использует имя и номер снимка матча. TEMPORARY всегда имеет `temporary:true`, имя «Игрок неизвестен», номер и фото null; даже идентифицированный резерв остаётся анонимной карточкой «?». EventLog/CRUD не меняются.
+
+`phase.kind` — ROSTER, LINEUP или HIDDEN. Ростер идёт по пять карточек циклически до подтверждения. Первый полный проход завершается перед первым LINEUP; PULL прерывает показ. Следующий GOAL/undo заново определяет канонический NEXT: удалённый поинт и его места не возвращаются. Пустой подтверждённый выбор показывает пустые стороны.
+
+V22 добавляет nullable `match_point_lineups.confirmed_at`. Только новое фактическое подтверждение записывает injected server Clock; первоначальный retry не обновляет stamp, identify меняет revision. Старые строки, импорт и writers без нового поля сохраняют NULL. GET ничего не записывает. `anchorKind:CONFIRMED` означает реальный stamp; `LEGACY_POINT_OPEN` — честный стабильный paging fallback от канонического opening event или старта матча, а не время подтверждения.
+
+`phase.pointId`, `lineupRevision`, `lineupStartedAt`, `anchorKind` включены в presentationRevision вместе с журналом/проекцией. Для первого поинта lineupStartedAt=max(anchor,конец первого прохода); для последующих — anchor. startedAt задаёт текущую фазу, pageSeconds фиксирует её эффективный интервал (пока 5). LINEUP цикличен до PULL; короткая сторона держит последнюю страницу внутри каждого цикла. Переподключение использует те же epochs; поздний ответ не откатывает часы того же матча.
+
+Проверка: PointLineupHttpTest (persisted epoch/retry и доменные регрессии), obs-infographics.test.mjs (циклы/раннее-позднее подтверждение/empty/clock), obs-infographics-point.browser.mjs (собственные PG+HTTP+реальный served Chromium, 12/9→7/4, TEMP, PULL/GOAL/identify/undo/reconnect, NULL fallback, RR). Это техническая source-проверка, не ProductQA/native OBS или rollout.

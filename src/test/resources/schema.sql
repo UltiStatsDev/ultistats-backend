@@ -170,6 +170,7 @@ CREATE TABLE match_point_lineups (
     point_id UUID NOT NULL,
     -- Keep the opening boundary even if it leaves the active journal.
     opening_event_id UUID,
+    confirmed_at TIMESTAMP WITH TIME ZONE,
     revision BIGINT NOT NULL CHECK (revision >= 1),
     PRIMARY KEY (match_id, point_id)
 );

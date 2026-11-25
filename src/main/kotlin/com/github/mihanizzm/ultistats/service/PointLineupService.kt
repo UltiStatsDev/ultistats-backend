@@ -27,6 +27,7 @@ import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchParticipantR
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchTeamRepository
 import java.util.UUID
+import java.time.Clock
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Isolation
@@ -40,6 +41,7 @@ class PointLineupService(
     private val events: SpringDataEventRepository,
     private val lineups: PointLineupRepository,
     private val policy: PointLineupEventPolicy,
+    private val clock: Clock,
     @Value("\${ultistats.point-lineups.write-enabled:false}") private val writesEnabled: Boolean,
 ) {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -110,7 +112,7 @@ class PointLineupService(
 
         validateSelection(match, selection, saved.values, introduced.mapTo(mutableSetOf()) { it.slot.slotId })?.let { invalid(it) }
         val confirmed = PointLineup(revision = 1, teams = selection)
-        lineups.insert(matchId, point, confirmed)
+        lineups.insert(matchId, point, confirmed, clock.instant())
         return point.toResponse(confirmed)
     }
 
