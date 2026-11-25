@@ -1,8 +1,8 @@
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
-const kinds = ['scoreboard', 'event-log'], keys = '/api/v1/obs/source-keys';
+const kinds = ['scoreboard', 'event-log', 'infographics'], keys = '/api/v1/obs/source-keys';
 const empty = (status = 'LOADING', message = '') => ({status, message, url: '', key: null, busy: false, retry: false});
 function binding(kind, matchId) {
-  return {kind, matchId, scope: `${matchId ? 'EXACT' : 'AUTO'}_${kind === 'scoreboard' ? 'SCOREBOARD' : 'EVENT_LOG'}`};
+  return {kind, matchId, scope: `${matchId ? 'EXACT' : 'AUTO'}_${kind === 'scoreboard' ? 'SCOREBOARD' : kind === 'event-log' ? 'EVENT_LOG' : 'INFOGRAPHICS'}`};
 }
 export function validateCurrent(data, context) {
   if (!data || !['ACTIVE', 'REISSUE_REQUIRED', 'NO_ACTIVE_LINK'].includes(data.status)) throw Error('invalid');

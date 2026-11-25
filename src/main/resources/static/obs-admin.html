@@ -15,7 +15,10 @@
 <article class="link-card"><h3>Event Log</h3><p><small>Browser Source: 1920 × 1080 px · ссылка содержит приватный ключ</small></p>
 <label>Текущая ссылка Event Log<input id="link-event-log-url" type="url" readonly autocomplete="off" spellcheck="false"></label>
 <div class="inline"><button id="link-event-log-copy" type="button" disabled>Копировать</button><button id="link-event-log-issue" type="button" disabled>Выдать ссылку</button><button id="link-event-log-revoke" type="button" disabled>Отозвать</button></div><p id="link-event-log-status" role="status"></p></article>
-</div><label>Сессионный предпросмотр <select id="links-kind"><option value="scoreboard">Табло</option><option value="event-log">Event Log</option></select></label>
+<article class="link-card"><h3>Инфографика</h3><p><small>Browser Source: 1920 × 1080 px · ссылка содержит приватный ключ</small></p>
+<label>Текущая ссылка Инфографика<input id="link-infographics-url" type="url" readonly autocomplete="off" spellcheck="false"></label>
+<div class="inline"><button id="link-infographics-copy" type="button" disabled>Копировать</button><button id="link-infographics-issue" type="button" disabled>Выдать ссылку</button><button id="link-infographics-revoke" type="button" disabled>Отозвать</button></div><p id="link-infographics-status" role="status"></p></article>
+</div><label>Сессионный предпросмотр <select id="links-kind"><option value="scoreboard">Табло</option><option value="event-log">Event Log</option><option value="infographics">Инфографика</option></select></label>
 <iframe id="links-preview" title="Сессионный предпросмотр защищённого источника"></iframe><small>Предпросмотр через сессию организатора, без ключа OBS. AUTO выбирается сервером; при отсутствии выбранного матча предпросмотр показывает «Нет матча для трансляции».</small></section>
 <dialog id="links-dialog"><p id="links-dialog-text"></p><button id="links-cancel" type="button">Отмена</button> <button id="links-confirm" type="button">Подтвердить</button></dialog>
 <div class="layout"><form id="settings" class="panel"><h2>Оформление всего сервиса</h2><p class="muted">Сохранение обновляет все открытые OBS-источники. Матч каждого источника остаётся прежним.</p>

@@ -12,7 +12,10 @@ class ObsPreviewService(
     private val scoreboard: ObsScoreboardService,
     private val eventLog: ObsExactEventLogService,
     private val auto: ObsAutoSourceService,
+    private val infographics: ObsInfographicsService,
 ) {
+    fun infographics(matchId: UUID) = infographics.buildSnapshot(matchId)
+    fun autoInfographics() = infographics.buildAuto()
     fun scoreboard(matchId: UUID) = scoreboard.exactSnapshot(matchId)
     fun eventLog(matchId: UUID) = eventLog.buildSnapshot(matchId)
     fun autoScoreboard() = auto.buildScoreboard()

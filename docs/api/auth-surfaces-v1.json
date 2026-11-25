@@ -646,6 +646,22 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/obs/sources/infographics/{matchId}",
+      "policy": "OBS_SOURCE_BEARER",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsInfographicsController.kt",
+      "line": 21
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/obs/sources/infographics/auto",
+      "policy": "OBS_SOURCE_BEARER",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsInfographicsController.kt",
+      "line": 26
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/obs/stream",
       "policy": "OBS_ADMIN",
       "owner": "enforcement",
@@ -655,7 +671,7 @@
     },
     {
       "method": "GET",
-      "path": "/api/v1/obs/previews/scoreboard/{matchId}",
+      "path": "/api/v1/obs/previews/infographics/{matchId}",
       "policy": "OBS_ADMIN",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsPreviewController.kt",
@@ -664,7 +680,7 @@
     },
     {
       "method": "GET",
-      "path": "/api/v1/obs/previews/event-log/{matchId}",
+      "path": "/api/v1/obs/previews/infographics/auto",
       "policy": "OBS_ADMIN",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsPreviewController.kt",
@@ -673,7 +689,7 @@
     },
     {
       "method": "GET",
-      "path": "/api/v1/obs/previews/scoreboard/auto",
+      "path": "/api/v1/obs/previews/scoreboard/{matchId}",
       "policy": "OBS_ADMIN",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsPreviewController.kt",
@@ -682,11 +698,29 @@
     },
     {
       "method": "GET",
-      "path": "/api/v1/obs/previews/event-log/auto",
+      "path": "/api/v1/obs/previews/event-log/{matchId}",
       "policy": "OBS_ADMIN",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsPreviewController.kt",
       "line": 34,
+      "secureOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/obs/previews/scoreboard/auto",
+      "policy": "OBS_ADMIN",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsPreviewController.kt",
+      "line": 38,
+      "secureOnly": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/obs/previews/event-log/auto",
+      "policy": "OBS_ADMIN",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsPreviewController.kt",
+      "line": 42,
       "secureOnly": true
     },
     {
@@ -799,6 +833,18 @@
       "policy": "PUBLIC"
     },
     {
+      "path": "/obs/infographics-model.mjs",
+      "policy": "PUBLIC"
+    },
+    {
+      "path": "/obs/infographics.css",
+      "policy": "PUBLIC"
+    },
+    {
+      "path": "/obs/infographics.mjs",
+      "policy": "PUBLIC"
+    },
+    {
       "path": "/obs/obs.css",
       "policy": "PUBLIC"
     },
@@ -896,6 +942,11 @@
       "secureOnly": true
     },
     {
+      "path": "/obs-preview/infographics.html",
+      "policy": "OBS_ADMIN",
+      "secureOnly": true
+    },
+    {
       "path": "/obs-preview/scoreboard.html",
       "policy": "OBS_ADMIN",
       "secureOnly": true
@@ -906,6 +957,10 @@
     },
     {
       "path": "/obs-sources/event-log.html",
+      "policy": "PUBLIC"
+    },
+    {
+      "path": "/obs-sources/infographics.html",
       "policy": "PUBLIC"
     },
     {

@@ -9,7 +9,7 @@ export function mountActiveLinks(session, {document = globalThis.document, clipb
   function close() {confirmation = null;if (dialog.open) dialog.close();}
   function render(state) {
     if (!state.current) close();
-    for (const kind of ['scoreboard', 'event-log']) {
+    for (const kind of ['scoreboard', 'event-log', 'infographics']) {
       const card = state.cards[kind], prefix = `link-${kind}`;
       $(prefix+'-url').value = card.url;
       $(prefix+'-status').textContent = card.message || labels[card.status];
@@ -51,7 +51,7 @@ export function mountActiveLinks(session, {document = globalThis.document, clipb
     $('links-mode').value = 'exact';$('links-match-label').hidden = false;
     $('links-match').value = $('links-matches').value;void select();
   });
-  for (const kind of ['scoreboard', 'event-log']) {
+  for (const kind of ['scoreboard', 'event-log', 'infographics']) {
     const prefix = `link-${kind}`;
     $(prefix+'-copy').addEventListener('click', async () => {
       const state = controller.state, card = state.cards[kind];
@@ -69,7 +69,7 @@ export function mountActiveLinks(session, {document = globalThis.document, clipb
       if (!state.current || state.cards[kind].busy || (action === 'revoke' && !intent)) return;
       confirmation = {state, kind, action, intent};
       $('links-dialog-text').textContent = action === 'issue'
-        ? `${kind === 'scoreboard' ? 'Табло' : 'Event Log'}: выдать ссылку для показанного контекста? Прежняя ссылка этого вида и контекста перестанет работать. Ссылку в OBS потребуется заменить.`
+        ? `${kind === 'scoreboard' ? 'Табло' : kind === 'event-log' ? 'Event Log' : 'Инфографика'}: выдать ссылку для показанного контекста? Прежняя ссылка этого вида и контекста перестанет работать. Ссылку в OBS потребуется заменить.`
         : 'Отозвать показанную ссылку? Подключённый по ней OBS-источник перестанет работать.';
       dialog.showModal();
     });

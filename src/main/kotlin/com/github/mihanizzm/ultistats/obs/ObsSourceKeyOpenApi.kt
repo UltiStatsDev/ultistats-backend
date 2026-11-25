@@ -12,6 +12,7 @@ class ObsSourceKeyOpenApi {
     fun obsCurrentSourceKeySchema(): OpenApiCustomizer = OpenApiCustomizer { api ->
         mapOf(
             "ObsAutoScoreboardSnapshot" to "ObsExactScoreboardSnapshot",
+            "ObsAutoInfographicsSnapshot" to "ObsInfographicsSnapshot",
             "ObsAutoEventLogSnapshot" to "ObsExactEventLogSnapshot",
         ).forEach { (envelope, snapshot) ->
             api.components.schemas[envelope]?.apply {

@@ -45,7 +45,7 @@ class ObsAutoSourceService(
 
     // Compare canonical UUID text: UUID.compareTo uses signed halves, not canonical UUID order.
     // effectiveStartedAt validates original precision against the physical stored timestamp.
-    private fun selectMatch(): UUID? = matches.findAllByDeletedAtIsNull()
+    internal fun selectMatch(): UUID? = matches.findAllByDeletedAtIsNull()
         .filter { it.effectiveStartedAt != null }
         .sortedWith(compareBy<com.github.mihanizzm.ultistats.model.Match> { it.endedAt != null }
             .thenByDescending { it.effectiveStartedAt }

@@ -19,6 +19,14 @@ import org.springframework.web.bind.annotation.RestController
 @ApiResponse(responseCode = "403", description = "OBS_ADMIN required; HTTPS only. Viewer bearer grants no access")
 @ApiResponse(responseCode = "404", description = "Exact match removed or not found")
 class ObsPreviewController(private val previews: ObsPreviewService) {
+    @GetMapping("/infographics/{matchId}")
+    @Operation(summary = "Preview the exact infographic roster in the OBS_ADMIN HTTPS session")
+    fun infographics(@PathVariable matchId: String) = previews.infographics(sourceUuid(matchId))
+
+    @GetMapping("/infographics/auto")
+    @Operation(summary = "Preview the AUTO infographic roster in the OBS_ADMIN HTTPS session")
+    fun autoInfographics() = previews.autoInfographics()
+
     @GetMapping("/scoreboard/{matchId}")
     @Operation(summary = "Preview an exact scoreboard in the OBS_ADMIN HTTPS session")
     fun scoreboard(@PathVariable matchId: String) = previews.scoreboard(sourceUuid(matchId))
