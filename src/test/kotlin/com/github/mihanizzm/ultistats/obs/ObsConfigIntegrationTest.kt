@@ -11,6 +11,8 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
+import org.springframework.jdbc.core.JdbcTemplate
+import java.util.UUID
 import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
@@ -26,6 +28,7 @@ class ObsConfigIntegrationTest {
     private fun internalStream(path: String) = ObsInternalStreamProbe(configStream, notifications).open(path)
     @Autowired lateinit var json: ObjectMapper
     @Autowired lateinit var database: ObsDatabaseHelper
+    @Autowired lateinit var jdbc: JdbcTemplate
     @Autowired lateinit var service: ObsConfigService
     @Autowired lateinit var transaction: TransactionTemplate
 
@@ -47,6 +50,49 @@ class ObsConfigIntegrationTest {
         val persisted = database.persistedConfig()
         org.junit.jupiter.api.Assertions.assertEquals(12, json.readTree(persisted)["maxRows"].asInt())
         mvc.perform(get("/api/v1/obs/config")).andExpect(jsonPath("$.corner").value("BOTTOM_LEFT"))
+    }
+
+    @Test fun `match scoped config replaces only authoritative pair and legacy save still replaces all`() {
+        val first = UUID.randomUUID()
+        val second = UUID.randomUUID()
+        val other = UUID.randomUUID()
+        val match = UUID.randomUUID()
+        jdbc.update("INSERT INTO matches(id, players_per_team) VALUES (?, 7)", match)
+        try {
+            listOf(first, second).forEachIndexed { index, team ->
+                jdbc.update("INSERT INTO teams(id, name) VALUES (?, 'Synthetic')", team)
+                jdbc.update(
+                    "INSERT INTO match_teams(match_id, team_id, position, team_name) VALUES (?, ?, ?, 'Synthetic')",
+                    match, team, index + 1,
+                )
+            }
+            val path = "/api/v1/obs/config"
+            fun putConfig(query: String, colors: Map<UUID, String>) = mvc.perform(
+                put(path + query).contentType(MediaType.APPLICATION_JSON)
+                    .content(json.writeValueAsString(ObsConfig(maxRows = 8, teamColors = colors))),
+            )
+
+            putConfig("", mapOf(first to "#110000", second to "#220000", other to "#330000"))
+                .andExpect(status().isOk)
+            val initial = database.gameState()
+            putConfig("?matchId=$match", mapOf(first to "#aa0000"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.teamColors.$first").value("#aa0000"))
+                .andExpect(jsonPath("$.teamColors.$second").doesNotExist())
+                .andExpect(jsonPath("$.teamColors.$other").value("#330000"))
+            putConfig("?matchId=$match", mapOf(other to "#bbbbbb")).andExpect(status().isBadRequest)
+            putConfig("?matchId=$match", mapOf(first to "not-a-color")).andExpect(status().isBadRequest)
+            putConfig("?matchId=${UUID.randomUUID()}", emptyMap()).andExpect(status().isNotFound)
+            putConfig("?preserveTeamColors=true", emptyMap()).andExpect(status().isOk)
+                .andExpect(jsonPath("$.teamColors.$first").value("#aa0000"))
+                .andExpect(jsonPath("$.teamColors.$other").value("#330000"))
+            org.junit.jupiter.api.Assertions.assertEquals(initial, database.gameState())
+            putConfig("", emptyMap()).andExpect(status().isOk).andExpect(jsonPath("$.teamColors").isEmpty)
+        } finally {
+            jdbc.update("DELETE FROM match_teams WHERE match_id = ?", match)
+            jdbc.update("DELETE FROM matches WHERE id = ?", match)
+            jdbc.update("DELETE FROM teams WHERE id IN (?, ?)", first, second)
+        }
     }
 
     @Test fun `reject invalid config without persisting it`() {

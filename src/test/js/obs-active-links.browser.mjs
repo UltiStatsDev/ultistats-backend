@@ -59,17 +59,17 @@ try {
  assert.ok((await field('event-log').inputValue())===autoLog.url);
  results.push('real committed-but-lost POST then same-operation UI retry: old viewer401/new200, other binding preserved');
  // Explicit editor target remains match while new source links and server AUTO select another match.
- await page.locator('#match-id').fill(match);await page.locator('#open-match').click();
+ await page.locator('#links-mode').selectOption('exact');await page.locator('#links-match').fill(match);await page.locator('#links-open').click();await settled();
  await page.waitForFunction(()=>!document.querySelector('#scoreboard-fields').disabled);
  await page.locator('[data-scoreboard-name]').first().fill('F2 draft');
  sql(`UPDATE matches SET started_at=now() WHERE id='${other}';`);
- await page.waitForFunction(()=>document.querySelector('#links-preview').contentDocument?.querySelector('.scoreboard-score')?.textContent==='0 : 0');
+ assert.equal((await viewer(rotated,200)).snapshot.matchId,other);
  const save=page.waitForResponse(r=>r.request().method()==='PUT'&&r.url().endsWith(`/api/v1/obs/scoreboard/${match}/profile`));
  await page.locator('#scoreboard-form button[type=submit]').click();assert.equal((await save).status(),200);
  const profile=await context.request.get(`${origin}/api/v1/obs/scoreboard/${match}`,{headers:input.staff});
  assert.equal(profile.status(),200);assert.ok(Object.values((await profile.json()).profile.shortNames).includes('F2 draft'));
- assert.ok((await page.locator('#editor-context').textContent()).includes(match));
- const configSave=page.waitForResponse(r=>r.request().method()==='PUT'&&r.url().endsWith('/api/v1/obs/config'));
+ assert.equal(await page.locator('#editor-context').getAttribute('data-match-id'),match);
+ const configSave=page.waitForResponse(r=>r.request().method()==='PUT'&&new URL(r.url()).pathname==='/api/v1/obs/config');
  await page.locator('#maxRows').fill('4');await page.locator('#save').click();assert.equal((await configSave).status(),200);
  results.push('AUTO server switch leaves explicit scoreboard editor target/draft/save on opened match; global Event Log config still saves');
  await page.locator('#links-mode').selectOption('exact');await page.locator('#links-match').fill(match);await page.locator('#links-open').click();await settled();

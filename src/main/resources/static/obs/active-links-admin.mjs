@@ -2,7 +2,7 @@ import {createActiveLinks} from './active-links.mjs';
 const labels = {LOADING: 'Проверка текущей ссылки…', ACTIVE: 'Активная ссылка', NO_ACTIVE_LINK: 'Активной ссылки нет',
   REISSUE_REQUIRED: 'Старая ссылка: для копирования нужен явный перевыпуск.', UNAVAILABLE: 'Материал ключа недоступен (503). Ссылка не изменена.',
   ERROR: 'Не удалось проверить ссылку.', UNKNOWN: 'Результат операции неизвестен.', SESSION_CHANGED: 'Сессия изменилась. Откройте страницу заново.'};
-export function mountActiveLinks(session, {document = globalThis.document, clipboard = globalThis.navigator?.clipboard,
+export function mountActiveLinks(session, {document = globalThis.document, clipboard = globalThis.navigator?.clipboard, onContext = () => {},
   listen = (type, fn) => globalThis.addEventListener(type, fn, {once: true})} = {}) {
   const $ = id => document.getElementById(id), dialog = $('links-dialog');
   let confirmation = null, framePath = '', controller, selection = 0;
@@ -32,7 +32,9 @@ export function mountActiveLinks(session, {document = globalThis.document, clipb
     close();const selected = ++selection;
     const id = $('links-mode').value === 'auto' ? null : $('links-match').value.trim().toLowerCase();
     try {
-      const promise = controller.select(id);preview();await promise;
+      const promise = controller.select(id);
+      if (controller.state.current && id === controller.state.matchId) onContext(id);
+      preview();await promise;
       if (selected !== selection || !controller.state.current) return;
       $('links-context').textContent = id ? `Ссылки конкретного матча: ${id}` : 'Автоматический выбор сервера. Текущий матч или его отсутствие показаны в предпросмотре.';
     } catch { if (selected === selection && controller.state.current) $('links-context').textContent = 'Введите корректный UUID матча. До этого открыт прежний контекст ссылок.'; }
