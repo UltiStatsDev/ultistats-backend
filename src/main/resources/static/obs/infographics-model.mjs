@@ -13,6 +13,7 @@ export function validateInfographics(value, matchId, origin = globalThis.locatio
   if (value.phase.kind === 'LINEUP' && value.phase.lineupStartedAt == null) invalid();
   if (value.phase.pageSeconds != null && (!Number.isInteger(value.phase.pageSeconds) || value.phase.pageSeconds < 2 || value.phase.pageSeconds > 15)) invalid();
   if (value.phase.lineupPageSeconds != null && (!Number.isInteger(value.phase.lineupPageSeconds) || value.phase.lineupPageSeconds < 2 || value.phase.lineupPageSeconds > 15)) invalid();
+  validatePresentation(value.leaderPresentation, value.teams);
   const identities = new Set();
   return {...value, teams:value.teams.map(team => {
     if (!uuid.test(team.teamId) || typeof team.name !== 'string' || !Array.isArray(team.roster)) invalid();
@@ -34,6 +35,51 @@ export function validateInfographics(value, matchId, origin = globalThis.locatio
     return {...team,roster:players(team.roster),places};
   })};
 }
+const categories = ['attack','defense'];
+const slotCount = (teams, category) => Math.max(...teams.map(team => team[category].length));
+const components = ['ordinaryAccuratePasses','ratedGoals','assists','blocks','blocksAsMarker','blocksAsFieldPlayer','interceptions','callahans'];
+function validatePresentation(command, teams) {
+  if (command == null) return;
+  const {generation, startedAt, expiresAt, pageSeconds} = command;
+  if (!uuid.test(generation) || !Number.isFinite(Date.parse(startedAt)) ||
+      !Number.isInteger(pageSeconds) || pageSeconds < 2 || pageSeconds > 15 ||
+      !Array.isArray(command.teams) || command.teams.length !== teams.length) invalid();
+  command.teams.forEach((team, i) => {
+    if (team.teamId !== teams[i].teamId || !['READY','UNAVAILABLE'].includes(team.state)) invalid();
+    for (const category of categories) {
+      const leaders = team[category];
+      if (!Array.isArray(leaders) || new Set(leaders.map(player => player.participantId)).size !== leaders.length) invalid();
+      for (const player of leaders) {
+        if (!uuid.test(player.participantId) || typeof player.name !== 'string' ||
+            (player.number != null && (!Number.isSafeInteger(player.number) || player.number < 0)) ||
+            !Number.isSafeInteger(player.ratingTenths) || player.ratingTenths <= 0 ||
+            !player.components || components.some(key => !Number.isSafeInteger(player.components[key]) || player.components[key] < 0)) invalid();
+      }
+    }
+  });
+  const slots = categories.reduce((sum, category) => sum + slotCount(command.teams, category), 0);
+  if (!slots || Date.parse(expiresAt) - Date.parse(startedAt) !== slots * pageSeconds * 1000) invalid();
+}
+
+export function infographicsPage(snapshot, serverNow) {
+  const command = snapshot?.leaderPresentation;
+  if (command && serverNow >= Date.parse(command.startedAt) && serverNow < Date.parse(command.expiresAt)) {
+    let page = Math.floor((serverNow - Date.parse(command.startedAt)) / (command.pageSeconds * 1000));
+    for (const category of categories) {
+      const slots = slotCount(command.teams, category);
+      if (page < slots) {
+        const teams = command.teams.map((team, i) => ({
+          name: snapshot.teams[i].name, state: team.state,
+          leader: team[category][Math.min(page, team[category].length - 1)],
+        }));
+        return {...snapshot, generation:command.generation, category, page, teams};
+      }
+      page -= slots;
+    }
+  }
+  return rosterPage(snapshot, serverNow);
+}
+
 // Stable phase epochs govern both polls and reconnects; each team holds its last page within a cycle.
 export function rosterPage(snapshot, serverNow) {
   if (!snapshot || snapshot.phase.kind === 'HIDDEN') return null;

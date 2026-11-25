@@ -14,6 +14,7 @@ interface SpringDataMatchRepository : JpaRepository<Match, UUID> {
     fun findByIdForUpdate(@Param("id") id: UUID): Match?
 
     fun findByIdAndDeletedAtIsNull(id: UUID): Match?
+    fun findAllByStartedAtIsNotNull(): List<Match>
     fun findAllByDeletedAtIsNull(): List<Match>
     fun countByDeletedAtIsNull(): Long
 }

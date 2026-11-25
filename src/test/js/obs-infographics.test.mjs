@@ -100,3 +100,30 @@ test('scheduled lineup uses its own captured interval, independent of roster and
   assert.equal(rosterPage(value,Date.parse(started)+13000).page,1);
   assert.equal(rosterPage(value,Date.parse(started)+5000).page,2);
 });
+
+test('finite leader pages run three attack then two defense slots and restore the current base', async () => {
+  const {infographicsPage} = await import('../../main/resources/static/obs/infographics-model.mjs');
+  const value = fixture();
+  const player = n => ({participantId:id(n),name:`Player ${n}`,number:n,ratingTenths:15,
+    components:{ordinaryAccuratePasses:0,ratedGoals:1,assists:0,blocks:1,blocksAsMarker:0,blocksAsFieldPlayer:0,interceptions:0,callahans:0}});
+  value.leaderPresentation = {generation:id(500),startedAt:started,expiresAt:'2026-01-01T00:00:15Z',pageSeconds:3,
+    teams:value.teams.map((team,i)=>({teamId:team.teamId,state:'READY',attack:(i?[11]:[1,2,3]).map(player),defense:(i?[12,13]:[4]).map(player)}))};
+  const at = sec => infographicsPage(validateInfographics(value,id(1)),Date.parse(started)+sec*1000);
+  assert.deepEqual([0,3,6,9,12].map(sec=>{
+    const p=at(sec);return [p.category,p.teams.map(t=>t.leader?.number)];
+  }), [['attack',[1,11]],['attack',[2,11]],['attack',[3,11]],['defense',[4,12]],['defense',[4,13]]]);
+  // Reconnected payload has the same finite command. Current E setting and current base have changed.
+  value.settings.leaderPageSeconds=15;
+  value.phase={kind:'LINEUP',startedAt:started,lineupStartedAt:started,lineupRevision:1,pointId:id(10),anchorKind:'CONFIRMED'};
+  assert.equal(at(12).category,'defense');
+  assert.equal(at(15).phase.kind,'LINEUP');
+  value.leaderPresentation.teams[1].attack=[];
+  assert.deepEqual(at(3).teams.map(t=>t.leader?.number),[2,undefined]);
+  value.leaderPresentation.teams[0].attack=[];
+  value.leaderPresentation.expiresAt='2026-01-01T00:00:06Z';
+  assert.equal(at(0).category,'defense');
+  value.leaderPresentation.expiresAt='2026-01-01T00:00:10Z';
+  assert.throws(()=>at(0));
+  value.leaderPresentation=null;
+  assert.equal(at(0).phase.kind,'LINEUP');
+});

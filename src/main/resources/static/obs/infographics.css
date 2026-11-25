@@ -25,3 +25,22 @@ h3{font-size:.85em;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:n
 }
 
 .photo{position:relative}.number{position:absolute;top:.3em;right:.3em;font-size:.3em;color:#f1f4fb;background:#141e30;padding:.1em .3em;border-radius:3px}
+
+#infographics[data-graphic-kind=leaders] {
+  left:27.5%;right:27.5%;top:50%;bottom:auto;transform:translateY(-50%);height:min(90%,26em);min-height:0;
+  font-size:clamp(8px,1.4vw,24px);animation:leader-appear 240ms ease-out
+}
+[data-graphic-kind=leaders] .team-pair {grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:1fr}
+[data-graphic-kind=leaders] .team-side + .team-side {border-left:1px solid #36425b}
+[data-graphic-kind=leaders] h3 {text-align:center;margin-bottom:.45em}
+.leader-detail {animation:leader-swap 260ms ease-out}
+.leader-detail .photo {height:clamp(24px,13vh,5em);width:auto;max-width:94%;margin:auto}
+.leader-detail .name {font-size:.8em;height:4lh;-webkit-line-clamp:4;margin:.35em 0}
+.leader-stat {display:flex;align-items:center;justify-content:space-between;gap:.4em;border-bottom:1px solid #36425b;margin:0;padding:.35em 0;font-size:.68em}
+.leader-stat span {overflow-wrap:anywhere}
+.leader-stat:last-child strong {color:#d4b8ff;font-size:1.5em;font-variant-numeric:tabular-nums}
+.no-leader {text-align:center;font-size:.75em;color:#a7b5ca}
+@keyframes leader-appear {from{opacity:0}to{opacity:1}}
+@keyframes leader-swap {from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:translateX(0)}}
+@container (max-width:700px) {#infographics[data-graphic-kind=leaders] {left:5%;right:5%}}
+@media(prefers-reduced-motion:reduce) {#infographics[data-graphic-kind=leaders],.leader-detail {animation:none}}

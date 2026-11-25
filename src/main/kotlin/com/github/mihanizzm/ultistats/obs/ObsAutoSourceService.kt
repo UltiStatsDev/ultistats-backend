@@ -1,11 +1,14 @@
 package com.github.mihanizzm.ultistats.obs
 
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchRepository
 import io.swagger.v3.oas.annotations.media.Schema
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
+import java.security.MessageDigest
+import java.util.HexFormat
 import java.util.UUID
 
 @JsonInclude(JsonInclude.Include.ALWAYS)
@@ -45,10 +48,24 @@ class ObsAutoSourceService(
 
     // Compare canonical UUID text: UUID.compareTo uses signed halves, not canonical UUID order.
     // effectiveStartedAt validates original precision against the physical stored timestamp.
-    internal fun selectMatch(): UUID? = matches.findAllByDeletedAtIsNull()
-        .filter { it.effectiveStartedAt != null }
-        .sortedWith(compareBy<com.github.mihanizzm.ultistats.model.Match> { it.endedAt != null }
-            .thenByDescending { it.effectiveStartedAt }
-            .thenBy { it.id.toString() })
-        .firstOrNull()?.id
+    private val startOrder = compareByDescending<Match> { it.effectiveStartedAt }.thenBy { it.id.toString() }
+
+    internal fun selectMatch(): UUID? = select(matches.findAllByDeletedAtIsNull())?.id
+
+    private fun select(candidates: List<Match>): Match? = candidates
+        .filter { it.deletedAt == null && it.effectiveStartedAt != null }
+        .minWithOrNull(compareBy<Match> { it.endedAt != null }.then(startOrder))
+
+    internal data class PresentationSelection(val matchId: UUID, val revision: String)
+
+    internal fun presentationSelection(): PresentationSelection? {
+        val candidates = matches.findAllByStartedAtIsNotNull()
+        val selected = select(candidates) ?: return null
+        // A later contender can start and disappear between polls. Retain its lifecycle in the AUTO token.
+        val history = candidates.filter { selected.endedAt != null || startOrder.compare(it, selected) <= 0 }
+            .sortedBy { it.id.toString() }
+            .joinToString("|") { "${it.id}:${it.effectiveStartedAt}:${it.effectiveEndedAt}:${it.deletedAt}" }
+        val digest = MessageDigest.getInstance("SHA-256").digest(history.toByteArray(Charsets.UTF_8))
+        return PresentationSelection(selected.id, HexFormat.of().formatHex(digest))
+    }
 }

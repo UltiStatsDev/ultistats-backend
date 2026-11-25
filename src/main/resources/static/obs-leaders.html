@@ -1,5 +1,7 @@
 <!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>UltiStats · Лидеры команд</title><link rel="stylesheet" href="/obs/leaders.css"></head>
-<body><main><a href="/obs-admin.html">← Управление OBS</a><h1>Лидеры команд</h1><p>Текущие положительные максимумы и все равные результаты. Список только для просмотра.</p>
-<form><fieldset disabled><label>Контекст <select name="mode"><option value="auto">AUTO · текущий матч</option><option value="exact">EXACT · конкретный матч</option></select></label><label>UUID матча <input name="matchId" type="text" disabled autocomplete="off" spellcheck="false"></label><button type="submit">Обновить</button></fieldset></form>
-<p id="status" role="status">Проверка защищённой сессии…</p><div id="leaders" aria-live="polite"></div></main><script type="module" src="/obs/leaders.mjs"></script></body></html>
+<body><main><a href="/obs-admin.html">← Управление OBS</a><h1>Лидеры команд</h1><p>Текущие положительные максимумы и все равные результаты.</p>
+<form><fieldset disabled><label>Контекст <select name="mode"><option value="auto">AUTO · текущий матч</option><option value="exact">EXACT · конкретный матч</option></select></label><label>UUID матча <input name="matchId" type="text" disabled autocomplete="off" spellcheck="false"></label><button type="submit">Обновить</button>
+<button type="button" id="show-leaders" disabled>Показать лидеров матча</button>
+<button type="button" id="hide-leaders" disabled>Скрыть</button></fieldset></form>
+<p id="status" role="status">Проверка защищённой сессии…</p><p id="command-status" role="status"></p><div id="leaders" aria-live="polite"></div></main><script type="module" src="/obs/leaders.mjs"></script></body></html>
