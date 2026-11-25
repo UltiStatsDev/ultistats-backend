@@ -4,7 +4,7 @@ import {createActiveLinks, validateCurrent} from '../../main/resources/static/ob
 const match='814a82aa-0bd9-4eb9-acce-05d7df2722f9', key='1cd250e8-7d11-4b9a-b932-09d67c3dab98';
 const origin='https://fixture.invalid';
 function active(scope='AUTO_SCOREBOARD',id=null) {
- const kind=scope.endsWith('SCOREBOARD')?'scoreboard':'event-log';
+ const kind=scope.endsWith('SCOREBOARD')?'scoreboard':scope.endsWith('EVENT_LOG')?'event-log':'infographics';
  return {status:'ACTIVE',key:{keyId:key,scope,matchId:id,createdAt:'2026-11-21T00:00:00Z',revokedAt:null},url:`${origin}/obs-sources/${kind}.html?${id?'matchId='+id:'mode=auto'}#key=${'A'.repeat(43)}`};
 }
 const response=(data,status=200)=>({ok:status<400,status,json:async()=>data});
@@ -16,9 +16,9 @@ function fixture() {
  const controller=createActiveLinks({session,onChange:state=>states.push(state),randomId:()=>`op-${++ids}`});
  return {controller,calls,states,setHandler:fn=>handler=fn,expire:()=>{current=false;listener();}};
 }
-test('current validates all four exact/auto bindings and generated HTTPS shape',()=>{
- for(const kind of ['scoreboard','event-log'])for(const id of [null,match]) {
-  const binding={kind,matchId:id,scope:`${id?'EXACT':'AUTO'}_${kind==='scoreboard'?'SCOREBOARD':'EVENT_LOG'}`};
+test('current validates all six exact/auto bindings and generated HTTPS shape',()=>{
+ for(const kind of ['scoreboard','event-log','infographics'])for(const id of [null,match]) {
+  const binding={kind,matchId:id,scope:`${id?'EXACT':'AUTO'}_${kind==='scoreboard'?'SCOREBOARD':kind==='event-log'?'EVENT_LOG':'INFOGRAPHICS'}`};
   assert.equal(validateCurrent(active(binding.scope,id),binding).status,'ACTIVE');
   for(const change of [{url:active(binding.scope,id).url.replace('https:','http:')},{key:{...active(binding.scope,id).key,scope:'WRONG'}},{url:active(binding.scope,id).url+'&extra=1'},{status:'UNKNOWN'},{key:{...active(binding.scope,id).key,revokedAt:'2026-01-01'}}])
    assert.throws(()=>validateCurrent({...active(binding.scope,id),...change},binding));
@@ -30,7 +30,7 @@ test('selection reads current only, preview is keyless, reopening restores witho
  assert.equal(f.controller.state.cards.scoreboard.url,active().url);
  assert.equal(f.controller.preview('event-log'),'/obs-preview/event-log.html?mode=auto');
  await f.controller.select(match);assert.equal(f.controller.preview('scoreboard'),`/obs-preview/scoreboard.html?matchId=${match}`);
- await f.controller.select(null);assert.equal(f.calls.length,6);assert(f.calls.every(c=>c.method==='GET'));
+ await f.controller.select(null);assert.equal(f.calls.length,9);assert(f.calls.every(c=>c.method==='GET'));
 });
 test('ambiguous issue retry keeps operationId per binding without another rotation intent',async()=>{
  const f=fixture();await f.controller.select(null);

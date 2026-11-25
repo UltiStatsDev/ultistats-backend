@@ -355,4 +355,63 @@ class ObsSourceKeysIntegrationTest {
         assertTrue(read("scoreboard", secret)["snapshot"].isNull)
     }
 
+    @Autowired private lateinit var sourceKeys: ObsSourceKeyService
+
+    @Test
+    fun `infographics keys isolate match snapshot roster and first pull with undo`() {
+        jdbc.update("UPDATE matches SET deleted_at = CURRENT_TIMESTAMP")
+        val match = UUID.randomUUID()
+        val teams = listOf(UUID.randomUUID(), UUID.randomUUID())
+        val player = UUID.randomUUID()
+        val started = Instant.parse("2026-01-01T00:00:00Z")
+        jdbc.update("INSERT INTO matches(id, players_per_team) VALUES (?, 7)", match)
+        teams.forEachIndexed { index, team ->
+            jdbc.update("INSERT INTO teams(id, name) VALUES (?, 'Live changed name')", team)
+            jdbc.update("INSERT INTO match_teams(match_id, team_id, position, score, team_name) VALUES (?, ?, ?, 0, 'Snapshot team')", match, team, index + 1)
+        }
+        jdbc.update("INSERT INTO match_participants(match_id, participant_id, team_id, kind, first_name, last_name, number) VALUES (?, ?, ?, 'PLAYER', 'Snapshot', 'Player', 42)", match, player, teams[0])
+        jdbc.update("INSERT INTO match_participants(match_id, participant_id, team_id, kind, unknown_slot) VALUES (?, ?, ?, 'UNKNOWN', 1)", match, UUID.randomUUID(), teams[0])
+        fun issue(scope: String, id: UUID? = match): String = sourceKeys.rotate(id, UUID.randomUUID(), ObsSourceKeyScope.valueOf(scope)).url!!.substringAfter("#key=")
+        fun read(target: String, token: String?, status: Int = 200, method: HttpMethod = HttpMethod.GET): JsonNode {
+            val request = request(method, "/api/v1/obs/sources/infographics/$target")
+            token?.let { request.header("Authorization", "Bearer $it") }
+            val response = mvc.perform(request).andReturn().response
+            assertEquals(status, response.status)
+            assertEquals("no-store", response.getHeader("Cache-Control"))
+            return if (response.contentAsString.isBlank()) json.nullNode() else json.readTree(response.contentAsString)
+        }
+        ResourceDatabasePopulator(ClassPathResource("db/migration/V11__accounts_and_sessions.sql")).execute(dataSource)
+        auth.ownerBootstrap("infographic-owner", "Infographic Owner", "synthetic-temporary")
+        val token = issue("EXACT_INFOGRAPHICS")
+        val auto = issue("AUTO_INFOGRAPHICS", null)
+        assertTrue(read("auto", auto)["snapshot"].isNull)
+        assertEquals("HIDDEN", read("$match", token)["phase"]["kind"].asText())
+        read("$match", null, 401)
+        read("$match", issue("EXACT_SCOREBOARD"), 403)
+        read("$match", auto, 403)
+        read("auto", token, 403)
+        read("$match", token, 403, HttpMethod.HEAD)
+        jdbc.update("UPDATE matches SET started_at = ? WHERE id = ?", Timestamp.from(started), match)
+        val snapshot = read("$match", token)
+        assertEquals("ROSTER", snapshot["phase"]["kind"].asText())
+        assertEquals(started, Instant.parse(snapshot["phase"]["startedAt"].asText()))
+        assertEquals(teams.map(UUID::toString), snapshot["teams"].map { it["teamId"].asText() })
+        assertEquals("Snapshot team", snapshot["teams"][0]["name"].asText())
+        assertEquals(1, snapshot["teams"][0]["roster"].size())
+        assertEquals("Snapshot Player", snapshot["teams"][0]["roster"][0]["name"].asText())
+        assertEquals(42, snapshot["teams"][0]["roster"][0]["number"].asInt())
+        assertEquals(match.toString(), read("auto", auto)["snapshot"]["matchId"].asText())
+        val pull = UUID.randomUUID()
+        events.save(EventEntity(pull, match, 1, EventType.PULL, started.plusSeconds(1), teamId = teams[0]))
+        assertEquals("HIDDEN", read("$match", token)["phase"]["kind"].asText())
+        jdbc.update("UPDATE events SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", pull)
+        assertEquals("ROSTER", read("$match", token)["phase"]["kind"].asText())
+        val replacement = issue("EXACT_INFOGRAPHICS")
+        read("$match", token, 401)
+        read("$match", replacement)
+        jdbc.update("UPDATE matches SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", match)
+        read("$match", replacement, 404)
+        assertTrue(read("auto", auto)["snapshot"].isNull)
+    }
+
 }

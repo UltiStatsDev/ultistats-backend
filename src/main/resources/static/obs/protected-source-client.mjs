@@ -13,7 +13,7 @@ export function parseSource(url, kind = 'scoreboard') {
     url.protocol !== 'https:' ||
     url.username ||
     url.password ||
-    !['scoreboard', 'event-log'].includes(kind) ||
+    !['scoreboard', 'event-log', 'infographics'].includes(kind) ||
     url.pathname !== `/obs-sources/${kind}.html` ||
     [...query].length !== 1 ||
     [...fragment].length !== 1 ||

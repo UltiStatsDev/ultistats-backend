@@ -24,9 +24,11 @@ enum class ObsSourceKeyScope(internal val kind: String, internal val page: Strin
     EXACT_SCOREBOARD("SCOREBOARD", "scoreboard"),
     EXACT_EVENT_LOG("EVENT_LOG", "event-log"),
     AUTO_SCOREBOARD("SCOREBOARD", "scoreboard"),
-    AUTO_EVENT_LOG("EVENT_LOG", "event-log");
+    AUTO_EVENT_LOG("EVENT_LOG", "event-log"),
+    EXACT_INFOGRAPHICS("INFOGRAPHICS", "infographics"),
+    AUTO_INFOGRAPHICS("INFOGRAPHICS", "infographics");
 
-    internal val auto: Boolean get() = this == AUTO_SCOREBOARD || this == AUTO_EVENT_LOG
+    internal val auto: Boolean get() = this == AUTO_SCOREBOARD || this == AUTO_EVENT_LOG || this == AUTO_INFOGRAPHICS
 }
 
 data class ObsSourceKeyMetadata(
