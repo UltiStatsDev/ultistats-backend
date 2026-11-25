@@ -1,3 +1,5 @@
+DROP TABLE IF EXISTS obs_infographics_settings_history;
+DROP TABLE IF EXISTS obs_infographics_settings;
 DROP TABLE IF EXISTS obs_source_key_material;
 DROP TABLE IF EXISTS obs_source_keys;
 DROP TABLE IF EXISTS match_announcements;
@@ -238,3 +240,18 @@ CREATE TABLE obs_source_key_material (
     fingerprint VARCHAR(64) CHECK (CHAR_LENGTH(fingerprint) = 64)
 );
 INSERT INTO obs_source_key_material (singleton) VALUES (1);
+CREATE TABLE obs_infographics_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    revision BIGINT NOT NULL CHECK (revision >= 0),
+    roster_page_seconds INTEGER NOT NULL CHECK (roster_page_seconds BETWEEN 2 AND 15),
+    point_page_seconds INTEGER NOT NULL CHECK (point_page_seconds BETWEEN 2 AND 15),
+    leader_page_seconds INTEGER NOT NULL CHECK (leader_page_seconds BETWEEN 2 AND 15)
+);
+INSERT INTO obs_infographics_settings VALUES (1, 0, 5, 5, 5);
+CREATE TABLE obs_infographics_settings_history (
+    revision BIGINT PRIMARY KEY,
+    effective_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    roster_page_seconds INTEGER NOT NULL CHECK (roster_page_seconds BETWEEN 2 AND 15),
+    point_page_seconds INTEGER NOT NULL CHECK (point_page_seconds BETWEEN 2 AND 15),
+    leader_page_seconds INTEGER NOT NULL CHECK (leader_page_seconds BETWEEN 2 AND 15)
+);

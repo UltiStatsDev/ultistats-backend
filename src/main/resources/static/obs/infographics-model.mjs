@@ -12,6 +12,7 @@ export function validateInfographics(value, matchId, origin = globalThis.locatio
       !['CONFIRMED','LEGACY_POINT_OPEN'].includes(value.phase.anchorKind))) invalid();
   if (value.phase.kind === 'LINEUP' && value.phase.lineupStartedAt == null) invalid();
   if (value.phase.pageSeconds != null && (!Number.isInteger(value.phase.pageSeconds) || value.phase.pageSeconds < 2 || value.phase.pageSeconds > 15)) invalid();
+  if (value.phase.lineupPageSeconds != null && (!Number.isInteger(value.phase.lineupPageSeconds) || value.phase.lineupPageSeconds < 2 || value.phase.lineupPageSeconds > 15)) invalid();
   const identities = new Set();
   return {...value, teams:value.teams.map(team => {
     if (!uuid.test(team.teamId) || typeof team.name !== 'string' || !Array.isArray(team.roster)) invalid();
@@ -39,7 +40,7 @@ export function rosterPage(snapshot, serverNow) {
   const lineup = snapshot.phase.lineupStartedAt != null && serverNow >= Date.parse(snapshot.phase.lineupStartedAt);
   const kind = lineup ? 'LINEUP' : snapshot.phase.kind;
   const startedAt = lineup ? snapshot.phase.lineupStartedAt : snapshot.phase.startedAt;
-  const seconds = snapshot.phase.pageSeconds ?? (lineup ? snapshot.settings.pointPageSeconds : snapshot.settings.rosterPageSeconds);
+  const seconds = lineup ? (snapshot.phase.lineupPageSeconds ?? snapshot.phase.pageSeconds ?? snapshot.settings.pointPageSeconds) : (snapshot.phase.pageSeconds ?? snapshot.settings.rosterPageSeconds);
   const teams = snapshot.teams.map(t=>({...t,roster:lineup ? t.places : t.roster}));
   const pages = Math.max(1,...teams.map(t=>Math.ceil(t.roster.length/5)));
   const page = Math.floor(Math.max(0,serverNow-Date.parse(startedAt))/(seconds*1000)) % pages;

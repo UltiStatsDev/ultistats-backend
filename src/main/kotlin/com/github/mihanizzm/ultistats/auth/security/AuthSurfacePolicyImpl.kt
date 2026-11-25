@@ -115,6 +115,8 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
         rule("GET", "/api/v1/obs/source-keys/current/{matchId}", AuthPermission.OBS_ADMIN, secureOnly = true),
         rule("POST", "/api/v1/obs/source-keys", AuthPermission.OBS_ADMIN, secureOnly = true),
         rule("DELETE", "/api/v1/obs/source-keys/{keyId}", AuthPermission.OBS_ADMIN),
+        rule("GET", "/api/v1/obs/infographics/settings", AuthPermission.OBS_ADMIN, secureOnly = true),
+        rule("PUT", "/api/v1/obs/infographics/settings", AuthPermission.OBS_ADMIN, secureOnly = true),
         rule("GET", "/api/v1/obs/config", AuthPermission.OBS_ADMIN),
         rule("PUT", "/api/v1/obs/config", AuthPermission.OBS_ADMIN),
         rule("GET", "/api/v1/obs/config/stream", AuthPermission.OBS_ADMIN),
@@ -147,7 +149,7 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
     )
     private val obsStaffAssets = setOf(
         "/obs/client.mjs", "/obs/overlay.mjs", "/obs/scoreboard-client.mjs", "/obs/scoreboard.mjs", "/obs/shared-worker.js", "/obs/transport.mjs",
-        "/obs-admin.html", "/obs/admin.mjs", "/obs/scoreboard-admin.mjs", "/obs/active-links.mjs", "/obs/active-links-admin.mjs",
+        "/obs-admin.html", "/obs/admin.mjs", "/obs/infographics-settings-admin.mjs", "/obs/scoreboard-admin.mjs", "/obs/active-links.mjs", "/obs/active-links-admin.mjs",
         "/auth/obs-session.mjs", "/auth/staff-session.mjs", "/auth/public-sources.mjs",
     )
     private val docsAssets = setOf("/auth/swagger.html", "/auth/swagger.mjs", "/auth/swagger-adapter.mjs")
