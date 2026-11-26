@@ -1,5 +1,5 @@
 import {resolveRow} from './feed.mjs';
-import {teamAccent,readableText} from './colors.mjs';
+import {contrast,teamAccent,readableText} from './colors.mjs';
 const labels={GOAL:'Гол',BLOCK:'Блок',INTERCEPTION:'Перехват',CALLAHAN:'Кэллахан'};
 // Original INTERCEPTION outline: flat disc on the left, upright catching hand on the right.
 const paths={GOAL:'M4 12h16m-6-6 6 6-6 6',BLOCK:'M12 3 4 7v5c0 5 8 9 8 9s8-4 8-9V7z',
@@ -32,6 +32,9 @@ export class Renderer {
    const path=document.createElementNS(icon.namespaceURI,'path');path.setAttribute('d',paths[row.category]);
    icon.append(title,path);node.replaceChildren(side(row.left,'left'),icon,side(row.right,'right'));
    if(entry.kind==='cancellation') {
+    const background=config.backgroundColor;
+    node.style.color=contrast(background,'#ffc0ca')>=4.5
+     ? '#ffc0ca' : readableText(background,'#791d32');
     const label=document.createElement('span');label.className='cancel-label';label.textContent=`Отмена: ${labels[row.category]}`;node.prepend(label);
    }
   }
