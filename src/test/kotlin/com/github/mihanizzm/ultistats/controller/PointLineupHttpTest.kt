@@ -12,6 +12,7 @@ import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.model.MatchParticipantKind
 import com.github.mihanizzm.ultistats.model.Player
 import com.github.mihanizzm.ultistats.model.Team
+import com.github.mihanizzm.ultistats.obs.ObsPreviewService
 import com.github.mihanizzm.ultistats.service.MatchService
 import com.github.mihanizzm.ultistats.service.PlayerService
 import com.github.mihanizzm.ultistats.service.TeamPlayerService
@@ -67,6 +68,7 @@ class PointLineupHttpTest {
     @Autowired private lateinit var memberships: TeamPlayerService
     @Autowired private lateinit var jdbc: JdbcTemplate
     @Autowired private lateinit var statistics: StatisticsService
+    @Autowired private lateinit var obs: ObsPreviewService
     private val client = HttpClient.newHttpClient()
     private val startedAt = Instant.parse("2026-10-15T09:00:00Z")
     private val login by lazy {
@@ -169,6 +171,18 @@ class PointLineupHttpTest {
         assertFalse(patch.isMissingNode, "The slot PATCH operation is missing from OpenAPI")
         assertEquals("#/components/schemas/PointLineupResponse",
             patch["responses"]["200"]["content"]["application/json"]["schema"]["\$ref"].asText())
+        val correctionPath = "/api/v1/matches/{matchId}/point-lineups/{pointId}/starter-correction"
+        for ((operation, schema) in mapOf(
+            schemasByPath[correctionPath]["put"] to "PointStarterCorrectionResponse",
+            schemasByPath["$correctionPath/preview"]["post"] to "PointStarterCorrectionPreview",
+        )) {
+            assertEquals("#/components/schemas/$schema", operation["responses"]["200"]["content"]["application/json"]["schema"]["\$ref"].asText())
+            assertTrue(operation["parameters"].any { it["name"].asText() == "X-UltiStats-Point-Lineups" })
+            assertTrue(operation["responses"]["409"]["description"].asText().contains("POINT_LINEUP_CONFLICT"))
+        }
+        assertEquals(setOf("expectedLogRevision", "expectedLineupRevision", "expectedClosingEventId", "fromParticipantId", "toParticipantId"),
+            schemas["PointStarterCorrectionRequest"]["required"].map { it.asText() }.toSet())
+        assertTrue(schemas["PointLineupsResponse"]["required"].any { it.asText() == "starterCorrectionsWriteEnabled" })
         assertTrue(schemas["PortableEvent"]["properties"]["type"]["enum"].any { it.asText() == "PLAYER_SUBSTITUTION" })
         val portableMatch = schemas["PortableMatch"]
         assertFalse(portableMatch["required"].any { it.asText() == "pointLineups" })
@@ -547,6 +561,325 @@ class PointLineupHttpTest {
         assertEquals(changed, get(fixture.path)["points"].single())
         assertEquals(historicRow, jdbc.queryForMap(query, fixture.id, archived))
     }
+
+    @Test
+    fun `starter correction previews exact sides and commits through the outgoing substitution`() {
+        val fixture = fixture(rosterSize = 4)
+        val (old, candidate, replacement, teammate) = fixture.leftPlayers
+        val slot = UUID.randomUUID()
+        val point = confirm(fixture, listOf(player(old), player(teammate)),
+            listOf(player(fixture.rightPlayers[0]), temporary(slot)))
+        val path = starterCorrectionPath(fixture, point)
+        val journal = fixture.matchPath.replace("/v1/", "/v2/") + "/events"
+        val pull = eventBody(UUID.randomUUID(), "PULL", fixture.rightPlayers[0])
+        val pickup = eventBody(UUID.randomUUID(), "PICKUP", old).at(1)
+        val pass = eventBody(UUID.randomUUID(), "PASS", old, teammate)
+            .plus("occurredAt" to startedAt.plusSeconds(2).plusNanos(123456789).toString())
+        val back = eventBody(UUID.randomUUID(), "PASS", teammate, old).at(3)
+        val boundary = eventBody(UUID.randomUUID(), "PLAYER_SUBSTITUTION", old, replacement).at(4)
+        val reserve = UUID.randomUUID()
+        val introduction = reserveEvent(fixture.rightPlayers[0], reserve, 5)
+        val laterEntry = eventBody(UUID.randomUUID(), "PLAYER_SUBSTITUTION", replacement, candidate).at(6)
+        val laterPasses = (7L..14L).map { second ->
+            val (from, to) = if (second % 2 == 1L) teammate to candidate else candidate to teammate
+            eventBody(UUID.randomUUID(), "PASS", from, to).at(second)
+        }
+        val goal = eventBody(UUID.randomUUID(), "GOAL", teammate, candidate).at(15)
+        val recorded = listOf(pull, pickup, pass, back, boundary, introduction, laterEntry) + laterPasses + goal
+        val originalBatch = batch(0, 0, *recorded.toTypedArray())
+        response(send("POST", "$journal/batch", originalBatch, login, capability = "3"), 201)
+        response(send("PATCH", slotPath(fixture, point, slot),
+            identification(fixture.rightPlayers[1], 1, goal.getValue("eventId")), login, capability = "3"), 200)
+        val next = get(fixture.path)["points"].last()
+        response(send("PUT", "${fixture.path}/${next["pointId"].asText()}",
+            fixture.selection(1, listOf(player(old)), listOf(player(fixture.rightPlayers[2]))),
+            login, capability = "3"), 200)
+        val nextPull = eventBody(UUID.randomUUID(), "PULL", old).at(16)
+        response(send("POST", "$journal/batch", batch(recorded.size, 1, nextPull), login, capability = "3"), 201)
+        val before = get(fixture.path)
+        val oldJournal = response(send("GET", journal, capability = "3"), 200)
+        val rows = journalRows(fixture)
+        val teamScores = get(fixture.matchPath)["teams"]
+        val statsBefore = response(send("GET", "${fixture.matchPath}/statistics", session = login), 200)
+        val body = starterCorrectionBody(2, 2, goal.getValue("eventId"), old, candidate)
+
+        response(send("POST", "$path/preview", body, capability = "3"), 401)
+        response(send("PUT", path, body, capability = "3"), 401)
+        assertEquals("CSRF_INVALID", response(send("POST", "$path/preview", body, login, csrf = false,
+            capability = "3"), 403)["code"].asText())
+        assertEquals("CSRF_INVALID", response(send("PUT", path, body, login, csrf = false, capability = "3"),
+            403)["code"].asText())
+        assertEquals("POINT_LINEUP_CLIENT_REQUIRED", response(send("POST", "$path/preview", body, login,
+            capability = "2"), 409)["code"].asText())
+        val preview = response(send("POST", "$path/preview", body, login, capability = "3",
+            capture = "starter-preview"), 200)
+        assertEquals("OUTGOING_SUBSTITUTION", preview["boundary"]["kind"].asText())
+        assertEquals(boundary.getValue("eventId").toString(), preview["boundary"]["eventId"].asText())
+        assertEquals(fixture.teamIds[0].toString(), preview["teamId"].asText())
+        assertEquals(0, preview["entryIndex"].asInt())
+        assertEquals(listOf(pickup, pass, back, boundary).map { it.getValue("eventId").toString() },
+            preview["changedEvents"].map { it["eventId"].asText() })
+        assertEquals(listOf("PICKUP", "PASS", "PASS", "PLAYER_SUBSTITUTION"),
+            preview["changedEvents"].map { it["type"].asText() })
+        assertEquals(listOf("FROM", "FROM", "TO", "FROM"),
+            preview["changedEvents"].map { it["sides"].single().asText() })
+        assertEquals(rows, journalRows(fixture))
+        assertEquals(before, get(fixture.path))
+
+        val applied = response(send("PUT", path, body, login, capability = "3", capture = "starter-save"), 200)
+        assertEquals(preview, applied["correction"])
+        assertEquals(3, applied["logRevision"].asInt())
+        val current = get(fixture.path)
+        assertEquals(applied["point"], current["points"].first())
+        assertEquals(3, current["points"][0]["lineup"]["revision"].asInt())
+        assertEquals(candidate.toString(), current["points"][0]["lineup"]["teams"][0]["entries"][0]["participantId"].asText())
+        assertEquals(candidate.toString(), current["points"][0]["effectiveTeams"][0]["entries"][0]["participantId"].asText())
+        assertEquals(before["points"][0]["lineup"]["teams"][1], current["points"][0]["lineup"]["teams"][1])
+        assertEquals(before["points"][0]["substitutionSlots"], current["points"][0]["substitutionSlots"])
+        assertEquals(before["points"][1], current["points"][1])
+        assertEquals(teamScores, get(fixture.matchPath)["teams"])
+        val currentJournal = response(send("GET", journal, capability = "3", capture = "starter-journal"), 200)
+        val expected = oldJournal["events"].deepCopy<ArrayNode>()
+        for ((index, field) in listOf(1 to "participantId", 2 to "fromParticipantId", 3 to "toParticipantId", 4 to "fromParticipantId")) {
+            (expected[index] as ObjectNode).put(field, candidate.toString())
+        }
+        assertEquals(expected, currentJournal["events"])
+        assertEquals(oldJournal["lastSequenceNumber"], currentJournal["lastSequenceNumber"])
+        assertEquals(expected[2], response(send("GET", "${fixture.matchPath}/events/${pass["eventId"]}",
+            capability = "3"), 200))
+        assertEquals("EVENT_IDEMPOTENCY_CONFLICT", response(send("POST", "$journal/batch", originalBatch,
+            login, capability = "3"), 409)["code"].asText())
+        assertEquals("EVENT_LOG_STALE", response(send("PUT", path, body, login, capability = "3"), 409)["code"].asText())
+        val statsAfter = response(send("GET", "${fixture.matchPath}/statistics", session = login,
+            capture = "starter-stats"), 200)
+        val transferredTime = participant(statsBefore, old)["time"]["possessionTimeMs"].asInt()
+        assertEquals(2123, transferredTime)
+        assertEquals(0, participant(statsAfter, old)["time"]["possessionTimeMs"].asInt())
+        assertEquals(participant(statsBefore, candidate)["time"]["possessionTimeMs"].asInt() + transferredTime,
+            participant(statsAfter, candidate)["time"]["possessionTimeMs"].asInt())
+
+        val exported = export(fixture.id, "starter-export")
+        val imported = importPackage(exported, capture = "starter-import")
+        val copyId = mapped(imported, "matchIds", fixture.id)
+        val copied = export(copyId)["matches"].single()
+        val copiedCandidate = mapped(imported, "playerIds", candidate).toString()
+        assertEquals(copiedCandidate, copied["events"][2]["fromParticipantId"].asText())
+        assertEquals(copiedCandidate, copied["pointLineups"][0]["teams"][0]["entries"][0]["participantId"].asText())
+        assertEquals(1, copied["pointLineups"][0]["substitutionSlots"].size())
+    }
+
+    @Test
+    fun `starter correction rejects a BRICK that legally refers to the substituted puller`() {
+        val fixture = fixture(rosterSize = 3)
+        val (old, replacement, candidate) = fixture.rightPlayers
+        val (thrower, receiver) = fixture.leftPlayers
+        val point = confirm(fixture, listOf(player(thrower), player(receiver)), listOf(player(old)))
+        val journal = fixture.matchPath.replace("/v1/", "/v2/") + "/events"
+        val pull = eventBody(UUID.randomUUID(), "PULL", old)
+        val substitution = eventBody(UUID.randomUUID(), "PLAYER_SUBSTITUTION", old, replacement).at(1)
+        val brick = eventBody(UUID.randomUUID(), "BRICK", old).at(2)
+        val pickup = eventBody(UUID.randomUUID(), "PICKUP", thrower).at(3)
+        val goal = eventBody(UUID.randomUUID(), "GOAL", thrower, receiver).at(4)
+        val original = response(send("POST", "$journal/batch", batch(0, 0, pull, substitution, brick, pickup, goal),
+            login, capability = "2", capture = "starter-original-post-sub-brick"), 201)
+        assertEquals(old.toString(), original["events"][2]["participantId"].asText())
+        // The original really is accepted by both the write pipeline and portable replay.
+        importPackage(export(fixture.id))
+        val before = get(fixture.path)
+        val rows = journalRows(fixture)
+        val path = starterCorrectionPath(fixture, point)
+        val body = starterCorrectionBody(1, 1, goal.getValue("eventId"), old, candidate)
+        for ((method, route) in listOf("POST" to "$path/preview", "PUT" to path)) {
+            val error = response(send(method, route, body, login, capability = "2",
+                capture = "starter-brick-$method-conflict"), 409)
+            assertEquals("POINT_LINEUP_CONFLICT", error["code"].asText())
+            assertTrue(error["detail"].asText().contains("BRICK"))
+        }
+        assertEquals(rows, journalRows(fixture))
+        assertEquals(before, get(fixture.path))
+    }
+
+    @Test
+    fun `starter correction with no actions only changes participation and invalidates the old base`() {
+        val fixture = fixture(rosterSize = 3)
+        val (old, candidate, resolvedPuller) = fixture.rightPlayers
+        val (thrower, receiver) = fixture.leftPlayers
+        val slot = UUID.randomUUID()
+        val initial = confirm(fixture, listOf(player(thrower), player(receiver)), listOf(temporary(slot), player(old)))
+        val path = starterCorrectionPath(fixture, initial)
+        val journal = fixture.matchPath.replace("/v1/", "/v2/") + "/events"
+        val pull = eventBody(UUID.randomUUID(), "PULL", slot)
+        val pickup = eventBody(UUID.randomUUID(), "PICKUP", thrower).at(1)
+        val goal = eventBody(UUID.randomUUID(), "GOAL", thrower, receiver).at(2)
+        val closing = goal.getValue("eventId")
+        val command = batch(0, 0, pull, pickup, goal)
+        val body = starterCorrectionBody(1, 1, closing, old, candidate)
+        val incompleteBody = body + ("expectedLogRevision" to 0)
+        assertConflict(send("POST", "$path/preview", incompleteBody, login, capability = "1"))
+        response(send("POST", "$journal/batch", command, login, capability = "1"), 201)
+        matches.endMatch(fixture.id, startedAt.plusSeconds(3))
+        assertTrue(get(fixture.path)["starterCorrectionsWriteEnabled"].asBoolean())
+        val preflight = response(send("POST", "$path/preview", body, login, capability = "1"), 200)
+        assertEquals("POINT_CLOSE", preflight["boundary"]["kind"].asText())
+        assertEquals(closing.toString(), preflight["boundary"]["eventId"].asText())
+        assertEquals(1, preflight["entryIndex"].asInt())
+        assertTrue(preflight["changedEvents"].isEmpty)
+
+        response(send("PATCH", slotPath(fixture, initial, slot), identification(resolvedPuller, 1, closing),
+            login, capability = "1"), 200)
+        assertConflict(send("PUT", path, body, login, capability = "1"))
+        val updatedBody = body + ("expectedLineupRevision" to 2)
+        val before = get(fixture.path)
+        val originalRows = journalRows(fixture)
+        val confirmation = jdbc.queryForMap("SELECT * FROM match_point_lineups WHERE match_id = ?", fixture.id)
+        for (invalid in listOf(
+            updatedBody - "expectedLogRevision", updatedBody - "expectedLineupRevision",
+            updatedBody - "expectedClosingEventId", updatedBody - "fromParticipantId", updatedBody - "toParticipantId",
+            updatedBody + ("expectedLogRevision" to "1"),
+            updatedBody + ("expectedLineupRevision" to 2.5),
+            updatedBody + ("expectedLineupRevision" to -1),
+            updatedBody + ("expectedClosingEventId" to "invalid"),
+            updatedBody + ("toParticipantId" to old),
+        )) {
+            response(send("POST", "$path/preview", invalid, login, capability = "1"), 400)
+        }
+        for (conflicting in listOf(
+            updatedBody + ("expectedClosingEventId" to UUID.randomUUID()),
+            updatedBody + ("toParticipantId" to thrower),
+            updatedBody + ("toParticipantId" to resolvedPuller),
+            updatedBody + ("fromParticipantId" to slot),
+            updatedBody + ("fromParticipantId" to resolvedPuller),
+        )) {
+            assertConflict(send("PUT", path, conflicting, login, capability = "1"))
+        }
+        assertEquals(before, get(fixture.path))
+        assertEquals(originalRows, journalRows(fixture))
+        val corrected = { send("PUT", path, updatedBody, login, capability = "1") }
+        val outcomes = race(corrected, corrected)
+        val applied = response(outcomes.single { it.statusCode() == 200 }, 200)
+        assertEquals("EVENT_LOG_STALE", response(outcomes.single { it.statusCode() == 409 }, 409)["code"].asText())
+        assertEquals(preflight, applied["correction"])
+        assertEquals(2, applied["logRevision"].asInt())
+        assertEquals(3, applied["point"]["lineup"]["revision"].asInt())
+        assertEquals(candidate.toString(), applied["point"]["lineup"]["teams"][1]["entries"][1]["participantId"].asText())
+        val retained = jdbc.queryForMap("SELECT * FROM match_point_lineups WHERE match_id = ?", fixture.id)
+        assertEquals(confirmation.filterKeys { !it.equals("revision", true) },
+            retained.filterKeys { !it.equals("revision", true) })
+        assertEquals(originalRows, journalRows(fixture))
+        assertEquals("EVENT_BATCH_CONFLICT", response(send("POST", "$journal/batch", command, login,
+            capability = "1"), 409)["code"].asText())
+    }
+
+    @Test
+    fun `starter correction without substitutions preserves times and exposes corrected actors to OBS and undo`() {
+        val fixture = fixture(rosterSize = 3)
+        val (old, teammate, candidate) = fixture.leftPlayers
+        val point = confirm(fixture, listOf(player(old), player(teammate)), listOf(player(fixture.rightPlayers[0])))
+        val path = starterCorrectionPath(fixture, point)
+        val journal = "${fixture.matchPath}/events"
+        val v2 = journal.replace("/v1/", "/v2/")
+        val pull = eventBody(UUID.randomUUID(), "PULL", fixture.rightPlayers[0])
+        val pickup = eventBody(UUID.randomUUID(), "PICKUP", old).at(1)
+        val goal = eventBody(UUID.randomUUID(), "GOAL", old, teammate).at(2)
+        for (event in listOf(pull, pickup, goal)) response(send("POST", journal, event, login, capability = "1"), 201)
+        val pickupId = pickup.getValue("eventId")
+        jdbc.update("UPDATE events SET original_occurred_at = NULL WHERE id = ?", pickupId)
+        val body = starterCorrectionBody(3, 1, goal.getValue("eventId"), old, candidate)
+        val preview = response(send("POST", "$path/preview", body, login, capability = "1"), 200)
+        assertEquals("POINT_CLOSE", preview["boundary"]["kind"].asText())
+        assertEquals(listOf("PICKUP", "GOAL"), preview["changedEvents"].map { it["type"].asText() })
+        val before = obs.eventLog(fixture.id)
+        val saved = response(send("PUT", path, body, login, capability = "1"), 200)
+        assertEquals(preview, saved["correction"])
+        val snapshot = obs.eventLog(fixture.id)
+        assertEquals(4L, snapshot.logRevision)
+        assertEquals(before.teams, snapshot.teams)
+        assertEquals(before.events.map { it.occurredAt }, snapshot.events.map { it.occurredAt })
+        assertEquals(before.events.map { it.id }, snapshot.events.map { it.id })
+        assertFalse(snapshot.participants.any { it.participantId == old })
+        assertTrue(snapshot.participants.any { it.participantId == candidate })
+        assertEquals(mapper.valueToTree<JsonNode>(snapshot.events), get(journal))
+        assertEquals(1, jdbc.queryForObject(
+            "SELECT COUNT(*) FROM events WHERE id = ? AND original_occurred_at IS NULL", Int::class.java, pickupId))
+        assertEquals("EVENT_IDEMPOTENCY_CONFLICT", response(send("POST", journal, goal, login, capability = "1"),
+            409)["code"].asText())
+        val staleUndo = undo(goal, 3)
+        val rejected = response(send("POST", "$v2/undo", staleUndo, login, capability = "1"), 409)
+        assertEquals("EVENT_LOG_STALE", rejected["code"].asText())
+        assertEquals("APPLIED", response(send("POST", "$v2/undo", undo(goal, 4), login, capability = "1"),
+            200)["outcome"].asText())
+        assertEquals(candidate.toString(), response(send("GET", "$journal/$pickupId", capability = "1"),
+            200)["participantId"].asText())
+        assertEquals(candidate.toString(), mapper.valueToTree<JsonNode>(obs.eventLog(fixture.id).retractions)
+            .single()["event"]["fromParticipantId"].asText())
+    }
+
+    @Test
+    fun `starter correction rejects overlap at the boundary and a later identified incoming reserve`() {
+        val fixture = fixture(rosterSize = 4)
+        val (old, replacement, candidate, teammate) = fixture.leftPlayers
+        val point = confirm(fixture, listOf(player(old), player(teammate)), listOf(player(fixture.rightPlayers[0])))
+        val path = starterCorrectionPath(fixture, point)
+        val journal = fixture.matchPath.replace("/v1/", "/v2/") + "/events"
+        val pull = eventBody(UUID.randomUUID(), "PULL", fixture.rightPlayers[0])
+        val pickup = eventBody(UUID.randomUUID(), "PICKUP", old).at(1)
+        val boundary = eventBody(UUID.randomUUID(), "PLAYER_SUBSTITUTION", old, replacement).at(2)
+        val reserve = UUID.randomUUID()
+        val introduction = reserveEvent(teammate, reserve, 3)
+        val goal = eventBody(UUID.randomUUID(), "GOAL", replacement, reserve).at(4)
+        val closing = goal.getValue("eventId")
+        response(send("POST", "$journal/batch", batch(0, 0, pull, pickup, boundary, introduction, goal),
+            login, capability = "3"), 201)
+        val overlap = starterCorrectionBody(1, 1, closing, old, replacement)
+        val overlapError = response(send("POST", "$path/preview", overlap, login, capability = "3"), 409)
+        assertEquals("POINT_LINEUP_CONFLICT", overlapError["code"].asText())
+        assertTrue(overlapError["detail"].asText().contains("both sides"))
+        response(send("PATCH", slotPath(fixture, point, reserve), identification(candidate, 1, closing),
+            login, capability = "3"), 200)
+        val before = get(fixture.path)
+        val rows = journalRows(fixture)
+        val resolvedReserve = starterCorrectionBody(1, 2, closing, old, candidate)
+        for ((method, route) in listOf("POST" to "$path/preview", "PUT" to path)) {
+            val error = response(send(method, route, resolvedReserve, login, capability = "3"), 409)
+            assertEquals("POINT_LINEUP_CONFLICT", error["code"].asText())
+            assertTrue(error["detail"].asText().contains("identified as an incoming reserve"))
+        }
+        assertEquals(before, get(fixture.path))
+        assertEquals(rows, journalRows(fixture))
+    }
+
+    protected fun verifyStarterCorrectionRollsBackOnEventWriteFailure() {
+        val fixture = fixture(rosterSize = 3)
+        val (old, teammate, candidate) = fixture.leftPlayers
+        val point = confirm(fixture, listOf(player(old), player(teammate)), listOf(player(fixture.rightPlayers[0])))
+        val path = starterCorrectionPath(fixture, point)
+        val journal = fixture.matchPath.replace("/v1/", "/v2/") + "/events"
+        val pull = eventBody(UUID.randomUUID(), "PULL", fixture.rightPlayers[0])
+        val pickup = eventBody(UUID.randomUUID(), "PICKUP", old).at(1)
+        val goal = eventBody(UUID.randomUUID(), "GOAL", old, teammate).at(2)
+        val body = starterCorrectionBody(1, 1, goal.getValue("eventId"), old, candidate)
+        response(send("POST", "$journal/batch", batch(0, 0, pull, pickup, goal), login, capability = "1"), 201)
+        val before = get(fixture.path)
+        val rows = journalRows(fixture)
+        jdbc.execute("""ALTER TABLE events ADD CONSTRAINT test_issue_284_event_write
+            CHECK (id <> CAST('${goal["eventId"]}' AS UUID) OR from_participant_id <> CAST('$candidate' AS UUID))""")
+        try {
+            response(send("POST", "$path/preview", body, login, capability = "1"), 200)
+            response(send("PUT", path, body, login, capability = "1", capture = "starter-rollback"), 500)
+            assertEquals(before, get(fixture.path))
+            assertEquals(rows, journalRows(fixture))
+        } finally {
+            jdbc.execute("ALTER TABLE events DROP CONSTRAINT test_issue_284_event_write")
+        }
+        assertEquals(2, response(send("PUT", path, body, login, capability = "1"), 200)["logRevision"].asInt())
+    }
+
+    private fun starterCorrectionPath(fixture: Fixture, point: JsonNode) =
+        "${fixture.path}/${point["pointId"].asText()}/starter-correction"
+
+    private fun starterCorrectionBody(logRevision: Long, lineupRevision: Long, closing: Any, from: UUID, to: UUID) =
+        mapOf("expectedLogRevision" to logRevision, "expectedLineupRevision" to lineupRevision,
+            "expectedClosingEventId" to closing, "fromParticipantId" to from, "toParticipantId" to to)
 
     protected fun verifyNextEditRollsBackOnEntryWriteFailure() {
         val fixture = fixture()
@@ -2193,6 +2526,13 @@ class PointLineupHttpTest {
             val log = response(send("GET", fixture.path, targetPort = restartedPort), 200)
             assertFalse(log["writesEnabled"].asBoolean())
             assertFalse(log["nextLineupEditsWriteEnabled"].asBoolean())
+            assertFalse(log["starterCorrectionsWriteEnabled"].asBoolean())
+            val correction = starterCorrectionBody(1, 1, UUID.randomUUID(), fixture.rightPlayers[0], fixture.rightPlayers[1])
+            val correctionPath = "$path/starter-correction"
+            for ((method, route) in listOf("POST" to "$correctionPath/preview", "PUT" to correctionPath)) {
+                assertEquals("POINT_LINEUP_WRITE_DISABLED", response(send(method, route, correction,
+                    login, targetPort = restartedPort), 409)["code"].asText())
+            }
             val edit = nextSelection + ("expectedLineupRevision" to 1)
             assertEquals("POINT_LINEUP_WRITE_DISABLED", response(send("PUT", nextPath, edit, login,
                 targetPort = restartedPort), 409)["code"].asText())
@@ -2308,6 +2648,10 @@ class PointLineupHttpTest {
 @ActiveProfiles("postgres-list", inheritProfiles = false)
 @EnabledIfEnvironmentVariable(named = "TEST_POSTGRES_URL", matches = ".+")
 class PointLineupPostgresTest : PointLineupHttpTest() {
+    @Test
+    fun `failed starter correction event write rolls back the starter and journal`() =
+        verifyStarterCorrectionRollsBackOnEventWriteFailure()
+
     @Test
     fun `failed lineup entry write rolls back both teams and the revision`() =
         verifyNextEditRollsBackOnEntryWriteFailure()

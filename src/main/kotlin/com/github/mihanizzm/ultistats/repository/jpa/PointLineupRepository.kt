@@ -215,6 +215,20 @@ class PointLineupRepository(private val jdbc: JdbcTemplate) {
             participantId, matchId, pointId, slotId,
         )
         check(updatedSlot == 1)
+        incrementRevision(matchId, pointId)
+    }
+
+    /** Replace only the initial PLAYER entry and keep its position and confirmation anchor. */
+    fun replaceStarter(matchId: UUID, pointId: UUID, from: UUID, to: UUID) {
+        val updated = jdbc.update(
+            "UPDATE match_point_lineup_entries SET participant_id = ? WHERE match_id = ? AND point_id = ? AND participant_id = ?",
+            to, matchId, pointId, from,
+        )
+        check(updated == 1)
+        incrementRevision(matchId, pointId)
+    }
+
+    private fun incrementRevision(matchId: UUID, pointId: UUID) {
         val updatedLineup = jdbc.update(
             "UPDATE match_point_lineups SET revision = revision + 1 WHERE match_id = ? AND point_id = ?",
             matchId, pointId,

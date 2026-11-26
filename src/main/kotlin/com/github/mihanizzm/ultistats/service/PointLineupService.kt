@@ -4,9 +4,15 @@ import com.github.mihanizzm.ultistats.dto.request.ConfirmPointLineupPlayer
 import com.github.mihanizzm.ultistats.dto.request.ConfirmPointLineupRequest
 import com.github.mihanizzm.ultistats.dto.request.ConfirmPointLineupTemporary
 import com.github.mihanizzm.ultistats.dto.request.IdentifyPointLineupSlotRequest
+import com.github.mihanizzm.ultistats.dto.request.PointStarterCorrectionRequest
 import com.github.mihanizzm.ultistats.dto.response.PointLineupResponse
 import com.github.mihanizzm.ultistats.dto.response.PointLineupsResponse
+import com.github.mihanizzm.ultistats.dto.response.PointStarterCorrectionPreview
+import com.github.mihanizzm.ultistats.dto.response.PointStarterCorrectionResponse
+import com.github.mihanizzm.ultistats.dto.response.realtime.MatchRealtimeOperation
+import com.github.mihanizzm.ultistats.model.EventEntity
 import com.github.mihanizzm.ultistats.model.Match
+import com.github.mihanizzm.ultistats.model.MatchStatus
 import com.github.mihanizzm.ultistats.model.MatchParticipantId
 import com.github.mihanizzm.ultistats.model.MatchParticipantKind
 import com.github.mihanizzm.ultistats.model.PointLineup
@@ -21,12 +27,15 @@ import com.github.mihanizzm.ultistats.model.events.StoredEvent
 import com.github.mihanizzm.ultistats.model.events.TwoPlayerEvent
 import com.github.mihanizzm.ultistats.model.events.afterSubstitution
 import com.github.mihanizzm.ultistats.model.events.substitutions
+import com.github.mihanizzm.ultistats.realtime.MatchRealtimePublisher
 import com.github.mihanizzm.ultistats.repository.jpa.IntroducedPointSlot
 import com.github.mihanizzm.ultistats.repository.jpa.PointLineupRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataEventRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchParticipantRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchTeamRepository
+import com.github.mihanizzm.ultistats.validation.event.EventSequenceDecision
+import com.github.mihanizzm.ultistats.validation.event.EventSequencePolicy
 import java.util.UUID
 import java.time.Clock
 import org.springframework.beans.factory.annotation.Value
@@ -43,6 +52,8 @@ class PointLineupService(
     private val lineups: PointLineupRepository,
     private val policy: PointLineupEventPolicy,
     private val clock: Clock,
+    private val sequencePolicy: EventSequencePolicy,
+    private val realtimePublisher: MatchRealtimePublisher,
     @Value("\${ultistats.point-lineups.write-enabled:false}") private val writesEnabled: Boolean,
 ) {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -56,6 +67,7 @@ class PointLineupService(
         return PointLineupsResponse(
             match.eventLogRevision, writesEnabled, policy.substitutionsWriteEnabled, policy.incomingReservesWriteEnabled,
             nextLineupEditsWriteEnabled = writesEnabled,
+            starterCorrectionsWriteEnabled = writesEnabled,
             points = points.map { point ->
                 val pointJournal = byPoint[point.pointId].orEmpty()
                 val slots = activeSlots(introduced[point.pointId].orEmpty().map { it.slot }, pointJournal)
@@ -123,6 +135,97 @@ class PointLineupService(
         lineups.insert(matchId, point, confirmed, clock.instant())
         return point.toResponse(confirmed)
     }
+
+    @Transactional
+    fun previewStarterCorrection(
+        matchId: UUID, pointId: UUID, request: PointStarterCorrectionRequest, client: PointLineupClient,
+    ): PointStarterCorrectionPreview? {
+        val match = matches.findByIdForUpdate(matchId) ?: return null
+        return prepareStarterCorrection(match, pointId, request, client).correction.preview
+    }
+
+    @Transactional
+    fun correctStarter(
+        matchId: UUID, pointId: UUID, request: PointStarterCorrectionRequest, client: PointLineupClient,
+    ): PointStarterCorrectionResponse? {
+        val match = matches.findByIdForUpdate(matchId) ?: return null
+        val (point, correction, pointJournal, slots) = prepareStarterCorrection(match, pointId, request, client)
+        lineups.replaceStarter(matchId, pointId, request.fromParticipantId, request.toParticipantId)
+        events.saveAll(correction.changedRows.values)
+        match.eventLogRevision++
+        match.lastEventLogInvalidationRevision = match.eventLogRevision
+
+        val changedEvent = correction.preview.changedEvents.firstOrNull()
+        if (changedEvent == null) {
+            realtimePublisher.matchChanged(matchId)
+        } else {
+            realtimePublisher.eventLogChanged(matchId, MatchRealtimeOperation.UPDATED, changedEvent.eventId)
+        }
+        return PointStarterCorrectionResponse(
+            match.eventLogRevision, point.toResponse(correction.lineup, pointJournal.substitutions(), slots), correction.preview,
+        )
+    }
+
+    private data class PreparedStarterCorrection(
+        val point: PointBoundary,
+        val correction: PointStarterCorrection,
+        val pointJournal: List<StoredEvent>,
+        val slots: List<PointSubstitutionSlot>,
+    )
+
+    /** Both callers hold the same match-row lock as event writes. */
+    private fun prepareStarterCorrection(
+        match: Match, pointId: UUID, request: PointStarterCorrectionRequest, client: PointLineupClient,
+    ): PreparedStarterCorrection {
+        policy.requireSubstitutionReadClient(match.id, client)
+        if (!writesEnabled) reject(PointLineupProblemCode.POINT_LINEUP_WRITE_DISABLED, "Point lineup writes are disabled")
+        if (request.expectedLogRevision < 0 || request.expectedLineupRevision < 0) invalid("Expected revisions must be nonnegative integers")
+        if (request.fromParticipantId == request.toParticipantId) invalid("The two starter participants must be different")
+        if (match.eventLogRevision != request.expectedLogRevision) {
+            reject(PointLineupProblemCode.EVENT_LOG_STALE, "The event log revision has changed")
+        }
+        val rows = events.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(match.id)
+        val journal = rows.map { it.toStored() }
+        val point = PointTimeline.from(match.id, match.status, journal).firstOrNull { it.pointId == pointId }
+            ?: conflict("Point is no longer canonical for this match")
+        if (point.status != PointStatus.COMPLETED || point.closingEventId != request.expectedClosingEventId) {
+            conflict("The point must be completed with the expected closing event")
+        }
+        val saved = lineups.list(match.id, teamIds(match.id))[pointId] ?: conflict("Point has no confirmed lineup")
+        if (saved.revision != request.expectedLineupRevision) conflict("The point lineup revision has changed")
+
+        val openingIndex = rows.indexOfFirst { it.id == point.openingEventId }
+        val closingIndex = rows.indexOfFirst { it.id == point.closingEventId }
+        val pointRows = rows.subList(openingIndex + 1, closingIndex + 1)
+        val pointEventIds = pointRows.map { it.id }.toSet()
+        val introduced = lineups.introducedSlots(match.id).filter {
+            it.pointId == pointId && it.slot.introducedByEventId in pointEventIds
+        }
+        // Portable lineups apply point-wide uniqueness to identified reserve identities.
+        if (introduced.any { it.slot.resolvedParticipantId == request.toParticipantId }) {
+            conflict("The replacement player is already identified as an incoming reserve in this point")
+        }
+        val roster = participants.findAllByMatchId(match.id)
+        val rosterTeams = roster.filter { it.kind == MatchParticipantKind.PLAYER }.associate { it.participantId to it.teamId }
+        val unknownIds = roster.filter { it.kind == MatchParticipantKind.UNKNOWN }.map { it.participantId }.toSet()
+        val correction = PointStarterCorrection.propose(point, pointRows, saved, request, rosterTeams)
+        val proposedJournal = journal.map { correction.changedRows[it.id]?.toStored() ?: it }
+        val proposedPoint = proposedJournal.subList(openingIndex + 1, closingIndex + 1)
+        val confirmed = ConfirmedJournal(mapOf(pointId to correction.lineup), unknownIds, rosterTeams, writesEnabled, introduced)
+        try {
+            confirmed.validateSubstitutionPoint(pointId, proposedPoint)
+        } catch (error: PointLineupRejectedException) {
+            conflict("The corrected point cannot be replayed: ${error.message}")
+        }
+        val decision = sequencePolicy.validate(proposedJournal.map { it.event }, requirePointEnded = match.status == MatchStatus.FINISHED)
+        if (decision is EventSequenceDecision.Rejected) {
+            val violation = decision.violation
+            conflict("The corrected journal cannot be replayed at event index ${violation.eventIndex} in state ${violation.currentState}")
+        }
+        return PreparedStarterCorrection(point, correction, proposedPoint, introduced.map { it.slot })
+    }
+
+    private fun EventEntity.toStored() = StoredEvent(id, sequenceNumber, toDomain())
 
     @Transactional
     fun identify(
@@ -280,7 +383,7 @@ class PointLineupService(
     private fun teamIds(matchId: UUID) = matchTeams.findAllByMatchIdOrderByPosition(matchId).map { it.teamId }
 
     private fun journal(matchId: UUID) = events.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(matchId)
-        .map { StoredEvent(it.id, it.sequenceNumber, it.toDomain()) }
+        .map { it.toStored() }
 
     private fun activeSlots(slots: List<PointSubstitutionSlot>, journal: List<StoredEvent>): List<PointSubstitutionSlot> {
         val activeEvents = journal.map { it.id }.toSet()
