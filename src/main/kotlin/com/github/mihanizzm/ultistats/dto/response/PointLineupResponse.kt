@@ -16,6 +16,8 @@ data class PointLineupsResponse(
     val incomingReservesWriteEnabled: Boolean,
     @field:Schema(description = "Whether point lineup writes permit editing a confirmed NEXT point.")
     val nextLineupEditsWriteEnabled: Boolean,
+    @field:Schema(description = "Whether point lineup writes permit correcting known starters on completed points.")
+    val starterCorrectionsWriteEnabled: Boolean,
     val points: List<PointLineupResponse>,
 )
 

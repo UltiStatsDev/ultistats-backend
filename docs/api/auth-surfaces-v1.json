@@ -436,6 +436,22 @@
       "line": 71
     },
     {
+      "method": "POST",
+      "path": "/api/v1/matches/{matchId}/point-lineups/{pointId}/starter-correction/preview",
+      "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PointStarterCorrectionController.kt",
+      "line": 48
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/matches/{matchId}/point-lineups/{pointId}/starter-correction",
+      "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PointStarterCorrectionController.kt",
+      "line": 64
+    },
+    {
       "method": "GET",
       "path": "/api/v1/matches/{matchId}/statistics",
       "policy": "FINISHED_OR_STATISTICS_READ_ALL",
