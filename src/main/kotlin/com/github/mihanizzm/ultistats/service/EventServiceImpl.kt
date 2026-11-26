@@ -65,6 +65,7 @@ class EventServiceImpl(
     override fun create(event: Event, matchId: UUID, eventId: UUID?): EventCommandResult {
         val match = matchService.getForUpdate(matchId) ?: return EventCommandResult.NotFound
         pointLineups.requireWriteClient(matchId, PointLineupClient.LEGACY)
+        if (event.type == EventType.POINT_RESULT) return EventCommandResult.BadRequest(pointResultReadOnly)
         requireDirectCreateSupported(event.type)
         return createLocked(match, event, eventId)
     }
@@ -73,6 +74,7 @@ class EventServiceImpl(
     override fun create(matchId: UUID, request: CreateEventRequest, client: PointLineupClient): EventCommandResult {
         val match = matchService.getForUpdate(matchId) ?: return EventCommandResult.NotFound
         pointLineups.requireWriteClient(matchId, client)
+        if (request.type == EventType.POINT_RESULT) return EventCommandResult.BadRequest(pointResultReadOnly)
         requireDirectCreateSupported(request.type)
         return when (val created = eventFactory.createValidatedFromRequest(request, matchId)) {
             is EventCreationResult.Success -> createLocked(match, created.event, request.eventId)
@@ -81,6 +83,11 @@ class EventServiceImpl(
             )
         }
     }
+
+    private val pointResultReadOnly = MatchProblem(
+        MatchProblemCode.POINT_RESULT_READ_ONLY, "Point result is read-only",
+        "POINT_RESULT cannot be changed through ordinary event commands",
+    )
 
     private fun requireDirectCreateSupported(type: EventType) {
         if (type == EventType.PLAYER_SUBSTITUTION) substitutionConflict("Use the guarded v2 event batch to record a substitution")
@@ -154,6 +161,7 @@ class EventServiceImpl(
         val actorTeams = eventFactory.actorTeams(matchId).toMutableMap()
         val pending = request.events.filterNotNull().mapIndexed { index, requestEvent ->
             val id = requireNotNull(requestEvent.eventId)
+            if (requestEvent.type == EventType.POINT_RESULT) return reject(pointResultReadOnly, index, badRequest = true)
             val createsReserve = requestEvent is TwoPlayerEventRequest && requestEvent.createIncomingReserve != null
             if (requestEvent is TwoPlayerEventRequest && createsReserve) {
                 if (client != PointLineupClient.INCOMING_RESERVES) {
@@ -307,8 +315,10 @@ class EventServiceImpl(
         pointLineups.requireWriteClient(matchId, client)
         val existing = eventRepository.findByIdAndMatchIdAndDeletedAtIsNull(eventId, matchId)
             ?: return EventCommandResult.NotFound
+        if (existing.eventType == EventType.POINT_RESULT) return EventCommandResult.BadRequest(pointResultReadOnly)
         if (existing.eventType == EventType.PLAYER_SUBSTITUTION) substitutionConflict("A recorded substitution cannot be edited")
         val event = update(existing.toStored())
+        if (event.type == EventType.POINT_RESULT) return EventCommandResult.BadRequest(pointResultReadOnly)
         if (event.type == EventType.PLAYER_SUBSTITUTION) substitutionConflict("A journal edit cannot create a substitution")
         lifecyclePolicy.validateEventUpdate(match).toCommandRejection()?.let { return it }
 
@@ -427,6 +437,7 @@ class EventServiceImpl(
 
     /** Both deletion commands hold the match lock for selection, validation and persistence. */
     private fun removeLocked(match: Match, existing: EventEntity): EventCommandResult {
+        if (existing.eventType == EventType.POINT_RESULT) return EventCommandResult.Conflict(pointResultReadOnly)
         val matchId = match.id
         lifecyclePolicy.validateEventDeletion(match).toCommandRejection()?.let { return it }
         val active = activeEvents(matchId).map { it.toStored() }

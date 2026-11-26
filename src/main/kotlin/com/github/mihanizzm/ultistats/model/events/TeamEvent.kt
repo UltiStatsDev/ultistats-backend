@@ -5,7 +5,7 @@ import java.util.UUID
 
 /**
  * Событие команды.
- * Используется для: TIMEOUT_START, TIMEOUT_END.
+ * Используется для: TIMEOUT_START, TIMEOUT_END, POINT_RESULT.
  */
 data class TeamEvent(
     val team: UUID,

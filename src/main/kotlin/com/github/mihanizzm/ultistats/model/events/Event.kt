@@ -3,6 +3,7 @@ package com.github.mihanizzm.ultistats.model.events
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import java.time.Instant
+import java.util.UUID
 
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "_eventClass")
 @JsonSubTypes(
@@ -15,4 +16,9 @@ import java.time.Instant
 sealed interface Event {
     val occurredAt: Instant
     val type: EventType
+}
+
+fun Event.scoringTeam(teamOf: (UUID) -> UUID?): UUID? {
+    if (!type.closesPoint) return null
+    return if (this is TeamEvent) team else teamOf((this as TwoPlayerEvent).toParticipant)
 }

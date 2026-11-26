@@ -70,6 +70,9 @@ enum class EventType(
      */
     CALLAHAN("Кэллахан", EventCategory.TWO_PLAYER),
 
+    /** Team-only point boundary. The timestamp records registration of the result. */
+    POINT_RESULT("Итог поинта", EventCategory.TEAM),
+
     /** Начало командного таймаута. Останавливает игровой таймер и сохраняет состояние для восстановления. */
     TIMEOUT_START("Начало таймаута", EventCategory.TEAM),
 
@@ -84,6 +87,9 @@ enum class EventType(
     ANNOUNCEMENT_START("Начало объявления", EventCategory.ANNOUNCEMENT),
     ANNOUNCEMENT_END("Конец объявления", EventCategory.SYSTEM),
     ;
+
+    val closesPoint: Boolean
+        get() = this == GOAL || this == CALLAHAN || this == POINT_RESULT
 
     fun canReplace(previous: EventType): Boolean =
         this == previous || (this in BLOCK_TYPES && previous in BLOCK_TYPES)

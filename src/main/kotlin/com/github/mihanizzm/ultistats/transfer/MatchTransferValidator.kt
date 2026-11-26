@@ -271,6 +271,7 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
     }
 
     private fun validateEvent(event: PortableEvent, path: String, teams: Map<UUID, UUID>, teamIds: List<UUID>) {
+        check(event.type != EventType.POINT_RESULT, "$path.type", "POINT_RESULT is unsupported in this format")
         when (event.type.category) {
             EventCategory.ONE_PLAYER -> check(event.fromParticipantId in teams && event.toParticipantId == null && event.teamId == null,
                 path, "ONE_PLAYER requires only fromParticipantId belonging to this match")

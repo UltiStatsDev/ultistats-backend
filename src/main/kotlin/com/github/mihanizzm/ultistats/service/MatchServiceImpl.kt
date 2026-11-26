@@ -10,8 +10,7 @@ import com.github.mihanizzm.ultistats.model.MatchParticipant
 import com.github.mihanizzm.ultistats.model.MatchParticipantKind
 import com.github.mihanizzm.ultistats.model.MatchTeam
 import com.github.mihanizzm.ultistats.model.TeamScore
-import com.github.mihanizzm.ultistats.model.events.EventType
-import com.github.mihanizzm.ultistats.model.events.TwoPlayerEvent
+import com.github.mihanizzm.ultistats.model.events.scoringTeam
 import com.github.mihanizzm.ultistats.realtime.MatchRealtimePublisher
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataEventRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchParticipantRepository
@@ -172,11 +171,8 @@ class MatchServiceImpl(
             participants.map { it.participantId to teamId }
         }.toMap() + pointLineups.slots(matchId).mapValues { it.value.teamId }
         match.events.forEach { event ->
-            if (event.type == EventType.GOAL || event.type == EventType.CALLAHAN) {
-                val scoringParticipant = (event as TwoPlayerEvent).toParticipant
-                val teamId = teamByParticipantId[scoringParticipant] ?: return@forEach
-                scores.computeIfPresent(teamId) { _, score -> score + 1 }
-            }
+            val teamId = event.scoringTeam(teamByParticipantId::get) ?: return@forEach
+            scores.computeIfPresent(teamId) { _, score -> score + 1 }
         }
         matchTeamRepository.findAllByMatchIdOrderByPosition(matchId).forEach {
             it.score = scores.getValue(it.teamId)

@@ -29,9 +29,9 @@ object PointTimeline {
         var current = open(matchId, 1, null)
         return buildList {
             for (event in activeEvents) {
-                when (event.event.type) {
-                    EventType.PULL -> current = current.copy(pullEventId = event.id)
-                    EventType.GOAL, EventType.CALLAHAN -> {
+                when {
+                    event.event.type == EventType.PULL -> current = current.copy(pullEventId = event.id)
+                    event.event.type.closesPoint -> {
                         add(current.copy(closingEventId = event.id))
                         current = open(matchId, current.number + 1, event.id)
                     }
@@ -42,7 +42,7 @@ object PointTimeline {
         }
     }
 
-    /** Assign scoring events to the point they close. An opening score belongs to the previous point. */
+    /** A closing event belongs to the completed point and opens its successor. */
     fun eventsByPoint(points: List<PointBoundary>, events: List<StoredEvent>): Map<UUID, List<StoredEvent>> {
         var pointId = points.firstOrNull()?.pointId ?: return emptyMap()
         val successorByScore = points.drop(1).associate { it.openingEventId to it.pointId }

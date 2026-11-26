@@ -25,6 +25,7 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
         announcements: List<MatchAnnouncement>,
     ): MatchStatistics {
         var lastEventTime: Instant? = null
+        var awaitingTimedPull = false
         var currentTeamPossessing: UUID? = null
         var currentParticipantPossessing: UUID? = null
         var isStopped = false
@@ -32,6 +33,7 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
         var announcementStart: AnnouncementStartEvent? = null
         val announcementTotals = mutableMapOf<UUID?, AnnouncementStatistics>()
         val announcementCoverage = AnnouncementCoverage(announcements)
+        var standaloneOverlap = Duration.ZERO
         var overlapWithExistingPauses = Duration.ZERO
 
         fun countAnnouncement(teamId: UUID?, duration: Duration) {
@@ -57,14 +59,19 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
         var timeSpentOnHalftime = Duration.ZERO
 
         for (event in events) {
-            val previousEventTime = lastEventTime
+            // Across a team result, only explicitly timed pauses count until a pull starts observed play.
+            val previousEventTime = lastEventTime?.takeIf {
+                event.type != EventType.POINT_RESULT && (!awaitingTimedPull || isStopped)
+            }
             var duration = Duration.ZERO
             if (previousEventTime != null) {
                 duration = Duration.between(previousEventTime, event.occurredAt)
                 totalMatchTime = totalMatchTime.plus(duration)
 
+                val standalone = announcementCoverage.overlap(previousEventTime, event.occurredAt)
+                standaloneOverlap = standaloneOverlap.plus(standalone)
                 if (!isStopped) {
-                    val active = duration.minus(announcementCoverage.overlap(previousEventTime, event.occurredAt))
+                    val active = duration.minus(standalone)
                     currentTeamPossessing?.let { team -> teamPossessionTime.merge(team, active, Duration::plus) }
                     currentParticipantPossessing?.let { participant ->
                         participantPossessionTime.merge(participant, active, Duration::plus)
@@ -99,6 +106,14 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
                 EventType.PASS -> {
                     currentParticipantPossessing = (event as TwoPlayerEvent).toParticipant
                 }
+                EventType.POINT_RESULT -> {
+                    currentParticipantPossessing = null
+                    currentTeamPossessing = null
+                    holdingDuration = Duration.ZERO
+                    lastBetweenPointsStart = null
+                    awaitingTimedPull = true
+                    isStopped = false
+                }
                 EventType.GOAL -> {
                     currentParticipantPossessing = null
                     currentTeamPossessing = null
@@ -120,6 +135,7 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
                         recordExistingPause(lastBetweenPointsStart ?: previousEventTime, event.occurredAt)
                     }
                     // После пулла отсчет между поинтами завершен
+                    awaitingTimedPull = false
                     lastBetweenPointsStart = null
                     isStopped = false
                 }
@@ -192,11 +208,8 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
 
         val totalTimeBetweenPoints = teamTimeBetweenPoints.values.fold(Duration.ZERO, Duration::plus)
         val totalTimeOnTimeouts = timeSpentOnTimeouts.values.fold(Duration.ZERO, Duration::plus)
-        // The validated journal's excluded spans are disjoint. Subtract only the new coverage
-        // outside those spans, clipped to the same first-to-last-event horizon as totalMatchTime.
-        val standaloneTime = lastEventTime?.let {
-            announcementCoverage.overlap(events.first().occurredAt, it).minus(overlapWithExistingPauses)
-        } ?: Duration.ZERO
+        // Subtract standalone coverage only inside measured spans and outside other pauses.
+        val standaloneTime = standaloneOverlap.minus(overlapWithExistingPauses)
         val purePlayTime = totalMatchTime
             .minus(totalTimeBetweenPoints)
             .minus(totalTimeOnTimeouts)

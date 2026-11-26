@@ -30,6 +30,7 @@ import java.util.UUID
         DiscriminatorMapping(value = "INTERCEPTION", schema = TwoPlayerEventResponse::class),
         DiscriminatorMapping(value = "CALLAHAN", schema = TwoPlayerEventResponse::class),
         DiscriminatorMapping(value = "PLAYER_SUBSTITUTION", schema = TwoPlayerEventResponse::class),
+        DiscriminatorMapping(value = "POINT_RESULT", schema = TeamEventResponse::class),
         DiscriminatorMapping(value = "TIMEOUT_START", schema = TeamEventResponse::class),
         DiscriminatorMapping(value = "TIMEOUT_END", schema = TeamEventResponse::class),
         DiscriminatorMapping(value = "HALFTIME_START", schema = SystemEventResponse::class),
@@ -82,6 +83,7 @@ data class TeamEventResponse(
     override val id: UUID,
     override val sequenceNumber: Int,
     override val type: EventType,
+    @field:Schema(description = "For POINT_RESULT, the registration time of the team result.")
     override val occurredAt: Instant,
     val teamId: UUID,
 ) : EventResponse

@@ -74,6 +74,17 @@ class EventSequencePolicyTest {
         assertThat(result.violation.eventIndex).isEqualTo(3)
     }
 
+    @Test
+    fun `team result explicitly completes the first and consecutive empty points`() {
+        val result = EventType.POINT_RESULT
+        for (prefix in listOf(events(result), events(result, result), events(PULL, PICKUP, result))) {
+            assertThat(assertIs<EventSequenceDecision.Allowed>(policy.validate(prefix, requirePointEnded = true)).state.code)
+                .isEqualTo("POINT_ENDED")
+        }
+        assertThat(assertIs<EventSequenceDecision.Allowed>(policy.validate(events(result, PULL))).state.code)
+            .isEqualTo("PULL_IN_FLIGHT")
+    }
+
     data class StateCase(
         val name: String,
         val prefix: List<Event>,
@@ -94,6 +105,7 @@ class EventSequencePolicyTest {
             POSSESSION_SET,
             PLAYER_SUBSTITUTION,
             GOAL,
+            POINT_RESULT,
             INCOMPLETE_PASS,
             BLOCK,
             BLOCK_MARKER,
@@ -106,39 +118,39 @@ class EventSequencePolicyTest {
 
         @JvmStatic
         fun stateCases(): Stream<Arguments> = Stream.of(
-            state("до первого пулла", emptyList(), "BEFORE_FIRST_PULL", setOf(PULL, TIMEOUT_START)),
-            state("пулл в полете", events(PULL), "PULL_IN_FLIGHT", setOf(BRICK, PICKUP, POSSESSION_SET, ANNOUNCEMENT_START, PLAYER_SUBSTITUTION)),
-            state("ожидание подбора после брика", events(PULL, BRICK), "PICKUP_REQUIRED", setOf(PICKUP, POSSESSION_SET, ANNOUNCEMENT_START, PLAYER_SUBSTITUTION)),
+            state("до первого пулла", emptyList(), "BEFORE_FIRST_PULL", setOf(PULL, POINT_RESULT, TIMEOUT_START)),
+            state("пулл в полете", events(PULL), "PULL_IN_FLIGHT", setOf(BRICK, PICKUP, POSSESSION_SET, ANNOUNCEMENT_START, PLAYER_SUBSTITUTION, POINT_RESULT)),
+            state("ожидание подбора после брика", events(PULL, BRICK), "PICKUP_REQUIRED", setOf(PICKUP, POSSESSION_SET, ANNOUNCEMENT_START, PLAYER_SUBSTITUTION, POINT_RESULT)),
             state("активное владение после подбора", events(PULL, PICKUP), "POSSESSION_ACTIVE", activeEvents),
             state("активное владение после назначения", events(PULL, POSSESSION_SET), "POSSESSION_ACTIVE", activeEvents),
             state("активное владение после паса", events(PULL, PICKUP, PASS), "POSSESSION_ACTIVE", activeEvents),
             state("активное владение после перехвата", events(PULL, PICKUP, INTERCEPTION), "POSSESSION_ACTIVE", activeEvents),
-            state("ожидание подбора после незавершенного паса", events(PULL, PICKUP, INCOMPLETE_PASS), "PICKUP_REQUIRED", setOf(PICKUP, POSSESSION_SET, ANNOUNCEMENT_START, PLAYER_SUBSTITUTION)),
-            state("ожидание подбора после общего блока", events(PULL, PICKUP, BLOCK), "PICKUP_REQUIRED", setOf(PICKUP, POSSESSION_SET, ANNOUNCEMENT_START, PLAYER_SUBSTITUTION)),
-            state("ожидание подбора после marker блока", events(PULL, PICKUP, BLOCK_MARKER), "PICKUP_REQUIRED", setOf(PICKUP, POSSESSION_SET, ANNOUNCEMENT_START, PLAYER_SUBSTITUTION)),
-            state("ожидание подбора после field блока", events(PULL, PICKUP, BLOCK_FIELD), "PICKUP_REQUIRED", setOf(PICKUP, POSSESSION_SET, ANNOUNCEMENT_START, PLAYER_SUBSTITUTION)),
+            state("ожидание подбора после незавершенного паса", events(PULL, PICKUP, INCOMPLETE_PASS), "PICKUP_REQUIRED", setOf(PICKUP, POSSESSION_SET, ANNOUNCEMENT_START, PLAYER_SUBSTITUTION, POINT_RESULT)),
+            state("ожидание подбора после общего блока", events(PULL, PICKUP, BLOCK), "PICKUP_REQUIRED", setOf(PICKUP, POSSESSION_SET, ANNOUNCEMENT_START, PLAYER_SUBSTITUTION, POINT_RESULT)),
+            state("ожидание подбора после marker блока", events(PULL, PICKUP, BLOCK_MARKER), "PICKUP_REQUIRED", setOf(PICKUP, POSSESSION_SET, ANNOUNCEMENT_START, PLAYER_SUBSTITUTION, POINT_RESULT)),
+            state("ожидание подбора после field блока", events(PULL, PICKUP, BLOCK_FIELD), "PICKUP_REQUIRED", setOf(PICKUP, POSSESSION_SET, ANNOUNCEMENT_START, PLAYER_SUBSTITUTION, POINT_RESULT)),
             state(
                 "завершенный поинт",
                 events(PULL, PICKUP, GOAL),
                 "POINT_ENDED",
-                setOf(PULL, TIMEOUT_START, HALFTIME_START),
+                setOf(PULL, POINT_RESULT, TIMEOUT_START, HALFTIME_START),
             ),
             state(
                 "завершенный поинт после кэллахана",
                 events(PULL, PICKUP, CALLAHAN),
                 "POINT_ENDED",
-                setOf(PULL, TIMEOUT_START, HALFTIME_START),
+                setOf(PULL, POINT_RESULT, TIMEOUT_START, HALFTIME_START),
             ),
             state("халфтайм", events(PULL, PICKUP, GOAL, HALFTIME_START), "HALFTIME", setOf(HALFTIME_END)),
             state(
                 "после халфтайма",
                 events(PULL, PICKUP, GOAL, HALFTIME_START, HALFTIME_END),
                 "AFTER_HALFTIME",
-                setOf(PULL, TIMEOUT_START),
+                setOf(PULL, POINT_RESULT, TIMEOUT_START),
             ),
             state("объявление во время пулла", events(PULL, ANNOUNCEMENT_START), "ANNOUNCEMENT", setOf(ANNOUNCEMENT_END, PLAYER_SUBSTITUTION)),
             state("пулл после объявления", events(PULL, ANNOUNCEMENT_START, ANNOUNCEMENT_END), "PULL_IN_FLIGHT",
-                setOf(BRICK, PICKUP, POSSESSION_SET, ANNOUNCEMENT_START, PLAYER_SUBSTITUTION)),
+                setOf(BRICK, PICKUP, POSSESSION_SET, ANNOUNCEMENT_START, PLAYER_SUBSTITUTION, POINT_RESULT)),
             state("владение после объявления", events(PULL, PICKUP, ANNOUNCEMENT_START, ANNOUNCEMENT_END),
                 "POSSESSION_ACTIVE", activeEvents),
             state("таймаут до первого пулла", events(TIMEOUT_START), "TIMEOUT", setOf(TIMEOUT_END)),
@@ -172,6 +184,7 @@ class EventSequencePolicyTest {
 
 private val PASS = EventType.PASS
 private val GOAL = EventType.GOAL
+private val POINT_RESULT = EventType.POINT_RESULT
 private val INCOMPLETE_PASS = EventType.INCOMPLETE_PASS
 private val PULL = EventType.PULL
 private val BRICK = EventType.BRICK
