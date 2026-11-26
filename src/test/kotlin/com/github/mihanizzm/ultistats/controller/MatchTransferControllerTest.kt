@@ -10,6 +10,7 @@ import com.github.mihanizzm.ultistats.fixture.MatchTransferFixtureHelper
 import com.github.mihanizzm.ultistats.model.*
 import com.github.mihanizzm.ultistats.model.events.*
 import com.github.mihanizzm.ultistats.service.*
+import com.github.mihanizzm.ultistats.transfer.MatchTransferExamples
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.mockito.Mockito.doAnswer
@@ -71,6 +72,63 @@ class MatchTransferControllerTest {
         val copyId = UUID.fromString(result["matchIds"][match.id.toString()].asText())
         assertThat(export(copyId)["matches"][0]["events"][0]["occurredAt"].asText())
             .isEqualTo("2026-10-01T10:00:01.123456789Z")
+    }
+
+    @Test
+    fun `default writer setting protects marker transfer without affecting legacy package export`() {
+        fixtures.start(match.id, start)
+        fun request(capability: String? = null) = post("/api/v1/matches/export")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""{"matchIds":["${match.id}"]}""").apply {
+                capability?.let { header(POINT_LINEUPS_HEADER, it) }
+            }
+        val legacy = mvc.perform(request()).andExpect(status().isOk).andReturn().response.contentAsString
+        mvc.perform(request("4")).andExpect(status().isOk).andExpect(content().string(legacy))
+
+        val registered = Instant.parse("2026-10-01T10:00:01.123456789Z")
+        fixtures.addEvent(TeamEvent(home.id, registered, EventType.POINT_RESULT), match.id)
+        for (capability in listOf(null, "1", "2", "3", "5", "4,4")) {
+            mvc.perform(request(capability)).andExpect(status().isConflict)
+                .andExpect(jsonPath("$.code").value("POINT_RESULT_CLIENT_REQUIRED"))
+        }
+        val portable = mvc.perform(request("4")).andExpect(status().isOk)
+            .andExpect { assertThat(it.response.getHeaders("Vary")).contains(POINT_LINEUPS_HEADER) }
+            .andExpect(jsonPath("$.formatVersion").value(7))
+            .andExpect(jsonPath("$.matches[0].events[0].occurredAt").value(registered.toString()))
+            .andReturn().response.contentAsString
+
+        val before = Triple(matches.count(), teams.count(), players.count())
+        for ((capability, code) in listOf("3" to "POINT_RESULT_CLIENT_REQUIRED", "4" to "POINT_RESULT_WRITE_DISABLED")) {
+            mvc.perform(post("/api/v1/matches/import").contentType(MediaType.APPLICATION_JSON)
+                .header(POINT_LINEUPS_HEADER, capability).content(portable))
+                .andExpect(status().isConflict).andExpect(jsonPath("$.code").value(code))
+        }
+        assertThat(Triple(matches.count(), teams.count(), players.count())).isEqualTo(before)
+    }
+
+    @Test
+    fun `portable marker requires a matching format and only a scoring match team`() {
+        val before = Triple(matches.count(), teams.count(), players.count())
+        val valid = mapper.readTree(MatchTransferExamples.POINT_RESULT_PACKAGE) as ObjectNode
+        fun verifyInvalid(source: ObjectNode) {
+            mvc.perform(post("/api/v1/matches/import").contentType(MediaType.APPLICATION_JSON)
+                .header(POINT_LINEUPS_HEADER, "4").content(source.toString()))
+                .andExpect(status().isBadRequest).andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+            assertThat(Triple(matches.count(), teams.count(), players.count())).isEqualTo(before)
+        }
+        for (version in 1..6) verifyInvalid(valid.deepCopy().put("formatVersion", version))
+        verifyInvalid((mapper.readTree(MatchTransferExamples.PACKAGE) as ObjectNode).put("formatVersion", 7))
+        for ((field, value) in listOf(
+            "teamId" to UUID.randomUUID().toString(),
+            "teamId" to null,
+            "fromParticipantId" to valid["matches"][0]["teams"][0]["participants"][0]["participantId"].asText(),
+            "toParticipantId" to valid["matches"][0]["teams"][1]["participants"][0]["participantId"].asText(),
+            "occurredAt" to "2026-10-01T09:59:59Z",
+        )) {
+            val invalid = valid.deepCopy()
+            (invalid["matches"][0]["events"][0] as ObjectNode).put(field, value)
+            verifyInvalid(invalid)
+        }
     }
 
     @Test
@@ -256,6 +314,8 @@ class MatchTransferControllerTest {
         val example = content["examples"]["portableMatch"]["value"]
         assertThat(example).isNotNull()
         assertThat(import(example)["matchIds"].size()).isEqualTo(1)
+        assertThat(content["examples"]["pointResult"]["value"]["formatVersion"].asInt()).isEqualTo(7)
+        assertThat(operation["parameters"].map { it["name"].asText() }).contains(POINT_LINEUPS_HEADER)
         val responseSchema = operation["responses"]["200"]["content"]["application/json"]["schema"]
         assertThat(responseSchema["$" + "ref"].asText()).isEqualTo("#/components/schemas/MatchTransferResult")
     }

@@ -22,8 +22,8 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
         val expectedVersion = data.matches.requiredFormatVersion()
         check(data.formatVersion == expectedVersion, "formatVersion",
             "Expected version $expectedVersion for the included active events, announcements, point lineups and incoming reserves")
-        check(data.formatVersion == 6 || data.matches.none { match -> match.pointLineups.any { it.substitutionSlots != null } },
-            "matches.pointLineups.substitutionSlots", "Substitution slots require format version 6")
+        check(data.formatVersion >= 6 || data.matches.none { match -> match.pointLineups.any { it.substitutionSlots != null } },
+            "matches.pointLineups.substitutionSlots", "Substitution slots require format version 6 or 7")
         check(data.matches.isNotEmpty(), "matches", "Select at least one match")
         unique(data.matches.map { it.id }, "matches")
         unique(data.teams.map { it.id }, "teams")
@@ -271,7 +271,6 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
     }
 
     private fun validateEvent(event: PortableEvent, path: String, teams: Map<UUID, UUID>, teamIds: List<UUID>) {
-        check(event.type != EventType.POINT_RESULT, "$path.type", "POINT_RESULT is unsupported in this format")
         when (event.type.category) {
             EventCategory.ONE_PLAYER -> check(event.fromParticipantId in teams && event.toParticipantId == null && event.teamId == null,
                 path, "ONE_PLAYER requires only fromParticipantId belonging to this match")
@@ -309,6 +308,7 @@ internal fun List<PortableMatch>.containsIncomingReserves() =
     any { match -> match.pointLineups.any { !it.substitutionSlots.isNullOrEmpty() } }
 
 internal fun List<PortableMatch>.requiredFormatVersion() = when {
+    any { match -> match.events.any { it.type == EventType.POINT_RESULT } } -> POINT_RESULT_TRANSFER_VERSION
     containsIncomingReserves() -> 6
     containsSubstitutions() -> 5
     any { it.pointLineups.isNotEmpty() } -> 4

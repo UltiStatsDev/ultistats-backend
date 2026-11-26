@@ -31,6 +31,8 @@ spring:
 ultistats:
   csv-import:
     enabled: ${ULTISTATS_CSV_IMPORT_ENABLED:false}
+  point-results:
+    write-enabled: ${ULTISTATS_POINT_RESULTS_WRITE_ENABLED:false}
   point-lineups:
     write-enabled: ${ULTISTATS_POINT_LINEUPS_WRITE_ENABLED:false}
   point-substitutions:
