@@ -10,6 +10,7 @@ import com.github.mihanizzm.ultistats.service.result.EventBatchResult
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.headers.Header
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.*
 import java.net.URI
 import java.util.UUID
 
+const val EVENT_VIEW_HEADER = "X-UltiStats-Event-View"
 const val POSSESSION_CHANGE_ENABLED_HEADER = "X-UltiStats-Possession-Change-Enabled"
 
 @RestController
@@ -37,23 +39,31 @@ class EventBatchController(
 ) {
     @GetMapping
     @Operation(summary = "Read a consistent canonical event log and synchronization position",
-        description = "Returns active events in sequenceNumber order, the highest ever allocated number (including deleted events), and logRevision under the match lock. Use both position fields for the next batch. No events are reordered by occurredAt.")
+        description = "Returns active events in sequenceNumber order, the highest ever allocated number (including deleted events), and logRevision under the match lock. Use both position fields for the next batch. On matches with approved completion, use view=append for synchronization or use v3 for complete ordered history.")
     @ApiResponses(
         ApiResponse(
             responseCode = "200", description = "Consistent snapshot",
             content = [Content(schema = Schema(implementation = EventLogResponse::class))],
-            headers = [Header(
+            headers = [Header(name = EVENT_VIEW_HEADER, description = "append when the append synchronization view was requested."), Header(
                 name = POSSESSION_CHANGE_ENABLED_HEADER,
                 description = "Whether the server accepts new POSSESSION_SET writes. Independent of announcement capabilities.",
                 schema = Schema(type = "string", allowableValues = ["true", "false"]),
             )],
         ),
         ApiResponse(responseCode = "404", description = "Match not found: empty body, no Content-Type header", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "POINT_COMPLETION_HISTORY_REQUIRED when the full journal includes approved completion.",
+            content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class))]),
     )
-    fun snapshot(@PathVariable matchId: UUID, request: HttpServletRequest): ResponseEntity<EventLogResponse> =
-        events.snapshot(matchId, request.pointLineupClient())?.let {
+    fun snapshot(
+        @PathVariable matchId: UUID,
+        request: HttpServletRequest,
+        @Parameter(description = "Set to append for the append synchronization view.")
+        @RequestParam(required = false) view: String?,
+    ): ResponseEntity<EventLogResponse> =
+        events.snapshot(matchId, request.pointLineupClient(), appendOnly = view == "append")?.let {
             ResponseEntity.ok().cacheControl(CacheControl.noStore()).varyBy(POINT_LINEUPS_HEADER)
                 .header(POSSESSION_CHANGE_ENABLED_HEADER, possessionChangeWrites.enabled.toString())
+                .apply { if (view == "append") header(EVENT_VIEW_HEADER, "append") }
                 .body(it)
         } ?: ResponseEntity.notFound().build()
 
@@ -87,7 +97,7 @@ class EventBatchController(
         val result = try {
             events.appendBatch(matchId, body, request.pointLineupClient())
         } catch (exception: EventIdempotencyConflictException) {
-            val snapshot = events.snapshot(matchId, PointLineupClient.POINT_RESULTS) ?: return ResponseEntity.notFound().build<Void>()
+            val snapshot = events.snapshot(matchId, PointLineupClient.POINT_RESULTS, appendOnly = true) ?: return ResponseEntity.notFound().build<Void>()
             EventBatchResult.Rejected(
                 MatchProblem(MatchProblemCode.EVENT_IDEMPOTENCY_CONFLICT, "Event idempotency conflict", "Event ${exception.eventId} already exists with a different payload"),
                 snapshot.lastSequenceNumber, snapshot.logRevision, exception.eventId,

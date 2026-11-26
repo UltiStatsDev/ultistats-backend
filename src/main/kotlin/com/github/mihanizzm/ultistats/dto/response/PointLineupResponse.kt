@@ -24,6 +24,10 @@ data class PointLineupsResponse(
     val pointResultsWriteEnabled: Boolean,
     @field:Schema(description = "Whether this server supports protected capability 4 completion draft reads.")
     val pointCompletionDraftsReadSupported: Boolean,
+    @field:Schema(description = "Whether GET /api/v3/matches/{matchId}/events exposes approved completion history.")
+    val pointCompletionHistoryReadSupported: Boolean,
+    @field:Schema(description = "Whether this server accepts approval commands for point completions.")
+    val pointCompletionApprovalWriteEnabled: Boolean,
     val points: List<PointLineupResponse>,
 )
 

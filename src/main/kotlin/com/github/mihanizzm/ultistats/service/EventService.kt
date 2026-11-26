@@ -24,7 +24,7 @@ interface EventService {
         matchId: UUID, pointId: UUID, request: PutPointResultRequest, client: PointLineupClient,
     ): MatchCommandResult<PointResultResponse>
 
-    fun snapshot(matchId: UUID, client: PointLineupClient = PointLineupClient.LEGACY): EventLogResponse?
+    fun snapshot(matchId: UUID, client: PointLineupClient = PointLineupClient.LEGACY, appendOnly: Boolean = false): EventLogResponse?
     fun requirePointResultCommandClient(matchId: UUID, client: PointLineupClient, batch: Boolean)
 
     fun create(event: Event, matchId: UUID, eventId: UUID? = null): EventCommandResult

@@ -31,6 +31,7 @@ import com.github.mihanizzm.ultistats.model.events.StoredEvent
 import com.github.mihanizzm.ultistats.model.events.PointTimeline
 import com.github.mihanizzm.ultistats.model.events.TeamEvent
 import com.github.mihanizzm.ultistats.realtime.MatchRealtimePublisher
+import com.github.mihanizzm.ultistats.repository.jpa.PointCompletionApprovalRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataEventRepository
 import com.github.mihanizzm.ultistats.repository.jpa.IntroducedPointSlot
 import com.github.mihanizzm.ultistats.repository.jpa.MatchAnnouncementRepository
@@ -70,6 +71,7 @@ class EventServiceImpl(
     private val possessionChangeWrites: PossessionChangeWrites,
     private val pointLineups: PointLineupEventPolicy,
     private val announcements: MatchAnnouncementRepository,
+    private val completionApprovals: PointCompletionApprovalRepository,
     private val clock: Clock,
     @Value("\${ultistats.point-results.write-enabled:false}") private val pointResultWritesEnabled: Boolean,
 ) : EventService {
@@ -206,10 +208,11 @@ class EventServiceImpl(
     }
 
     @Transactional
-    override fun snapshot(matchId: UUID, client: PointLineupClient): EventLogResponse? {
+    override fun snapshot(matchId: UUID, client: PointLineupClient, appendOnly: Boolean): EventLogResponse? {
         val match = matchService.getForUpdate(matchId) ?: return null
         val active = activeEvents(matchId)
         pointLineups.requireReadClient(matchId, active, client)
+        if (!appendOnly) requireNoApprovedCompletion(matchId)
         return logResponse(match, active.map { it.toStored() })
     }
 
@@ -565,7 +568,16 @@ class EventServiceImpl(
         matchService.getOrThrow(matchId)
         val active = activeEvents(matchId)
         pointLineups.requireReadClient(matchId, active, client)
+        requireNoApprovedCompletion(matchId)
         return active.map { it.toStored() }
+    }
+
+    private fun requireNoApprovedCompletion(matchId: UUID) {
+        if (completionApprovals.exists(matchId)) throw PointCompletionHistoryRejected(MatchProblem(
+            MatchProblemCode.POINT_COMPLETION_HISTORY_REQUIRED,
+            "Approved completion history requires a newer journal",
+            "Use GET /api/v3/matches/$matchId/events for complete history or GET /api/v2/matches/$matchId/events?view=append for append synchronization.",
+        ))
     }
 
     private fun activeEvents(matchId: UUID) =
