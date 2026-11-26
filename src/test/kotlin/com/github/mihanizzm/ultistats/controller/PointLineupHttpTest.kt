@@ -21,6 +21,8 @@ import com.github.mihanizzm.ultistats.service.statistics.StatisticsService
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.boot.test.context.SpringBootTest
@@ -139,7 +141,7 @@ class PointLineupHttpTest {
             val operation = schemasByPath[path][method]
             val capability = operation["parameters"].single { it["name"].asText() == "X-UltiStats-Point-Lineups" }
             assertEquals("header", capability["in"].asText())
-            assertEquals(listOf("1", "2", "3"), capability["schema"]["enum"].map { it.asText() })
+            assertEquals(listOf("1", "2", "3", "4"), capability["schema"]["enum"].map { it.asText() })
             assertTrue(operation["responses"]["409"]["description"].asText().contains("POINT_LINEUP_CLIENT_REQUIRED"))
         }
         assertFalse(api["components"]["schemas"]["UndoCommandRejection"]["properties"]["code"]["enum"].any {
@@ -1629,8 +1631,9 @@ class PointLineupHttpTest {
     private fun undo(event: Map<String, Any>, revision: Long) =
         mapOf("commandId" to UUID.randomUUID(), "expectedLastEventId" to event.getValue("eventId"), "expectedLogRevision" to revision)
 
-    @Test
-    fun `incoming reserve is committed with its substitution and reused on exact retry`() {
+    @ParameterizedTest
+    @ValueSource(strings = ["3", "4"])
+    fun `incoming reserve is committed with its substitution and reused on exact retry`(capability: String) {
         val fixture = fixture()
         val journal = "${fixture.matchPath}/events".replace("/v1/", "/v2/")
         val (thrower, receiver) = fixture.leftPlayers
@@ -1642,11 +1645,12 @@ class PointLineupHttpTest {
         val replace = eventBody(UUID.randomUUID(), "PLAYER_SUBSTITUTION", thrower, reserve).at(5) +
             ("createIncomingReserve" to true)
         val request = batch(2, 1, replace)
-        val committed = response(send("POST", "$journal/batch", request, login, capability = "3", capture = "reserve-append"), 201)
+        val committed = response(send("POST", "$journal/batch", request, login, capability = capability, capture = "reserve-append"), 201)
         val raw = committed["events"].single()
         assertEquals(reserve.toString(), raw["toParticipantId"].asText())
         assertFalse(raw.has("createIncomingReserve"))
-        assertEquals(committed, response(send("POST", "$journal/batch", request, login, capability = "3", capture = "reserve-retry"), 200))
+        assertEquals(committed, response(send("POST", "$journal/batch", request, login, capability = capability, capture = "reserve-retry"), 200))
+        assertEquals(raw, response(send("GET", journal, capability = capability), 200)["events"].last())
         val discovery = response(send("GET", fixture.path, capture = "reserve-discovery"), 200)
         assertTrue(discovery["incomingReservesWriteEnabled"].asBoolean())
         assertEquals(committed["logRevision"], discovery["logRevision"])

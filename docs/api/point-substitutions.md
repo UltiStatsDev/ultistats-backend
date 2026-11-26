@@ -2,7 +2,7 @@
 
 Enable new substitutions with `ULTISTATS_POINT_SUBSTITUTIONS_WRITE_ENABLED=true` and point-lineup writes with `ULTISTATS_POINT_LINEUPS_WRITE_ENABLED=true`. Both default to false. Public GET `/api/v1/matches/{matchId}/point-lineups` can be used for capability discovery before fetching the journal. The presence of the boolean `substitutionsWriteEnabled` indicates that the server supports the protocol. Its value reports whether the flags allow fresh substitutions.
 
-Send `X-UltiStats-Point-Lineups: 2` on journal requests and point-lineup mutations when the client can replay known-player substitutions. Capability 3 also supports incoming reserves. Header value 1 retains existing temporary-slot support. A journal with an active substitution returns 409 `POINT_LINEUP_CLIENT_REQUIRED` to older clients on journal reads and writes. Undo receipt lookup and public SSE retain their existing payloads.
+Send `X-UltiStats-Point-Lineups: 2` on journal requests and point-lineup mutations when the client can replay known-player substitutions. Capabilities are cumulative. Value 1 supports temporary slots, 3 adds incoming reserves and 4 adds team-only point results. A journal with an active substitution returns 409 `POINT_LINEUP_CLIENT_REQUIRED` to older clients on journal reads and writes. Undo receipt lookup and public SSE retain their existing payloads.
 
 Record `PLAYER_SUBSTITUTION` only through `POST /api/v2/matches/{matchId}/events/batch`. Use the current `expectedLastSequenceNumber` and `expectedLogRevision`. The event has a stable `eventId`, `occurredAt`, and the following fields.
 
@@ -19,11 +19,19 @@ Use ordered Undo to restore a substituted lineup and its possession state. PATCH
 
 The presence of `incomingReservesWriteEnabled` on the public point-lineups response identifies capability 3. Fresh incoming reserves require `ULTISTATS_POINT_INCOMING_RESERVES_WRITE_ENABLED=true` and both existing write flags. The new flag defaults to false.
 
-Send literal `createIncomingReserve: true` only on a v2 batch `PLAYER_SUBSTITUTION` with capability 3. Generate a fresh UUID for `toParticipantId` and reuse it, the event ID and the same request bases on retry. The server derives the team from the eligible outgoing actor and allocates the next positive slot number for that team and point, including prior allocations. The slot and event commit together. Omit the marker for a known roster replacement.
+Send literal `createIncomingReserve: true` only on a v2 batch `PLAYER_SUBSTITUTION` with capability 3 or 4. Generate a fresh UUID for `toParticipantId` and reuse it, the event ID and the same request bases on retry. The server derives the team from the eligible outgoing actor and allocates the next positive slot number for that team and point, including prior allocations. The slot and event commit together. Omit the marker for a known roster replacement.
 
 Fetch point lineups and the journal at the same `logRevision` before replaying raw actor IDs. Each point's `substitutionSlots` lists the active introductions, including actors who have since left. Entries contain `teamId`, `slotId`, `number`, `resolvedParticipantId` and `introducedByEventId`. The original `lineup.teams` retains its selection. An introduced on-field actor appears as `TEMPORARY` in `effectiveTeams` and can be identified after the point closes.
 
-Affected journal reads and mutations require capability 3 while any introduction remains active. Ordered Undo removes the active introduction when its dependent events have been undone and restores the preceding lineup and possession state. The same database supports capability-3 reads, exact retry and safe Undo with fresh writes disabled. Once a reserve has been persisted, keep a capability-3 backend on that database, including after Undo, because the slot and its removed event remain in history.
+Affected journal reads and mutations require capability 3 or 4 while any introduction remains active. Ordered Undo removes the active introduction when its dependent events have been undone and restores the preceding lineup and possession state. The same database supports reads, exact retry and safe Undo with fresh writes disabled. Once a reserve has been persisted, keep an incoming-reserve-aware backend on that database, including after Undo, because the slot and its removed event remain in history.
+
+## Team-only point results
+
+Send `X-UltiStats-Point-Lineups: 4` when the client can replay `POINT_RESULT`. The event records a team's score and closes the point. Its journal entry contains `id`, `sequenceNumber`, `type`, `occurredAt` (registration time), and `teamId`. The v2 snapshot retains the canonical event order, highest allocated sequence number and log revision.
+
+With an active `POINT_RESULT`, the v1 event list and individual event reads, the v2 journal snapshot, event commands in both versions, and match start and finish require capability 4. An unsupported request returns 409 `POINT_RESULT_CLIENT_REQUIRED`. The v2 batch conflict also returns `lastSequenceNumber` and `logRevision`. Canonical reads and capability conflicts send `Cache-Control: no-store` and `Vary: X-UltiStats-Point-Lineups`. Match summaries, statistics, public SSE and undo receipt lookup keep their existing contracts and permissions.
+
+Capability 4 reads are available independently of writer availability. The ordinary event endpoints do not create or change a `POINT_RESULT`.
 
 ## Portable match transfer
 

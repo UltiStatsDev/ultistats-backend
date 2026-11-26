@@ -4,7 +4,10 @@ enum class PointLineupClient {
     LEGACY,
     LINEUPS,
     SUBSTITUTIONS,
-    INCOMING_RESERVES;
+    INCOMING_RESERVES,
+    POINT_RESULTS;
 
-    val supportsSubstitutions: Boolean get() = this == SUBSTITUTIONS || this == INCOMING_RESERVES
+    val supportsSubstitutions: Boolean get() = this >= SUBSTITUTIONS
+    val supportsIncomingReserves: Boolean get() = this >= INCOMING_RESERVES
+    val supportsPointResults: Boolean get() = this >= POINT_RESULTS
 }

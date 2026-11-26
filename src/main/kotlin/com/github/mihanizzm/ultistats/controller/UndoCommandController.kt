@@ -40,6 +40,7 @@ class UndoCommandController(private val events: EventService) {
         ApiResponse(responseCode = "404", description = "RESOURCE_NOT_FOUND: match missing or soft deleted; identity not reserved", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class))]),
         ApiResponse(responseCode = "409", description = "Recorded rejection (EVENT_LOG_STALE, UNDO_LOG_EMPTY, existing lifecycle/sequence code), including exact replay: commandResult present. UNDO_COMMAND_CONFLICT for different payload: commandResult absent; recover original using GET.", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = UndoCommandProblem::class))]),
     )
+    @PointResultCommand
     fun undo(@PathVariable matchId: UUID, @RequestBody body: UndoEventRequest, request: HttpServletRequest): ResponseEntity<*> =
         when (val result = events.undo(matchId, body, request.pointLineupClient())) {
             UndoCommandResult.NotFound -> notFound(request, "Match not found")

@@ -125,19 +125,19 @@ class PointResultPostgresTest {
             assertEquals(markerId.toString(), emptyResult[1]["closingEventId"].asText())
             assertEquals("NEXT", emptyResult[2]["status"].asText())
             assertEquals(pointId(markerId), emptyResult[2]["pointId"].asText())
-            http.event("PULL", 40, "participantId" to a[0])
+            http.event("PULL", 40, "participantId" to a[0], capability = "4")
             val active = http.get(pointsPath)["points"][2]
             assertEquals(emptyResult[2]["pointId"], active["pointId"])
             assertEquals("ACTIVE", active["status"].asText())
-            http.event("PICKUP", 42, "participantId" to b[0])
-            http.event("PASS", 45, "fromParticipantId" to b[0], "toParticipantId" to b[1])
+            http.event("PICKUP", 42, "participantId" to b[0], capability = "4")
+            http.event("PASS", 45, "fromParticipantId" to b[0], "toParticipantId" to b[1], capability = "4")
             seedResult(before, finalMarkerId, 8, 90)
             matches.recalculateScore(matchId)
-            http.call("PATCH", "$v1/$finalMarkerId", 400, marker - "eventId" - "occurredAt")
-            http.call("DELETE", "$v1/$finalMarkerId", 409)
+            http.call("PATCH", "$v1/$finalMarkerId", 400, marker - "eventId" - "occurredAt", capability = "4")
+            http.call("DELETE", "$v1/$finalMarkerId", 409, capability = "4")
             assertEquals(1, before.queryForObject("SELECT count(*) FROM events WHERE id = ? AND deleted_at IS NULL",
                 Int::class.java, finalMarkerId))
-            assertIs<MatchCommandResult.Success<*>>(matches.endMatch(matchId, at(100)))
+            assertIs<MatchCommandResult.Success<*>>(matches.endMatch(matchId, at(100), PointLineupClient.POINT_RESULTS))
             for ((scope, key) in keys) {
                 val digest = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(key.toByteArray()))
                 before.update(
@@ -155,8 +155,8 @@ class PointResultPostgresTest {
     }
 
     private fun verify(http: Client, old: JsonNode): JsonNode {
-        val events = http.get(v1)
-        assertEquals(events, http.get(v2)["events"])
+        val events = http.get(v1, capability = "4")
+        assertEquals(events, http.get(v2, capability = "4")["events"])
         assertEquals(listOf(markerId.toString(), finalMarkerId.toString()),
             events.filter { it["type"].asText() == "POINT_RESULT" }.map { it["id"].asText() })
         assertEquals(setOf("id", "sequenceNumber", "type", "occurredAt", "teamId"),
@@ -222,15 +222,17 @@ class PointResultPostgresTest {
         private val mapper = app.getBean(ObjectMapper::class.java)
         private val http = HttpClient.newHttpClient()
 
-        fun event(type: String, seconds: Long, vararg fields: Pair<String, UUID>) =
-            call("POST", v1, 201, mapOf("type" to type, "occurredAt" to at(seconds)) + fields)
+        fun event(type: String, seconds: Long, vararg fields: Pair<String, UUID>, capability: String? = null) =
+            call("POST", v1, 201, mapOf("type" to type, "occurredAt" to at(seconds)) + fields, capability = capability)
 
-        fun get(path: String, key: String? = null) = call("GET", path, 200, key = key)
+        fun get(path: String, key: String? = null, capability: String? = null) =
+            call("GET", path, 200, key = key, capability = capability)
 
-        fun call(method: String, path: String, status: Int, body: Any? = null, key: String? = null): JsonNode {
+        fun call(method: String, path: String, status: Int, body: Any? = null, key: String? = null, capability: String? = null): JsonNode {
             val request = HttpRequest.newBuilder(URI.create(root + path)).timeout(Duration.ofSeconds(15))
                 .header("X-Legacy-Domain-Test", "domain-contract")
             key?.let { request.header("Authorization", "Bearer $it") }
+            capability?.let { request.header(POINT_LINEUPS_HEADER, it) }
             if (body != null) request.header("Content-Type", "application/json")
             request.method(method, body?.let { HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(it)) }
                 ?: HttpRequest.BodyPublishers.noBody())

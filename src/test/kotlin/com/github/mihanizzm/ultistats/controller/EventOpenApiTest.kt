@@ -155,6 +155,27 @@ class EventOpenApiTest {
         assertEquals("#/components/schemas/SystemEventResponse", mapping["ANNOUNCEMENT_END"].asText())
     }
 
+    @Test
+    fun `journal and replay commands document cumulative capability 4`() {
+        val paths = apiDocs()["paths"]
+        val v2 = "/api/v2/matches/{matchId}/events"
+        val operations = listOf(
+            EVENTS_PATH to "get", EVENTS_PATH to "post", EVENT_PATH to "get", EVENT_PATH to "patch",
+            EVENT_PATH to "delete", "$EVENTS_PATH/undo" to "post", v2 to "get",
+            "$v2/batch" to "post", "$v2/undo" to "post",
+            "/api/v1/matches/{id}/start" to "post", "/api/v1/matches/{id}/end" to "post",
+        )
+        for ((path, method) in operations) {
+            val operation = paths[path][method]
+            val header = operation["parameters"].single { it.path("name").asText() == POINT_LINEUPS_HEADER }
+            assertFalse(header.path("required").asBoolean())
+            assertEquals(listOf("1", "2", "3", "4"), header["schema"]["enum"].map { it.asText() })
+            assertTrue("POINT_RESULT_CLIENT_REQUIRED" in operation["responses"]["409"]["description"].asText())
+        }
+        val receipt = paths["$v2/undo/{commandId}"]["get"]
+        assertFalse(receipt["parameters"].any { it.path("name").asText() == POINT_LINEUPS_HEADER })
+    }
+
     private fun apiDocs(): JsonNode = objectMapper.readTree(
         mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk).andReturn().response.contentAsString,
     )

@@ -122,11 +122,12 @@ class MatchController(
 
     @PostMapping("/{id}/start")
     @Operation(summary = "Начать матч")
+    @PointResultCommand(matchVariable = "id")
     fun startMatch(
         @PathVariable id: UUID,
         @RequestBody request: MatchTimestampRequest,
         servletRequest: HttpServletRequest,
-    ): ResponseEntity<*> = matchFacade.startMatch(id, request).toResponse(
+    ): ResponseEntity<*> = matchFacade.startMatch(id, request, servletRequest.pointLineupClient()).toResponse(
         successStatus = HttpStatus.OK,
         instance = URI.create(servletRequest.requestURI),
         matchId = id,
@@ -134,11 +135,12 @@ class MatchController(
 
     @PostMapping("/{id}/end")
     @Operation(summary = "Завершить матч")
+    @PointResultCommand(matchVariable = "id")
     fun endMatch(
         @PathVariable id: UUID,
         @RequestBody request: MatchTimestampRequest,
         servletRequest: HttpServletRequest,
-    ): ResponseEntity<*> = matchFacade.endMatch(id, request).toResponse(
+    ): ResponseEntity<*> = matchFacade.endMatch(id, request, servletRequest.pointLineupClient()).toResponse(
         successStatus = HttpStatus.OK,
         instance = URI.create(servletRequest.requestURI),
         matchId = id,
