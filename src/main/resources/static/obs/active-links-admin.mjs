@@ -20,13 +20,18 @@ export function mountActiveLinks(session, {document = globalThis.document, clipb
     }
     $('links-open').disabled = !state.current;
     $('links-refresh').disabled = !state.current;
-    if (!state.current) {$('links-preview').src = 'about:blank';framePath = '';}
+    if (!state.current) {
+      $('links-preview').src = 'about:blank';framePath = '';
+      $('links-kind').disabled = $('preview-refresh').disabled = true;
+    }
   }
   controller = createActiveLinks({session, onChange: render});
-  function preview() {
+  function preview(refresh = false) {
     if (!controller.state.current) return;
-    const path = controller.preview($('links-kind').value);
-    if (path !== framePath) {$('links-preview').src = path;framePath = path;}
+    const kind = $('links-kind').value;
+    const path = kind === 'stats' ? controller.preview('infographics') + '&view=stats' : controller.preview(kind);
+    if (refresh || path !== framePath) {$('links-preview').src = path;framePath = path;}
+    $('links-kind').disabled = $('preview-refresh').disabled = false;
   }
   async function select() {
     close();const selected = ++selection;
@@ -36,7 +41,7 @@ export function mountActiveLinks(session, {document = globalThis.document, clipb
       if (controller.state.current && id === controller.state.matchId) onContext(id);
       preview();await promise;
       if (selected !== selection || !controller.state.current) return;
-      $('links-context').textContent = id ? `Ссылки конкретного матча: ${id}` : 'Автоматический выбор сервера. Текущий матч или его отсутствие показаны в предпросмотре.';
+      $('links-context').textContent = id ? `Открыт конкретный матч · ${id}` : 'Автоматический выбор сервера';
     } catch { if (selected === selection && controller.state.current) $('links-context').textContent = 'Введите корректный UUID матча. До этого открыт прежний контекст ссылок.'; }
   }
   $('links-open').addEventListener('click', select);
@@ -47,7 +52,8 @@ export function mountActiveLinks(session, {document = globalThis.document, clipb
     close();if ($('links-mode').value === 'auto') void select();
     else {selection++;$('links-context').textContent = 'Введите UUID и нажмите «Открыть контекст». До этого открыт прежний контекст ссылок.';}
   });
-  $('links-kind').addEventListener('change', preview);
+  $('links-kind').addEventListener('change', () => preview());
+  $('preview-refresh').addEventListener('click', () => preview(true));
   $('links-matches').addEventListener('change', () => {
     if (!$('links-matches').value) return;
     $('links-mode').value = 'exact';$('links-match-label').hidden = false;

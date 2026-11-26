@@ -3,7 +3,7 @@ import {validateInfographics,infographicsPage,RosterClock} from './infographics-
 import {renderPostmatch} from './infographics-postmatch.mjs';
 const root = document.getElementById('infographics'), status = document.getElementById('status');
 const clock=new RosterClock();
-let snapshot=null, disposed=false, viewKey='', stop=()=>{};
+let statsOnly=false, snapshot=null, disposed=false, viewKey='', stop=()=>{};
 function node(tag,text='',className='') {
   const element=document.createElement(tag);element.textContent=text;element.className=className;return element;
 }
@@ -48,7 +48,9 @@ function renderLeaders(page) {
   root.hidden = false;
 }
 function render() {
-  const page=infographicsPage(snapshot,clock.current());
+  const page=statsOnly
+    ? snapshot?.postmatch && {...snapshot,phase:{kind:'POSTMATCH'}}
+    : infographicsPage(snapshot,clock.current());
   if (disposed || !page) {clear();return;}
   const key = page.generation
     ? `${page.generation}:${page.category}:${page.page}`
@@ -86,9 +88,10 @@ async function start() {
     const preview=url.pathname==='/obs-preview/infographics.html'
       ? await (await import('./staff-preview.mjs')).openPreview(url,'infographics',()=>disposed) : null;
     if (disposed) {preview?.transport.dispose();return;}
+    statsOnly=preview?.source.statsOnly === true;
     stop=watchProtectedSource(preview?.source??parseSource(url,'infographics'),accept,message=>{
       if (disposed) return;
-      status.textContent=message;
+      status.textContent=message || (statsOnly && !snapshot?.postmatch ? 'Итоги появятся после завершения матча' : '');
       // A lost response cannot keep a roster visible after an unseen PULL or match switch.
       if (message) {snapshot=null;clear();}
     },{transport:preview?.transport,validate:validateInfographics,retryMessage:'Инфографика: переподключение…'});

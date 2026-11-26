@@ -8,12 +8,16 @@ with `OBS_ADMIN`. It neither issues nor accepts viewer keys. The iframe URLs are
 - `/obs-preview/scoreboard.html?mode=auto`
 - `/obs-preview/event-log.html?mode=auto`
 
-Only one query parameter is accepted; fragments and credentials in URLs are
-rejected. The parent and frame must share the staff origin. Private pages,
+Both binding forms also work on `/obs-preview/infographics.html`. That page
+accepts the optional `view=stats` alongside the binding. It renders the same
+canonical finished statistics after the broadcast timer expires. The frame sends
+only the exact match or AUTO binding to the existing read-only preview API.
+
+The binding is required and unique. Fragments and URL credentials are rejected. The parent and frame must share the staff origin. Private pages,
 `/obs/staff-preview.mjs`, and preview API reads require HTTPS and `OBS_ADMIN`.
 All private responses use `Cache-Control: no-store`.
 
-GET `/api/v1/obs/previews/{scoreboard|event-log}/{UUID|auto}` returns the existing
+GET `/api/v1/obs/previews/{scoreboard|event-log|infographics}/{UUID|auto}` returns the existing
 exact snapshot or existing AUTO `{ "snapshot": null | exactSnapshot }` envelope.
 The staff service uses the existing exact builders and AUTO selector in a
 read-only repeatable-read transaction. Confirmed pauses/finish, event history,

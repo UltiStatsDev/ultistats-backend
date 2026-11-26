@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { parsePreview, capturePreviewTransport } from '../../main/resources/static/obs/staff-preview.mjs';
-import { watchProtectedSource } from '../../main/resources/static/obs/protected-source-client.mjs';
+import { parseSource, watchProtectedSource } from '../../main/resources/static/obs/protected-source-client.mjs';
 const id = 'abcdefab-cdef-abcd-efab-cdefabcdefab';
 const url = (query = `matchId=${id}`) => new URL(`https://localhost/obs-preview/scoreboard.html?${query}`);
 const pause = (ms = 5) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -105,4 +105,20 @@ test('private editor entries are explicit-match only and cannot become AUTO or v
     for(const query of ['mode=auto',`matchId=${id}&preview=1`,`matchId=${id}&matchId=${id}`])
       assert.throws(()=>parsePreview(new URL(`https://localhost/obs-editor/${kind}.html?${query}`),kind));
   }
+});
+
+test('stats-only is a private infographics view over the unchanged exact or AUTO GET path', () => {
+  const path = 'https://localhost/obs-preview/infographics.html';
+  for (const [query, binding] of [[`matchId=${id}`, id], ['mode=auto', 'auto']]) {
+    const source = parsePreview(new URL(`${path}?${query}&view=stats`), 'infographics');
+    assert.equal(source.path, `/api/v1/obs/previews/infographics/${binding}`);
+    assert.equal(source.statsOnly, true);
+  }
+  for (const suffix of ['view=air', 'view=stats&view=stats', `view=stats&matchId=${id}`]) {
+    assert.throws(() => parsePreview(new URL(`${path}?mode=auto&${suffix}`), 'infographics'));
+  }
+  assert.throws(() => parsePreview(url('mode=auto&view=stats')));
+  assert.throws(() => parseSource(new URL(path.replace('obs-preview','obs-sources') +
+    `?mode=auto&view=stats#key=${'a'.repeat(43)}`), 'infographics'));
+  assert.throws(() => parsePreview(new URL(path.replace('obs-preview', 'obs-editor') + `?matchId=${id}&view=stats`), 'infographics'));
 });

@@ -1,53 +1,195 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>UltiStats · OBS</title>
-<style>
-:root{font-family:system-ui,sans-serif;color:#eaf0f8;background:#0c1220;color-scheme:dark}*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0;padding:32px;max-width:1440px;margin:auto}h1{font-size:30px;margin:0 0 8px}h2{font-size:18px;margin:0 0 20px}.muted,small{color:#a7b5ca}header{margin-bottom:28px}.layout{display:grid;grid-template-columns:minmax(280px,380px) minmax(0,1fr);gap:24px}.panel{padding:24px;border:1px solid #2c3950;border-radius:12px;background:#141e30;margin-bottom:20px}label{display:block;margin:14px 0}input,select,button{font:inherit;border-radius:6px;border:1px solid #43536d;padding:8px;background:#1d2a40;color:inherit}input[type=number]{width:90px}input[type=color]{padding:2px;vertical-align:middle;height:36px}input[type=checkbox]{accent-color:#53c7ed}input[type=text],input[type=url],select{max-width:100%;width:100%}button{cursor:pointer}button:hover{background:#304667}button.primary{background:#137b99;border-color:#2498b8}fieldset{border:0;padding:0;margin:0}legend{margin-bottom:8px}.inline{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.inline label{margin:6px 0}#preview{width:100%;aspect-ratio:16/9;border:1px solid #43536d;background:repeating-conic-gradient(#202b3b 0% 25%,#293749 0% 50%) 50%/28px 28px;border-radius:8px}#scoreboard-preview{width:100%;aspect-ratio:1000/160;border:1px solid #43536d;background:repeating-conic-gradient(#202b3b 0% 25%,#293749 0% 50%) 50%/24px 24px}.scoreboard-edit-team{border-top:1px solid #43536d;padding-bottom:12px}#scoreboard-status{min-height:1.5em;overflow-wrap:anywhere}#status,#save-status{min-height:1.5em;overflow-wrap:anywhere}#save-status{color:#8dd9ed}#teams>div{margin-top:12px;padding:12px;border:1px solid #43536d;border-radius:6px}#obs-url{font-size:13px}a{color:#8dd9ed}@media(max-width:850px){body{padding:16px}.layout{grid-template-columns:1fr}}
-.link-cards{display:grid;grid-template-columns:1fr 1fr;gap:20px}.link-card{border:1px solid #43536d;border-radius:8px;padding:16px;min-width:0}#links-preview{width:100%;aspect-ratio:16/9;border:1px solid #43536d}dialog{max-width:520px;border:1px solid #43536d;border-radius:12px;background:#141e30;color:inherit}dialog::backdrop{background:#0009}@media(max-width:850px){.link-cards{grid-template-columns:1fr}}</style></head><body><p id="auth-status" role="status">Проверка защищённой сессии…</p>
-<p><a href="/obs-leaders.html">Лидеры команд · текущая статистика</a></p>
-<header class="panel"><h1>OBS · Журнал событий и табло</h1>
-<div class="inline"><label>Контекст источника <select id="links-mode" disabled><option value="auto">Автоматически</option><option value="exact">Конкретный матч</option></select></label>
-<div id="links-match-label" hidden><label>Матч из списка <select id="links-matches" disabled><option value="">Выберите матч</option></select></label>
-<div class="inline"><button id="previous" type="button" disabled>← Ранее</button><span id="page">1</span><button id="next" type="button" disabled>Далее →</button></div>
-<label>Или UUID матча <input id="links-match" type="text" disabled></label><button id="links-open" type="button" disabled>Открыть контекст</button></div></div>
-<p id="editor-context" role="status">Проверка текущего матча…</p></header>
-<section class="panel" id="active-links"><h2>Рабочие защищённые ссылки OBS</h2>
-<button id="links-refresh" type="button" disabled>Проверить текущие ссылки</button>
-<p id="links-context" role="status"></p><div class="link-cards">
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>UltiStats · Управление OBS</title>
+  <link rel="stylesheet" href="/obs/operator-desk.css">
+</head>
+<body>
+<header class="mast">
+  <strong class="brand">Ulti<span>Stats</span></strong>
+  <span>Пульт OBS</span>
+  <span id="auth-status" role="status">Проверка защищённой сессии…</span>
+</header>
+<main>
+  <div class="title">
+    <h1>Управление OBS</h1>
+    <label>Контекст источника
+      <select id="links-mode" disabled>
+        <option value="auto">Автоматический</option>
+        <option value="exact">Конкретный матч</option>
+      </select>
+    </label>
+  </div>
+  <section class="fixture" aria-label="Текущий матч">
+    <div>
+      <small>Текущий матч</small>
+      <h2 id="editor-context" role="status">Проверка текущего матча…</h2>
+    </div>
+    <span id="match-phase" hidden></span>
+    <div id="links-match-label" hidden>
+      <label>Матч из списка
+        <select id="links-matches" disabled><option value="">Выберите матч</option></select>
+      </label>
+      <div class="inline"><button id="previous" type="button" disabled>← Ранее</button><span id="page">1</span><button id="next" type="button" disabled>Далее →</button></div>
+      <div class="inline">
+        <label>Или UUID матча <input id="links-match" type="text" disabled></label>
+        <button id="links-open" type="button" disabled>Открыть контекст</button>
+      </div>
+    </div>
+    <small id="links-context" role="status"></small>
+  </section>
+
+  <div class="desk-work">
+    <section class="panel console">
+      <h2>Управление плашками</h2>
+      <div class="monitor">
+        <small>Сейчас в эфире</small>
+        <strong id="air-kind" data-kind="" role="status">Эфир не подтверждён</strong>
+        <small id="air-time"></small>
+      </div>
+      <div class="air-actions">
+        <button type="button" data-show="LEADERS" disabled>Показать лидеров матча</button>
+        <button type="button" data-show="ROSTER" disabled>Показать ростеры команд</button>
+        <button type="button" data-show="POINT" disabled>Показать состав на поинт</button>
+        <button type="button" data-show="STATS" class="primary" disabled>Показать итоговую статистику</button>
+      </div>
+      <div class="inline air-footer">
+        <button id="air-hide" type="button" disabled>Скрыть плашку</button>
+        <button id="air-retry" type="button" hidden>Повторить команду</button>
+      </div>
+      <p id="air-status" role="status"></p>
+    </section>
+    <section class="panel">
+      <div class="line"><h2>Предпросмотр</h2><small>1920 × 1080 · 16:9</small></div>
+      <div class="line preview-tools">
+        <label>Источник
+          <select id="links-kind" disabled>
+            <option value="stats">Итоговая статистика</option>
+            <option value="infographics">Как в эфире</option>
+            <option value="scoreboard">Табло</option>
+            <option value="event-log">Журнал событий</option>
+          </select>
+        </label>
+        <button id="preview-refresh" type="button" disabled>Обновить</button>
+      </div>
+      <div id="preview-stage">
+        <iframe id="links-preview" width="1920" height="1080" title="Предпросмотр выбранного источника" tabindex="-1"></iframe>
+      </div>
+      <small>Предпросмотр виден только оператору.</small>
+    </section>
+  </div>
+
+  <section class="panel timings">
+    <h2>Время показа</h2>
+    <small>Интервалы применяются со следующего показа.</small>
+    <form id="infographics-settings">
+      <fieldset disabled>
+        <div class="duration-fields">
+          <label>Ростеры, с <input name="rosterPageSeconds" type="number" min="2" max="15" step="1" required></label>
+          <label>Состав на поинт, с <input name="pointPageSeconds" type="number" min="2" max="15" step="1" required></label>
+          <label>Лидеры, с <input name="leaderPageSeconds" type="number" min="2" max="15" step="1" required></label>
+          <label>Итоговая статистика, с <input name="statsSeconds" type="number" min="1" max="2147483647" step="1" required></label>
+        </div>
+        <button type="submit">Сохранить интервалы</button>
+      </fieldset>
+      <p role="status" id="infographics-status"></p>
+    </form>
+  </section>
+
+  <details class="panel fold" id="active-links">
+    <summary>Приватные ссылки OBS</summary>
+    <div class="fold-content">
+      <p>Для каждого источника и контекста действует своя ссылка. При перевыпуске прежняя ссылка отзывается.</p>
+      <button id="links-refresh" type="button" disabled>Проверить текущие ссылки</button>
+      <div class="link-cards">
 <article class="link-card"><h3>Табло</h3><p><small>Browser Source: 1000 × 160 px · ссылка содержит приватный ключ</small></p>
-<label>Текущая ссылка Табло<input id="link-scoreboard-url" type="url" readonly autocomplete="off" spellcheck="false"></label>
+<label>Текущая ссылка табло<input id="link-scoreboard-url" type="url" readonly autocomplete="off" spellcheck="false"></label>
 <div class="inline"><button id="link-scoreboard-copy" type="button" disabled>Копировать</button><button id="link-scoreboard-issue" type="button" disabled>Выдать ссылку</button><button id="link-scoreboard-revoke" type="button" disabled>Отозвать</button></div><p id="link-scoreboard-status" role="status"></p></article>
-<article class="link-card"><h3>Event Log</h3><p><small>Browser Source: 1920 × 1080 px · ссылка содержит приватный ключ</small></p>
-<label>Текущая ссылка Event Log<input id="link-event-log-url" type="url" readonly autocomplete="off" spellcheck="false"></label>
+<article class="link-card"><h3>Журнал событий</h3><p><small>Browser Source: 1920 × 1080 px · ссылка содержит приватный ключ</small></p>
+<label>Текущая ссылка журнала событий<input id="link-event-log-url" type="url" readonly autocomplete="off" spellcheck="false"></label>
 <div class="inline"><button id="link-event-log-copy" type="button" disabled>Копировать</button><button id="link-event-log-issue" type="button" disabled>Выдать ссылку</button><button id="link-event-log-revoke" type="button" disabled>Отозвать</button></div><p id="link-event-log-status" role="status"></p></article>
 <article class="link-card"><h3>Инфографика</h3><p><small>Browser Source: 1920 × 1080 px · ссылка содержит приватный ключ</small></p>
-<label>Текущая ссылка Инфографика<input id="link-infographics-url" type="url" readonly autocomplete="off" spellcheck="false"></label>
+<label>Текущая ссылка инфографики<input id="link-infographics-url" type="url" readonly autocomplete="off" spellcheck="false"></label>
 <div class="inline"><button id="link-infographics-copy" type="button" disabled>Копировать</button><button id="link-infographics-issue" type="button" disabled>Выдать ссылку</button><button id="link-infographics-revoke" type="button" disabled>Отозвать</button></div><p id="link-infographics-status" role="status"></p></article>
-</div><label>Сессионный предпросмотр <select id="links-kind"><option value="scoreboard">Табло</option><option value="event-log">Event Log</option><option value="infographics">Инфографика</option></select></label>
-<iframe id="links-preview" title="Сессионный предпросмотр защищённого источника"></iframe><small>Предпросмотр через сессию организатора, без ключа OBS. AUTO выбирается сервером; при отсутствии выбранного матча предпросмотр показывает «Нет матча для трансляции».</small></section>
-<dialog id="links-dialog"><p id="links-dialog-text"></p><button id="links-cancel" type="button">Отмена</button> <button id="links-confirm" type="button">Подтвердить</button></dialog>
-<section class="panel"><h2>Инфографика · интервалы страниц</h2>
-<form id="infographics-settings"><fieldset disabled>
-<label>Ростер команд, секунд <input name="rosterPageSeconds" type="number" min="2" max="15" step="1" required></label>
-<label>Состав на поинт, секунд <input name="pointPageSeconds" type="number" min="2" max="15" step="1" required></label>
-<label>Лидеры матча, секунд <input name="leaderPageSeconds" type="number" min="2" max="15" step="1" required></label>
-<button type="submit">Сохранить интервалы</button></fieldset><p role="status" id="infographics-status"></p></form>
-<small>От 2 до 15 секунд, по умолчанию 5. Изменение применяется со следующей фазы или показа лидеров.</small></section>
-<div class="layout"><form id="settings" class="panel"><h2>Журнал событий · все матчи</h2>
-<fieldset id="log-fields" disabled><fieldset><legend>События</legend><div class="inline"><label><input type="checkbox" name="category" value="GOAL"> Гол</label><label><input type="checkbox" name="category" value="BLOCK"> Блок</label><label><input type="checkbox" name="category" value="INTERCEPTION"> Перехват</label><label><input type="checkbox" name="category" value="CALLAHAN"> Кэллахан</label></div></fieldset>
-<label>Плашек одновременно <input id="maxRows" type="number" min="1" max="20" required></label>
-<label>Показ, секунд <input id="ttlSeconds" type="number" min="1" max="60" required></label>
-<label>Угол <select id="corner"><option value="TOP_RIGHT">Справа сверху</option><option value="TOP_LEFT">Слева сверху</option><option value="BOTTOM_RIGHT">Справа снизу</option><option value="BOTTOM_LEFT">Слева снизу</option></select></label>
-<div class="inline"><label>Фон <input id="backgroundColor" type="color"></label><label>Текст <input id="textColor" type="color"></label></div><small>При низком контрасте renderer подберёт читаемый текст. Акценты команд — на краях плашки.</small>
-</fieldset><fieldset id="team-colors" disabled><legend>Акценты команд · текущий матч</legend><div id="teams"></div>
-<p><small>Ручной акцент команды применяется во всех матчах. «Авто» возвращает цвет из фото.</small></p></fieldset>
-<button class="primary" id="save" type="submit" disabled>Сохранить журнал событий</button><p id="save-status" role="status"></p></form>
-<div>
-<section class="panel"><h2>Предпросмотр · 16:9</h2><iframe id="preview" src="about:blank" title="Предпросмотр OBS"></iframe><p id="status" role="status">Выберите матч для подключения.</p><button id="test" disabled>Тестовая плашка только здесь</button><p><small>Тест не создаёт игровое событие и не попадает в эфир. Preview показывает сохранённые настройки.</small></p></section>
-<section class="panel" id="scoreboard-settings" hidden><h2>Табло · выбранный матч</h2>
-<p class="muted">Отдельный эфирный профиль матча. Названия и цвета команд в игре сохраняются. Несохранённые изменения видны сразу только здесь.</p>
-<form id="scoreboard-form"><fieldset id="scoreboard-fields" disabled><div id="scoreboard-teams"></div>
-<div class="inline"><button id="scoreboard-swap" type="button">Поменять стороны</button><span id="scoreboard-order"></span></div>
-<p class="inline"><button id="scoreboard-reset" type="button">Сбросить профиль</button><button id="scoreboard-save" type="submit" class="primary">Сохранить табло</button></p></fieldset></form>
-<h2>Предпросмотр табло · 1000 × 160</h2><iframe id="scoreboard-preview" title="Предпросмотр табло"></iframe><p id="scoreboard-status" role="status"></p>
-<p><small>Browser Source: 1000 × 160 px. Прозрачный фон, масштабирование и размещение средствами OBS. Часы включают таймауты и перерыв; после завершения длительность фиксируется. Ошибки связи видны только в настройках. Сохранение обновляет все источники этого матча без перезагрузки.</small></p></section>
-<section class="panel"><h2>Добавить Event Log в OBS</h2><p>Добавьте Browser Source, вставьте ссылку. Размер: 1920 × 1080; фон страницы прозрачный. Перемещайте и масштабируйте источник средствами OBS. Новые события появляются сверху в выбранном углу.</p><small>Управление настройками требует входа организатора. Рабочие защищённые ссылки выдаются в блоке выше. Прежние редакторские preview-инструменты пока сохранены отдельно. После перезагрузки история не проигрывается; при reconnect выводятся последние пропущенные события.</small></section></div></div><script type="module" src="/obs/admin.mjs"></script></body></html>
+</div>
+    </div>
+  </details>
+  <dialog id="links-dialog"><p id="links-dialog-text"></p><button id="links-cancel" type="button">Отмена</button> <button id="links-confirm" type="button">Подтвердить</button></dialog>
+
+  <form id="settings">
+    <details class="panel fold" id="log-settings">
+      <summary>Журнал событий</summary>
+      <div class="fold-content">
+        <fieldset id="log-fields" disabled>
+          <fieldset><legend>События</legend><div class="inline">
+            <label><input type="checkbox" name="category" value="GOAL"> Гол</label>
+            <label><input type="checkbox" name="category" value="BLOCK"> Блок</label>
+            <label><input type="checkbox" name="category" value="INTERCEPTION"> Перехват</label>
+            <label><input type="checkbox" name="category" value="CALLAHAN"> Кэллахан</label>
+          </div></fieldset>
+          <div class="inline">
+            <label>Плашек одновременно <input id="maxRows" type="number" min="1" max="20" required></label>
+            <label>Показ, с <input id="ttlSeconds" type="number" min="1" max="60" required></label>
+            <label>Положение <select id="corner"><option value="TOP_RIGHT">Справа сверху</option><option value="TOP_LEFT">Слева сверху</option><option value="BOTTOM_RIGHT">Справа снизу</option><option value="BOTTOM_LEFT">Слева снизу</option></select></label>
+          </div>
+        </fieldset>
+        <button id="save" type="submit" disabled>Сохранить журнал событий</button>
+        <p id="save-status" role="status"></p>
+        <details id="log-preview-settings">
+          <summary>Проверка плашки журнала</summary>
+          <iframe id="preview" title="Проверка плашки журнала"></iframe>
+          <button id="test" type="button" disabled>Показать тестовую плашку здесь</button>
+        </details>
+        <p id="status" role="status"></p>
+      </div>
+    </details>
+  </form>
+
+  <details class="panel fold" id="scoreboard-settings">
+    <summary>Табло матча</summary>
+    <div class="fold-content">
+      <form id="scoreboard-form">
+        <fieldset id="scoreboard-fields" disabled>
+          <div id="scoreboard-teams" class="pairs"></div>
+          <p class="inline"><button id="scoreboard-swap" type="button">Поменять стороны</button><span id="scoreboard-order"></span></p>
+          <p class="inline"><button id="scoreboard-reset" type="button">Сбросить профиль</button><button id="scoreboard-save" type="submit" class="primary">Сохранить табло</button></p>
+        </fieldset>
+      </form>
+      <iframe id="scoreboard-preview" title="Предпросмотр профиля табло"></iframe>
+      <p id="scoreboard-status" role="status"></p>
+    </div>
+  </details>
+
+  <details class="panel fold" id="color-settings">
+    <summary>Цвета элементов</summary>
+    <div class="fold-content palette">
+      <div>
+        <fieldset id="log-colors" disabled>
+          <legend>Журнал событий</legend>
+          <div class="inline"><label>Фон <input id="backgroundColor" type="color" form="settings"></label><label>Текст <input id="textColor" type="color" form="settings"></label></div>
+        </fieldset>
+        <fieldset id="team-colors" disabled>
+          <legend>Акценты команд журнала</legend>
+          <div id="teams" class="pairs"></div>
+          <small>Акцент команды применяется во всех её матчах. «Авто» возвращает цвет из фото.</small>
+        </fieldset>
+        <p><button id="save-log-colors" type="submit" form="settings" disabled>Сохранить журнал событий</button></p>
+        <p id="log-color-status" role="status"></p>
+      </div>
+      <div>
+        <fieldset id="scoreboard-colors" disabled>
+          <legend>Табло текущего матча</legend>
+          <div id="scoreboard-team-colors" class="pairs"></div>
+          <p><button type="submit" form="scoreboard-form">Сохранить табло</button></p>
+        </fieldset>
+        <p id="scoreboard-color-status" role="status"></p>
+      </div>
+    </div>
+  </details>
+</main>
+<script type="module" src="/obs/admin.mjs"></script>
+</body>
+</html>

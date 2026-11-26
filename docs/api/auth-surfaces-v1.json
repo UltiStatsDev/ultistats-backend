@@ -670,12 +670,21 @@
       "secureOnly": true
     },
     {
+      "method": "POST",
+      "path": "/api/v1/obs/infographics/presentations/hide-phase",
+      "policy": "OBS_ADMIN",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsInfographicsPresentationController.kt",
+      "line": 28,
+      "secureOnly": true
+    },
+    {
       "method": "DELETE",
       "path": "/api/v1/obs/infographics/presentations/{generation}",
       "policy": "OBS_ADMIN",
       "owner": "enforcement",
       "source": "src/main/kotlin/com/github/mihanizzm/ultistats/obs/ObsInfographicsPresentationController.kt",
-      "line": 28,
+      "line": 33,
       "secureOnly": true
     },
     {
@@ -922,6 +931,14 @@
     },
     {
       "path": "/obs/overlay.mjs",
+      "policy": "OBS_ADMIN"
+    },
+    {
+      "path": "/obs/operator-desk.css",
+      "policy": "OBS_ADMIN"
+    },
+    {
+      "path": "/obs/operator-desk.mjs",
       "policy": "OBS_ADMIN"
     },
     {

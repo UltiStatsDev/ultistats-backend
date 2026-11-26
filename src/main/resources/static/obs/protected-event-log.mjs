@@ -140,7 +140,7 @@ try {
     preview?.source ?? parseSource(url, "event-log"),
     accept,
     (message) => {
-      if (!disposed) {status.textContent = message; if (editor && editorCurrent()) parent.postMessage({type:'obs-status',message:message || 'Синхронизировано'},location.origin);}
+      if (!disposed) {status.textContent = message; if (editor && editorCurrent()) parent.postMessage({type:'obs-status',message:message || 'Синхронизировано',matchId:match?.matchId},location.origin);}
     },
     { transport: preview?.transport, validate: validateEventLog, retryMessage: "Журнал: переподключение…" },
   );

@@ -6,12 +6,14 @@ export function instrumentLegacyTransport() {
 }
 export async function verifyEditorTools(page,input,sql) {
   const {match,origin,staff}=input;
+  for(const fold of ['log-settings','log-preview-settings','scoreboard-settings'])
+   await page.locator(`#${fold} > summary`).click();
   await page.waitForFunction(id=>document.querySelector('#preview').getAttribute('src')===`/obs-editor/event-log.html?matchId=${id}`,match);
   assert.equal(await page.locator('#preview').getAttribute('src'),`/obs-editor/event-log.html?matchId=${match}`);
   assert.equal(await page.locator('#scoreboard-preview').getAttribute('src'),`/obs-editor/scoreboard.html?matchId=${match}`);
   const log=page.frameLocator('#preview'),score=page.frameLocator('#scoreboard-preview');
   await score.locator('.scoreboard-score').waitFor();
-  const configSave=page.waitForResponse(r=>r.request().method()==='PUT'&&r.url().endsWith('/api/v1/obs/config'));
+  const configSave=page.waitForResponse(r=>r.request().method()==='PUT'&&new URL(r.url()).pathname==='/api/v1/obs/config' && new URL(r.url()).searchParams.get('matchId')===match);
   await page.locator('#ttlSeconds').fill('2');await page.locator('#corner').selectOption('TOP_LEFT');await page.locator('#save').click();assert.equal((await configSave).status(),200);
   await page.waitForFunction(()=>document.querySelector('#preview').contentDocument.querySelector('#feed').dataset.corner==='TOP_LEFT');
   const count=sql('SELECT count(*) FROM events;');
