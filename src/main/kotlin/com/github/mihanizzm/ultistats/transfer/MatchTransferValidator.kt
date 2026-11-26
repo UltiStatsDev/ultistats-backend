@@ -8,8 +8,11 @@ import com.github.mihanizzm.ultistats.model.PointLineupTeam
 import com.github.mihanizzm.ultistats.model.PointLineupTemporary
 import com.github.mihanizzm.ultistats.model.events.*
 import com.github.mihanizzm.ultistats.repository.jpa.IntroducedPointSlot
+import com.github.mihanizzm.ultistats.repository.jpa.PointLineupSlotActor
 import com.github.mihanizzm.ultistats.service.ConfirmedJournal
 import com.github.mihanizzm.ultistats.service.PointLineupRejectedException
+import com.github.mihanizzm.ultistats.service.PointCompletionHistoryRejected
+import com.github.mihanizzm.ultistats.service.validateApprovedCompletions
 import com.github.mihanizzm.ultistats.validation.event.EventSequenceDecision
 import com.github.mihanizzm.ultistats.validation.event.EventSequencePolicy
 import org.springframework.stereotype.Component
@@ -21,9 +24,9 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
     fun validate(data: MatchTransferPackage) {
         val expectedVersion = data.matches.requiredFormatVersion()
         check(data.formatVersion == expectedVersion, "formatVersion",
-            "Expected version $expectedVersion for the included active events, announcements, point lineups and incoming reserves")
+            "Expected version $expectedVersion for the included active events, announcements, point lineups and approved completions")
         check(data.formatVersion >= 6 || data.matches.none { match -> match.pointLineups.any { it.substitutionSlots != null } },
-            "matches.pointLineups.substitutionSlots", "Substitution slots require format version 6 or 7")
+            "matches.pointLineups.substitutionSlots", "Substitution slots require format version 6 through 8")
         check(data.matches.isNotEmpty(), "matches", "Select at least one match")
         unique(data.matches.map { it.id }, "matches")
         unique(data.teams.map { it.id }, "teams")
@@ -98,6 +101,31 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
         }
         if (match.pointLineups.isNotEmpty() || match.containsSubstitutions()) {
             validateLineupScope(match, path, slots.keys, storedEvents, teamByParticipant)
+        }
+        match.approvedCompletions?.let { approvals ->
+            val approvalPath = "$path.approvedCompletions"
+            check(approvals.isNotEmpty(), approvalPath, "Omit this field when there are no approved completions")
+            val points = PointTimeline.from(match.id, match.status, storedEvents)
+            val byOpening = points.associateBy { it.openingEventId }
+            val slotActors = buildMap {
+                for (lineup in match.pointLineups) {
+                    val point = byOpening.getValue(lineup.openingEventId)
+                    for (team in lineup.teams) {
+                        for (entry in team.entries.filterIsInstance<PortablePointLineupTemporary>()) {
+                            put(entry.slotId, PointLineupSlotActor(point.pointId, team.teamId, entry.resolvedParticipantId))
+                        }
+                    }
+                    for (slot in lineup.substitutionSlots.orEmpty()) {
+                        put(slot.slotId, PointLineupSlotActor(point.pointId, slot.teamId, slot.resolvedParticipantId))
+                    }
+                }
+            }
+            try {
+                validateApprovedCompletions(match.status, storedEvents, points.associateBy { it.pointId },
+                    approvals, teamByParticipant, slotActors)
+            } catch (error: PointCompletionHistoryRejected) {
+                fail(approvalPath, error.message.orEmpty())
+            }
         }
     }
 
@@ -308,6 +336,7 @@ internal fun List<PortableMatch>.containsIncomingReserves() =
     any { match -> match.pointLineups.any { !it.substitutionSlots.isNullOrEmpty() } }
 
 internal fun List<PortableMatch>.requiredFormatVersion() = when {
+    any { !it.approvedCompletions.isNullOrEmpty() } -> APPROVED_COMPLETION_TRANSFER_VERSION
     any { match -> match.events.any { it.type == EventType.POINT_RESULT } } -> POINT_RESULT_TRANSFER_VERSION
     containsIncomingReserves() -> 6
     containsSubstitutions() -> 5

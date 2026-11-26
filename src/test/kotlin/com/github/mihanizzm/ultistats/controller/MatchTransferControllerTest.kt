@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
@@ -34,6 +35,7 @@ import java.util.UUID
 class MatchTransferControllerTest {
     @Autowired lateinit var fixtures: MatchTransferFixtureHelper
     @Autowired lateinit var mvc: MockMvc
+    @Autowired lateinit var jdbc: JdbcTemplate
     @Autowired lateinit var mapper: ObjectMapper
     @MockitoSpyBean lateinit var matches: MatchService
     @Autowired lateinit var teams: TeamService
@@ -103,6 +105,56 @@ class MatchTransferControllerTest {
                 .header(POINT_LINEUPS_HEADER, capability).content(portable))
                 .andExpect(status().isConflict).andExpect(jsonPath("$.code").value(code))
         }
+        assertThat(Triple(matches.count(), teams.count(), players.count())).isEqualTo(before)
+    }
+
+    @Test
+    fun `approved transfer requires explicit v8 opt in and public import is closed`() {
+        fixtures.start(match.id, start)
+        fixtures.addEvent(TeamEvent(home.id, start.plusSeconds(1), EventType.POINT_RESULT), match.id)
+        fixtures.end(match.id, start.plusSeconds(2))
+        val (point) = PointTimeline.from(match.id, MatchStatus.FINISHED, listOf(
+            StoredEvent(jdbc.queryForObject("SELECT id FROM events WHERE match_id = ?", UUID::class.java, match.id)!!,
+                1, TeamEvent(home.id, start.plusSeconds(1), EventType.POINT_RESULT)),
+        ))
+        fun request(version: String = "", capability: String = "4") = post("/api/v1/matches/export")
+            .contentType(MediaType.APPLICATION_JSON).header(POINT_LINEUPS_HEADER, capability)
+            .content("""{"matchIds":["${match.id}"]$version}""")
+        val draftAction = UUID.randomUUID()
+        jdbc.update("""INSERT INTO match_point_completion_drafts
+            (match_id, point_id, closing_event_id, revision, base_log_revision, insertions)
+            VALUES (?, ?, ?, 1, 0, ?)""", match.id, point.pointId, point.closingEventId,
+            """[{"id":"$draftAction","afterEventId":null,"type":"PULL",
+                "fromActorId":"${passer.id}","toActorId":null,"elapsedOffsetMs":null}]""")
+        val legacy = mvc.perform(request()).andExpect(jsonPath("$.formatVersion").value(7))
+            .andReturn().response.contentAsString
+        mvc.perform(request(""","acceptFormatVersion":8""")).andExpect(content().string(legacy))
+
+        val actionId = UUID.randomUUID()
+        jdbc.update("""INSERT INTO match_point_completion_approvals
+            (match_id, point_id, closing_event_id, insertions) VALUES (?, ?, ?, ?)""",
+            match.id, point.pointId, point.closingEventId, """[{"id":"$actionId","afterEventId":null,
+                "type":"GOAL","fromActorId":"${passer.id}","toActorId":"${catcher.id}","elapsedOffsetMs":0}]""")
+        mvc.perform(request()).andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code").value("POINT_COMPLETION_TRANSFER_CLIENT_REQUIRED"))
+        mvc.perform(request(""","acceptFormatVersion":"8"""")).andExpect(status().isBadRequest)
+        mvc.perform(request(""","acceptFormatVersion":8""", "3")).andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code").value("POINT_RESULT_CLIENT_REQUIRED"))
+        val portable = mvc.perform(request(""","acceptFormatVersion":8""")).andExpect(status().isOk)
+            .andExpect(jsonPath("$.formatVersion").value(8))
+            .andExpect(jsonPath("$.matches[0].approvedCompletions[0].insertions[0].id").value(actionId.toString()))
+            .andReturn().response.contentAsString
+        assertThat(portable).doesNotContain(draftAction.toString())
+        val before = Triple(matches.count(), teams.count(), players.count())
+        fun importRequest(body: String) = post("/api/v1/matches/import").contentType(MediaType.APPLICATION_JSON)
+            .header(POINT_LINEUPS_HEADER, "4").content(body)
+        mvc.perform(importRequest(portable))
+            .andExpect(status().isConflict).andExpect(jsonPath("$.code").value("POINT_COMPLETION_TRANSFER_IMPORT_DISABLED"))
+        mvc.perform(importRequest((mapper.readTree(portable) as ObjectNode).put("formatVersion", 7).toString()))
+            .andExpect(status().isBadRequest)
+        val mismatched = mapper.readTree(portable)
+        (mismatched["matches"][0]["events"][0] as ObjectNode).put("teamId", away.id.toString())
+        mvc.perform(importRequest(mismatched.toString())).andExpect(status().isBadRequest)
         assertThat(Triple(matches.count(), teams.count(), players.count())).isEqualTo(before)
     }
 

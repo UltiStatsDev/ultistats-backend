@@ -1,5 +1,6 @@
 package com.github.mihanizzm.ultistats.transfer
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.github.mihanizzm.ultistats.model.*
 import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.model.events.PointTimeline
@@ -7,6 +8,7 @@ import com.github.mihanizzm.ultistats.model.events.StoredEvent
 import com.github.mihanizzm.ultistats.repository.jpa.*
 import com.github.mihanizzm.ultistats.service.MatchAnnouncementService
 import com.github.mihanizzm.ultistats.service.MatchService
+import com.github.mihanizzm.ultistats.service.PointCompletionHistoryService
 import com.github.mihanizzm.ultistats.service.PointLineupClient
 import com.github.mihanizzm.ultistats.service.PointLineupProblemCode
 import com.github.mihanizzm.ultistats.service.PointLineupRejectedException
@@ -34,6 +36,9 @@ class MatchTransferService(
     private val possessionChangeWrites: PossessionChangeWrites,
     private val validator: MatchTransferValidator,
     private val lineups: PointLineupRepository,
+    private val approvals: PointCompletionApprovalRepository,
+    private val completionHistory: PointCompletionHistoryService,
+    private val json: ObjectMapper,
     @Value("\${ultistats.point-results.write-enabled:false}") private val pointResultWritesEnabled: Boolean,
     @Value("\${ultistats.point-lineups.write-enabled:false}") private val pointLineupWritesEnabled: Boolean,
     @Value("\${ultistats.point-substitutions.write-enabled:false}") private val substitutionWritesEnabled: Boolean,
@@ -41,7 +46,10 @@ class MatchTransferService(
 ) {
     /** All queries see one source snapshot, even while an in-progress match changes. */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    fun export(matchIds: List<UUID>, client: PointLineupClient): MatchTransferPackage {
+    fun export(matchIds: List<UUID>, client: PointLineupClient, acceptFormatVersion: Int? = null): MatchTransferPackage {
+        if (acceptFormatVersion != null && acceptFormatVersion != APPROVED_COMPLETION_TRANSFER_VERSION) {
+            throw InvalidMatchTransferException("acceptFormatVersion", "Expected 8 or an omitted field")
+        }
         if (matchIds.isEmpty() || matchIds.distinct().size != matchIds.size) {
             throw InvalidMatchTransferException("matchIds", "Select at least one match, without duplicate IDs")
         }
@@ -52,6 +60,17 @@ class MatchTransferService(
             val journal = events.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(id)
             if (!client.supportsPointResults && journal.any { it.eventType == EventType.POINT_RESULT }) {
                 throw PointResultClientRequiredException()
+            }
+            val approved = if (acceptFormatVersion == APPROVED_COMPLETION_TRANSFER_VERSION) {
+                completionHistory.transferableApprovals(match, journal.map {
+                    StoredEvent(it.id, it.sequenceNumber, it.toDomain())
+                })
+            } else {
+                if (approvals.exists(id)) throw TransferConflictException(MatchProblem(
+                    MatchProblemCode.POINT_COMPLETION_TRANSFER_CLIENT_REQUIRED, "Approved completion transfer required",
+                    "Exporting approved completions requires capability 4 and acceptFormatVersion 8",
+                ))
+                emptyList()
             }
             PortableMatch(
                 id, match.playersPerTeam, match.plannedStartTimestamp, match.effectiveStartedAt, match.effectiveEndedAt,
@@ -69,6 +88,7 @@ class MatchTransferService(
                     PortableAnnouncement(it.id, it.teamId, it.startedAt, it.endedAt)
                 },
                 exportLineups(match, snapshotTeams.map { it.teamId }, journal),
+                approved.takeIf { it.isNotEmpty() },
             )
         }
         val sourceTeams = portableMatches.flatMap { it.teams }.distinctBy { it.teamId }
@@ -94,9 +114,32 @@ class MatchTransferService(
     @Transactional
     fun importPackage(data: MatchTransferPackage, client: PointLineupClient): MatchTransferResult {
         validator.validate(data)
+        if (data.formatVersion >= POINT_RESULT_TRANSFER_VERSION && !client.supportsPointResults) {
+            throw PointResultClientRequiredException()
+        }
+        if (data.formatVersion == APPROVED_COMPLETION_TRANSFER_VERSION) {
+            throw TransferConflictException(MatchProblem(
+                MatchProblemCode.POINT_COMPLETION_TRANSFER_IMPORT_DISABLED, "Approved completion import disabled",
+                "Public import of approved completions is unavailable",
+            ))
+        }
+        requireLegacyWrites(data)
+        return copyPackage(data)
+    }
+
+    /** Internal recovery entry point. Admission of approved packages over HTTP requires mutation guards. */
+    @Transactional(rollbackFor = [Exception::class])
+    internal fun recoverApprovedPackage(data: MatchTransferPackage): MatchTransferResult {
+        if (data.formatVersion != APPROVED_COMPLETION_TRANSFER_VERSION) {
+            throw InvalidMatchTransferException("formatVersion", "Approved recovery requires format 8")
+        }
+        validator.validate(data)
+        return copyPackage(data)
+    }
+
+    private fun requireLegacyWrites(data: MatchTransferPackage) {
         if (data.formatVersion == POINT_RESULT_TRANSFER_VERSION) {
-            if (!client.supportsPointResults) throw PointResultClientRequiredException()
-            if (!pointResultWritesEnabled) throw TransferWriteDisabledException(MatchProblem(
+            if (!pointResultWritesEnabled) throw TransferConflictException(MatchProblem(
                 MatchProblemCode.POINT_RESULT_WRITE_DISABLED, "Point result writes disabled",
                 "Importing POINT_RESULT requires point result writes to be enabled",
             ))
@@ -113,7 +156,7 @@ class MatchTransferService(
         }
         if (data.matches.containsPossessionChanges()) {
             possessionChangeWrites.rejection(EventType.POSSESSION_SET)?.let {
-                throw TransferWriteDisabledException(it)
+                throw TransferConflictException(it)
             }
         }
         if (data.matches.any { it.announcements.isNotEmpty() }) announcementService.requireNewIntervalsEnabled()
@@ -122,6 +165,9 @@ class MatchTransferService(
                 PointLineupProblemCode.POINT_LINEUP_WRITE_DISABLED, "Point lineup writes are disabled",
             )
         }
+    }
+
+    private fun copyPackage(data: MatchTransferPackage): MatchTransferResult {
         val matchIds = freshIds(data.matches.map { it.id })
         val teamIds = freshIds(data.teams.map { it.id })
         val playerIds = freshIds(data.players.map { it.id })
@@ -172,6 +218,7 @@ class MatchTransferService(
                     interval.id, interval.teamId?.let(teamIds::getValue), interval.startedAt, interval.endedAt,
                 ))
             }
+            insertApprovals(source, id, journal, eventIds, actors)
             matchService.recalculateScore(id)
         }
         return MatchTransferResult(matchIds, teamIds, playerIds, eventIds, participantIds)
@@ -246,10 +293,31 @@ class MatchTransferService(
         }
     }
 
+    private fun insertApprovals(
+        source: PortableMatch, matchId: UUID, journal: List<StoredEvent>,
+        eventIds: Map<UUID, UUID>, actorIds: Map<UUID, UUID>,
+    ) {
+        val approved = source.approvedCompletions ?: return
+        val destinationPoints = PointTimeline.from(matchId, source.status, journal).associateBy { it.closingEventId }
+        for (snapshot in approved) {
+            val marker = eventIds.getValue(snapshot.closingEventId)
+            val pointId = destinationPoints.getValue(marker).pointId
+            val insertions = snapshot.insertions.map { action ->
+                action.copy(
+                    id = UUID.randomUUID(),
+                    afterEventId = action.afterEventId?.let(eventIds::getValue),
+                    fromActorId = actorIds.getValue(action.fromActorId),
+                    toActorId = action.toActorId?.let(actorIds::getValue),
+                )
+            }
+            approvals.insert(matchId, StoredPointApproval(pointId, marker, json.writeValueAsString(insertions)))
+        }
+    }
+
     private fun freshIds(ids: List<UUID>): Map<UUID, UUID> = ids.associateWith { UUID.randomUUID() }
 }
 
-class TransferWriteDisabledException(val problem: MatchProblem) : RuntimeException(problem.detail)
+class TransferConflictException(val problem: MatchProblem) : RuntimeException(problem.detail)
 
 class ExportPointLineupUnsupportedException(id: UUID) :
     RuntimeException("Match $id has a live temporary actor outside its exportable point lineup")
