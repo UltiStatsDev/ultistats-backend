@@ -20,7 +20,7 @@ class EventSequencePolicy {
         }
     }
 
-    private fun transition(
+    internal fun transition(
         state: EventSequenceState,
         type: EventType,
     ): EventSequenceState? = when (state) {

@@ -71,6 +71,7 @@ class PointLineupService(
             starterCorrectionsWriteEnabled = writesEnabled,
             pointResultsReadSupported = true,
             pointResultsWriteEnabled = pointResultWritesEnabled,
+            pointCompletionDraftsReadSupported = true,
             points = points.map { point ->
                 val pointJournal = byPoint[point.pointId].orEmpty()
                 val slots = activeSlots(introduced[point.pointId].orEmpty().map { it.slot }, pointJournal)

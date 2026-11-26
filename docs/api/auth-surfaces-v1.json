@@ -436,6 +436,22 @@
       "line": 30
     },
     {
+      "method": "GET",
+      "path": "/api/v1/matches/{matchId}/point-lineups/{pointId}/completion-draft",
+      "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PointCompletionDraftController.kt",
+      "line": 31
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/matches/{matchId}/point-lineups/{pointId}/completion-draft",
+      "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PointCompletionDraftController.kt",
+      "line": 39
+    },
+    {
       "method": "PATCH",
       "path": "/api/v1/matches/{matchId}/point-lineups/{pointId}/slots/{slotId}",
       "policy": "SPORTS_WRITE",
