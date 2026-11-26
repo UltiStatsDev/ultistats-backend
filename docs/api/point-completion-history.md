@@ -16,3 +16,18 @@ A null anchor places the restored action at the start of its point. Other anchor
 The top-level `lastSequenceNumber` and `logRevision` are the append synchronization cursor. They retain their v2 meanings, including deleted events in `lastSequenceNumber`. Display positions may change once a completion is approved and cannot be used as append cursors. `GET /api/v2/matches/{matchId}/events?view=append` returns the original v2 cursor and active append rows. It labels the response with `X-UltiStats-Event-View: append`.
 
 For a match with approved rows, the default v1 event collection and v2 journal return 409 `POINT_COMPLETION_HISTORY_REQUIRED` after existing client capability checks pass. An invalid approved snapshot returns 409 `POINT_COMPLETION_HISTORY_CONFLICT` on v3. A missing match returns 404. With no approved rows, v1 and default v2 retain their usual behavior. Individual v1 original-event lookups keep their existing contract.
+
+## Statistics and OBS
+
+Statistics, its ZIP export, and OBS postmatch and leader reads use the same
+approved order as v3. Restored actions count toward the participating players
+and their teams. A restored goal or Callahan credits the named players and
+counts the underlying action. The canonical marker alone counts the team
+score and evaluates the break using the observed pulling team.
+
+Timing uses adjacent observations with known times. A missing offset interrupts
+measurement and an explicit zero is the start of the match. A known restored
+goal or Callahan can end a measured hold and start the time between points.
+A result marker supplies no gameplay time in the approved projection.
+Matches without approvals retain their existing statistics. The scoreboard
+uses the canonical score and the protected live event log uses the append journal.
