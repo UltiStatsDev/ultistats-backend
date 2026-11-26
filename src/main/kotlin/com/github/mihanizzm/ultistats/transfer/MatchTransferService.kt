@@ -111,23 +111,32 @@ class MatchTransferService(
         ).also(validator::validate)
     }
 
-    @Transactional
-    fun importPackage(data: MatchTransferPackage, client: PointLineupClient): MatchTransferResult {
-        validator.validate(data)
+    @Transactional(rollbackFor = [Exception::class])
+    fun importPackage(data: MatchTransferPackage, client: PointLineupClient, acceptFormatVersion: Int? = null): MatchTransferResult {
+        if (acceptFormatVersion != null && acceptFormatVersion != APPROVED_COMPLETION_TRANSFER_VERSION) {
+            throw InvalidMatchTransferException("acceptFormatVersion", "Expected 8 or an omitted parameter")
+        }
+        val allowApproval = client.supportsPointResults && pointResultWritesEnabled &&
+            acceptFormatVersion == APPROVED_COMPLETION_TRANSFER_VERSION
+        validator.validate(data, validateApprovedPreviews = allowApproval)
         if (data.formatVersion >= POINT_RESULT_TRANSFER_VERSION && !client.supportsPointResults) {
             throw PointResultClientRequiredException()
         }
         if (data.formatVersion == APPROVED_COMPLETION_TRANSFER_VERSION) {
-            throw TransferConflictException(MatchProblem(
+            if (acceptFormatVersion != APPROVED_COMPLETION_TRANSFER_VERSION) throw TransferConflictException(MatchProblem(
+                MatchProblemCode.POINT_COMPLETION_TRANSFER_CLIENT_REQUIRED, "Approved completion transfer required",
+                "Importing approved completions requires capability 4 and acceptFormatVersion=8",
+            ))
+            if (!pointResultWritesEnabled) throw TransferConflictException(MatchProblem(
                 MatchProblemCode.POINT_COMPLETION_TRANSFER_IMPORT_DISABLED, "Approved completion import disabled",
-                "Public import of approved completions is unavailable",
+                "Importing approved point completions requires enabled point result writes",
             ))
         }
         requireLegacyWrites(data)
         return copyPackage(data)
     }
 
-    /** Internal recovery entry point. Admission of approved packages over HTTP requires mutation guards. */
+    /** Internal recovery preserves approved snapshots previously accepted by structural validation. */
     @Transactional(rollbackFor = [Exception::class])
     internal fun recoverApprovedPackage(data: MatchTransferPackage): MatchTransferResult {
         if (data.formatVersion != APPROVED_COMPLETION_TRANSFER_VERSION) {
@@ -144,7 +153,9 @@ class MatchTransferService(
                 "Importing POINT_RESULT requires point result writes to be enabled",
             ))
         }
-        if (data.matches.containsSubstitutions() && !substitutionWritesEnabled) {
+        val restoredTypes = data.matches.flatMap { it.approvedCompletions.orEmpty() }
+            .flatMap { it.insertions }.map { it.type.eventType() }.toSet()
+        if ((data.matches.containsSubstitutions() || EventType.PLAYER_SUBSTITUTION in restoredTypes) && !substitutionWritesEnabled) {
             throw PointLineupRejectedException(
                 PointLineupProblemCode.POINT_SUBSTITUTION_WRITE_DISABLED, "Point substitution writes are disabled",
             )
@@ -154,7 +165,7 @@ class MatchTransferService(
                 PointLineupProblemCode.POINT_SUBSTITUTION_WRITE_DISABLED, "Incoming reserve writes are disabled",
             )
         }
-        if (data.matches.containsPossessionChanges()) {
+        if (data.matches.containsPossessionChanges() || EventType.POSSESSION_SET in restoredTypes) {
             possessionChangeWrites.rejection(EventType.POSSESSION_SET)?.let {
                 throw TransferConflictException(it)
             }

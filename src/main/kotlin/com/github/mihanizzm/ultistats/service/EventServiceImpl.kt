@@ -72,6 +72,7 @@ class EventServiceImpl(
     private val pointLineups: PointLineupEventPolicy,
     private val announcements: MatchAnnouncementRepository,
     private val completionApprovals: PointCompletionApprovalRepository,
+    private val completionHistory: PointCompletionHistoryService,
     private val clock: Clock,
     @Value("\${ultistats.point-results.write-enabled:false}") private val pointResultWritesEnabled: Boolean,
 ) : EventService {
@@ -435,6 +436,9 @@ class EventServiceImpl(
         val active = activeEvents(matchId).map { it.toStored() }
         val lineup = pointLineups.journal(matchId)
         lineup?.validateWrite(match, active.takeWhile { it.id != eventId }, event, append = false)
+        completionHistory.mutationConflict(match, active, existing.toStored(), event)?.let {
+            return EventCommandResult.Conflict(it)
+        }
         val proposed = active.map { if (it.id == eventId) it.copy(event = event) else it }
         lineup?.validateSubstitutionEdit(match, active, proposed)
         lineup?.validateRemainingSlots(match, proposed)
@@ -548,6 +552,9 @@ class EventServiceImpl(
         val matchId = match.id
         lifecyclePolicy.validateEventDeletion(match).toCommandRejection()?.let { return it }
         val active = activeEvents(matchId).map { it.toStored() }
+        completionHistory.mutationConflict(match, active, existing.toStored(), replacement = null)?.let {
+            return EventCommandResult.Conflict(it)
+        }
         val proposed = active.filterNot { it.id == existing.id }
         pointLineups.journal(matchId)?.let { lineup ->
             lineup.validateSubstitutionEdit(match, active, proposed)

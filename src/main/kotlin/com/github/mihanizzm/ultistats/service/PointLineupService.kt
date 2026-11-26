@@ -29,6 +29,7 @@ import com.github.mihanizzm.ultistats.model.events.afterSubstitution
 import com.github.mihanizzm.ultistats.model.events.substitutions
 import com.github.mihanizzm.ultistats.realtime.MatchRealtimePublisher
 import com.github.mihanizzm.ultistats.repository.jpa.IntroducedPointSlot
+import com.github.mihanizzm.ultistats.repository.jpa.PointCompletionApprovalRepository
 import com.github.mihanizzm.ultistats.repository.jpa.PointLineupRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataEventRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchParticipantRepository
@@ -51,6 +52,7 @@ class PointLineupService(
     private val events: SpringDataEventRepository,
     private val lineups: PointLineupRepository,
     private val policy: PointLineupEventPolicy,
+    private val completionApprovals: PointCompletionApprovalRepository,
     private val clock: Clock,
     private val sequencePolicy: EventSequencePolicy,
     private val realtimePublisher: MatchRealtimePublisher,
@@ -73,7 +75,7 @@ class PointLineupService(
             pointResultsWriteEnabled = pointResultWritesEnabled,
             pointCompletionDraftsReadSupported = true,
             pointCompletionHistoryReadSupported = true,
-            pointCompletionApprovalWriteEnabled = false,
+            pointCompletionApprovalWriteEnabled = pointResultWritesEnabled,
             points = points.map { point ->
                 val pointJournal = byPoint[point.pointId].orEmpty()
                 val slots = activeSlots(introduced[point.pointId].orEmpty().map { it.slot }, pointJournal)
@@ -156,6 +158,7 @@ class PointLineupService(
     ): PointStarterCorrectionResponse? {
         val match = matches.findByIdForUpdate(matchId) ?: return null
         val (point, correction, pointJournal, slots) = prepareStarterCorrection(match, pointId, request, client)
+        protectApprovedPoint(matchId, pointId)
         lineups.replaceStarter(matchId, pointId, request.fromParticipantId, request.toParticipantId)
         events.saveAll(correction.changedRows.values)
         match.eventLogRevision++
@@ -280,6 +283,7 @@ class PointLineupService(
             }
         }
 
+        protectApprovedPoint(matchId, pointId)
         lineups.identifySlot(matchId, pointId, slotId, candidateId)
         val updated = saved.copy(revision = saved.revision + 1, teams = saved.teams.map {
             if (it == team) team.copy(entries = team.entries.map { entry ->
@@ -289,6 +293,10 @@ class PointLineupService(
         return point.toResponse(updated, replacements, introduced.map {
             if (it.slotId == slotId) it.copy(resolvedParticipantId = candidateId) else it
         })
+    }
+
+    private fun protectApprovedPoint(matchId: UUID, pointId: UUID) {
+        if (completionApprovals.exists(matchId, pointId)) throw PointCompletionHistoryRejected(approvedMutationProblem())
     }
 
     private fun editNext(

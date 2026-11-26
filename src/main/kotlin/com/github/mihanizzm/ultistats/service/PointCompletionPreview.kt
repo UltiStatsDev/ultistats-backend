@@ -1,20 +1,79 @@
 package com.github.mihanizzm.ultistats.service
 
+import com.github.mihanizzm.ultistats.dto.request.PointCompletionInsertion
+import com.github.mihanizzm.ultistats.dto.response.EventResponse
 import com.github.mihanizzm.ultistats.dto.response.OnePlayerEventResponse
 import com.github.mihanizzm.ultistats.dto.response.PointCompletionDiagnostic
 import com.github.mihanizzm.ultistats.dto.response.PointCompletionDiagnosticCode
 import com.github.mihanizzm.ultistats.dto.response.PointCompletionDiagnosticCode.*
 import com.github.mihanizzm.ultistats.dto.response.PointCompletionPreviewEntry
 import com.github.mihanizzm.ultistats.dto.response.TwoPlayerEventResponse
+import com.github.mihanizzm.ultistats.model.Match
+import com.github.mihanizzm.ultistats.model.MatchParticipant
 import com.github.mihanizzm.ultistats.model.MatchParticipantKind
+import com.github.mihanizzm.ultistats.model.PointLineup
+import com.github.mihanizzm.ultistats.model.PointSubstitutionSlot
 import com.github.mihanizzm.ultistats.model.PointLineupTemporary
 import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.model.events.EventType.*
 import com.github.mihanizzm.ultistats.model.events.actorId
+import com.github.mihanizzm.ultistats.model.events.PointBoundary
+import com.github.mihanizzm.ultistats.model.events.StoredEvent
+import com.github.mihanizzm.ultistats.model.events.scoringTeam
+import com.github.mihanizzm.ultistats.repository.jpa.IntroducedPointSlot
+import com.github.mihanizzm.ultistats.repository.jpa.PointLineupSlotActor
 import com.github.mihanizzm.ultistats.validation.event.EventSequencePolicy
 import com.github.mihanizzm.ultistats.validation.event.EventSequenceState
 import java.time.Duration
+import java.time.Instant
 import java.util.UUID
+
+internal data class CompletionPoint(
+    val match: Match,
+    val pointId: UUID,
+    val marker: StoredEvent,
+    val source: List<StoredEvent>,
+    val firstPoint: Boolean,
+    val priorActionTime: Instant?,
+    val nextActionTime: Instant?,
+    val previousScoringTeam: UUID?,
+    val lineup: PointLineup?,
+    val roster: List<MatchParticipant>,
+    val introduced: Map<UUID, PointSubstitutionSlot>,
+    val actorTeams: Map<UUID, UUID>,
+)
+
+internal fun completionPoint(
+    match: Match, point: PointBoundary, journal: List<StoredEvent>, roster: List<MatchParticipant>,
+    lineup: PointLineup?, introduced: List<IntroducedPointSlot>, slots: Map<UUID, PointLineupSlotActor>,
+): CompletionPoint? {
+    val opening = journal.indexOfFirst { it.id == point.openingEventId }
+    val closing = journal.indexOfFirst { it.id == point.closingEventId }
+    val marker = journal.getOrNull(closing)?.takeIf { it.event.type == POINT_RESULT } ?: return null
+    val source = journal.subList(opening + 1, closing)
+    val sourceIds = source.mapTo(mutableSetOf()) { it.id }
+    val pointSlots = introduced.filter { it.pointId == point.pointId && it.slot.introducedByEventId in sourceIds }
+        .associate { it.slot.slotId to it.slot }
+    val rosterTeams = roster.associate { it.participantId to it.teamId }
+    val starters = lineup?.teams.orEmpty().flatMap { team ->
+        team.entries.filterIsInstance<PointLineupTemporary>().map { it.slotId to team.teamId }
+    }.toMap()
+    val previousScore = journal.getOrNull(opening)?.event?.scoringTeam { rosterTeams[it] ?: slots[it]?.teamId }
+    val before = journal.subList(0, opening + 1).lastOrNull { it.event.type != POINT_RESULT }
+    val after = journal.subList(closing + 1, journal.size).firstOrNull { it.event.type != POINT_RESULT }
+    return CompletionPoint(
+        match, point.pointId, marker, source, opening < 0, before?.event?.occurredAt, after?.event?.occurredAt, previousScore,
+        lineup, roster, pointSlots, rosterTeams + starters + pointSlots.mapValues { it.value.teamId },
+    )
+}
+
+internal fun completionPreview(point: CompletionPoint, grouped: Map<UUID?, List<PointCompletionInsertion>>) = buildList {
+    grouped[null].orEmpty().forEach { add(PointCompletionPreviewEntry(insertion = it)) }
+    for (event in point.source) {
+        add(PointCompletionPreviewEntry(original = EventResponse.from(event)))
+        grouped[event.id].orEmpty().forEach { add(PointCompletionPreviewEntry(insertion = it)) }
+    }
+}
 
 internal fun validateCompletionPreview(
     policy: EventSequencePolicy,
@@ -76,6 +135,9 @@ internal fun validateCompletionPreview(
         }
         val fromTeam = point.actorTeams[from]
         val toTeam = point.actorTeams[to]
+        if ((from != null && fromTeam == null) || (to != null && toTeam == null)) {
+            report(ACTOR_UNAVAILABLE, "An actor is not a match participant or an active slot of this point")
+        }
         if (to != null && fromTeam != null && toTeam != null &&
             (type in sameTeamActions) != (fromTeam == toTeam)) {
             report(ACTOR_TEAM_CONFLICT, "Actors must respect the team relationship for ${type.name}")

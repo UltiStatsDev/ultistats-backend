@@ -34,3 +34,43 @@ A 200 save increments only the draft revision. A well-typed candidate can be sav
 A later GET can report `DRAFT_BASE_STALE` when the journal or lineup changed since the save. The response retains all saved insertions. An unavailable anchor or actor, or an insertion UUID subsequently used by the journal, is diagnosed and omitted from the preview. To save again, review the candidate and use the current revisions. A retired point or replaced closing marker cannot receive the saved draft, and the stored draft stays bound to its original closing marker.
 
 Malformed shapes, invalid references and unsupported types return 400 `INVALID_REQUEST`. A missing match returns 404. A 409 can report `POINT_RESULT_CLIENT_REQUIRED`, `POINT_RESULT_WRITE_DISABLED`, `MATCH_NOT_FINISHED`, `POINT_COMPLETION_DRAFT_CONFLICT` (point or closing marker), `EVENT_LOG_STALE` (journal), or `POINT_COMPLETION_DRAFT_STALE` (lineup or draft).
+
+## Approve a saved draft
+
+Send `PUT /api/v1/matches/{matchId}/point-lineups/{pointId}/completion-draft/approval`
+with capability 4, SPORTS_WRITE and CSRF. The command uses the default-off
+`ultistats.point-results.write-enabled` setting, advertised by
+`pointCompletionApprovalWriteEnabled` in the point-lineups response.
+
+Send these fields from the saved draft response and a generated operation UUID.
+
+| Field | Value |
+| --- | --- |
+| `operationId` | UUID scoped to this match and approval command. |
+| `expectedClosingEventId` | Canonical active POINT_RESULT UUID. |
+| `expectedLogRevision` | Observed journal revision. |
+| `expectedLineupRevision` | Observed lineup revision or explicit null. |
+| `expectedDraftRevision` | Positive saved draft revision. |
+
+A 200 response returns `operationId`, `pointId`, `closingEventId`,
+`draftRevision`, `logRevision`, `lastSequenceNumber`, and `replayed`.
+The approval advances the journal revision once. Original events, the team
+score and the append cursor retain their values. Fetch the complete history
+from v3 after success. An exact authorized retry returns the original
+receipt with `replayed: true`, including when the writer is disabled.
+A changed payload with an accepted operation UUID returns 409
+`EVENT_IDEMPOTENCY_CONFLICT`.
+
+A stale log or draft returns `EVENT_LOG_STALE` or
+`POINT_COMPLETION_DRAFT_STALE`. An invalid or incomplete candidate returns
+409 `POINT_COMPLETION_APPROVAL_CONFLICT` and `diagnostics` in the same shape
+as draft preview. A mismatched scoring side has diagnostic
+`SCORING_TEAM_CONFLICT`. The operator can revise the saved draft and retry
+approval with current revisions. Restored action IDs must be unique within
+the match and distinct from its active and retired append IDs.
+
+Changes to an approved source segment, its opening identity or its lineup
+that would rewrite the certified history return 409
+`POINT_COMPLETION_APPROVAL_LOCKED`. Generic edits and undo keep their
+existing behavior on unrelated points. Approval sends a neutral match
+invalidation without a live gameplay event.

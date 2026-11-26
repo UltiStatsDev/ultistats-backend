@@ -10,6 +10,8 @@ import com.github.mihanizzm.ultistats.dto.response.PointCompletionHistoryRespons
 import com.github.mihanizzm.ultistats.dto.response.ProjectedEvent
 import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.model.MatchStatus
+import com.github.mihanizzm.ultistats.model.events.Event
+import com.github.mihanizzm.ultistats.model.events.scoringTeam
 import com.github.mihanizzm.ultistats.model.events.EventCategory
 import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.model.events.PointBoundary
@@ -96,6 +98,32 @@ class PointCompletionHistoryService(
         }
         return snapshots.sortedBy { points.getValue(it.pointId).number } to restored
     }
+
+    // Callers hold the match lock. The source segment stays certified, including its opening identity.
+    internal fun mutationConflict(match: Match, journal: List<StoredEvent>, original: StoredEvent,
+                                  replacement: Event?): MatchProblem? {
+        if (replacement == original.event) return null
+        val approvedIds = approvals.pointIds(match.id)
+        if (approvedIds.isEmpty()) return null
+        val points = PointTimeline.from(match.id, match.status, journal)
+        val byPoint = PointTimeline.eventsByPoint(points, journal)
+        val touchesApproval = points.any { point ->
+            point.pointId in approvedIds && (byPoint[point.pointId].orEmpty().any { it.id == original.id } ||
+                (point.openingEventId == original.id && (replacement == null ||
+                    openingScoreChanged(match.id, original.event, replacement))))
+        }
+        return if (touchesApproval) approvedMutationProblem() else null
+    }
+
+    private fun openingScoreChanged(matchId: UUID, before: Event, after: Event): Boolean {
+        val roster = participants.findAllByMatchId(matchId).associate { it.participantId to it.teamId }
+        val slots = lineups.slots(matchId)
+        val teamOf: (UUID) -> UUID? = { roster[it] ?: slots[it]?.teamId }
+        return before.scoringTeam(teamOf) != after.scoringTeam(teamOf)
+    }
+
+    internal fun restoredIds(matchId: UUID): Set<UUID> =
+        approvals.findAll(matchId).flatMap { decode(it).insertions }.mapTo(mutableSetOf()) { it.id }
 
     private fun decode(stored: StoredPointApproval): ApprovedPointCompletion {
         val insertions: List<PointCompletionInsertion?>? = try {
@@ -184,3 +212,9 @@ internal sealed interface CompletionHistoryEntry {
 }
 
 class PointCompletionHistoryRejected(val problem: MatchProblem) : RuntimeException(problem.detail)
+
+internal fun approvedMutationProblem() = MatchProblem(
+    MatchProblemCode.POINT_COMPLETION_APPROVAL_LOCKED,
+    "Approved point protected",
+    "This change would alter a point or boundary used by an approved completion",
+)

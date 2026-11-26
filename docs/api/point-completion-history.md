@@ -2,7 +2,7 @@
 
 Use `GET /api/v3/matches/{matchId}/events` for the complete ordered history. The endpoint uses the same public sports-read policy as the v1/v2 journals and the same `X-UltiStats-Point-Lineups` capability header. A history with a `POINT_RESULT` requires capability 4.
 
-Feature discovery is available on `GET /api/v1/matches/{matchId}/point-lineups`. `pointCompletionHistoryReadSupported: true` advertises the v3 endpoint. `pointCompletionApprovalWriteEnabled: false` indicates that this server has no approval command. Draft save availability still follows `pointResultsWriteEnabled`.
+Feature discovery is available on `GET /api/v1/matches/{matchId}/point-lineups`. `pointCompletionHistoryReadSupported: true` advertises the v3 endpoint. `pointCompletionApprovalWriteEnabled` advertises the current setting for fresh approval writes. Draft save availability still follows `pointResultsWriteEnabled`.
 
 The response contains `entries` in display order. Each entry has a one-based `position` in the returned history and a `kind`.
 
