@@ -109,7 +109,7 @@ class MatchTransferControllerTest {
     }
 
     @Test
-    fun `approved transfer requires explicit v8 opt in and public import is closed`() {
+    fun `approved transfer requires explicit v8 opt in and the default off writer blocks import`() {
         fixtures.start(match.id, start)
         fixtures.addEvent(TeamEvent(home.id, start.plusSeconds(1), EventType.POINT_RESULT), match.id)
         fixtures.end(match.id, start.plusSeconds(2))
@@ -149,6 +149,8 @@ class MatchTransferControllerTest {
         fun importRequest(body: String) = post("/api/v1/matches/import").contentType(MediaType.APPLICATION_JSON)
             .header(POINT_LINEUPS_HEADER, "4").content(body)
         mvc.perform(importRequest(portable))
+            .andExpect(status().isConflict).andExpect(jsonPath("$.code").value("POINT_COMPLETION_TRANSFER_CLIENT_REQUIRED"))
+        mvc.perform(importRequest(portable).param("acceptFormatVersion", "8"))
             .andExpect(status().isConflict).andExpect(jsonPath("$.code").value("POINT_COMPLETION_TRANSFER_IMPORT_DISABLED"))
         mvc.perform(importRequest((mapper.readTree(portable) as ObjectNode).put("formatVersion", 7).toString()))
             .andExpect(status().isBadRequest)

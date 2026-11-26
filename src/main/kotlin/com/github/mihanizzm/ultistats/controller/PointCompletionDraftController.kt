@@ -1,7 +1,7 @@
 package com.github.mihanizzm.ultistats.controller
 
 import com.github.mihanizzm.ultistats.dto.request.PutPointCompletionDraftRequest
-import com.github.mihanizzm.ultistats.dto.response.PointCompletionDraftResponse
+import com.github.mihanizzm.ultistats.dto.request.PutPointCompletionApprovalRequest
 import com.github.mihanizzm.ultistats.service.PointCompletionDraftRejected
 import com.github.mihanizzm.ultistats.service.PointCompletionDraftService
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
@@ -45,14 +45,25 @@ class PointCompletionDraftController(private val drafts: PointCompletionDraftSer
     fun put(@PathVariable matchId: UUID, @PathVariable pointId: UUID, @RequestBody body: PutPointCompletionDraftRequest,
             request: HttpServletRequest) = respond(drafts.save(matchId, pointId, body, request.pointLineupClient()))
 
-    private fun respond(draft: PointCompletionDraftResponse?): ResponseEntity<PointCompletionDraftResponse> =
-        if (draft == null) ResponseEntity.notFound().cacheControl(CacheControl.noStore()).build()
-        else ResponseEntity.ok().cacheControl(CacheControl.noStore()).varyBy(POINT_LINEUPS_HEADER).body(draft)
+    @PutMapping("/approval", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PointResultCommand
+    @Operation(summary = "Approve the saved completion of a finished point",
+        description = "Requires SPORTS_WRITE, CSRF and capability 4. Exact accepted requests can be replayed with writes disabled.",
+        parameters = [Parameter(name = POINT_LINEUPS_HEADER, `in` = ParameterIn.HEADER, required = true,
+            schema = Schema(type = "string", allowableValues = ["4"]))])
+    fun approve(@PathVariable matchId: UUID, @PathVariable pointId: UUID, @RequestBody body: PutPointCompletionApprovalRequest,
+                request: HttpServletRequest) = respond(drafts.approve(matchId, pointId, body, request.pointLineupClient()))
+
+    private fun <T> respond(result: T?): ResponseEntity<T> =
+        if (result == null) ResponseEntity.notFound().cacheControl(CacheControl.noStore()).build()
+        else ResponseEntity.ok().cacheControl(CacheControl.noStore()).varyBy(POINT_LINEUPS_HEADER).body(result)
 
     @ExceptionHandler(PointCompletionDraftRejected::class)
     fun reject(error: PointCompletionDraftRejected, request: HttpServletRequest): ResponseEntity<ProblemDetail> {
         val status = if (error.problem.code == MatchProblemCode.INVALID_REQUEST) HttpStatus.BAD_REQUEST else HttpStatus.CONFLICT
         return ResponseEntity.status(status).cacheControl(CacheControl.noStore()).contentType(MediaType.APPLICATION_PROBLEM_JSON)
-            .body(error.problem.toProblemDetail(status, URI.create(request.requestURI)))
+            .body(error.problem.toProblemDetail(status, URI.create(request.requestURI)).apply {
+                if (error.diagnostics.isNotEmpty()) setProperty("diagnostics", error.diagnostics)
+            })
     }
 }

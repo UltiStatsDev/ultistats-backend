@@ -1,5 +1,7 @@
 package com.github.mihanizzm.ultistats.transfer
 
+import com.github.mihanizzm.ultistats.model.Match
+import com.github.mihanizzm.ultistats.model.MatchParticipant
 import com.github.mihanizzm.ultistats.model.MatchParticipantKind
 import com.github.mihanizzm.ultistats.model.MatchStatus
 import com.github.mihanizzm.ultistats.model.PointLineup
@@ -10,6 +12,9 @@ import com.github.mihanizzm.ultistats.model.events.*
 import com.github.mihanizzm.ultistats.repository.jpa.IntroducedPointSlot
 import com.github.mihanizzm.ultistats.repository.jpa.PointLineupSlotActor
 import com.github.mihanizzm.ultistats.service.ConfirmedJournal
+import com.github.mihanizzm.ultistats.service.completionPoint
+import com.github.mihanizzm.ultistats.service.completionPreview
+import com.github.mihanizzm.ultistats.service.validateCompletionPreview
 import com.github.mihanizzm.ultistats.service.PointLineupRejectedException
 import com.github.mihanizzm.ultistats.service.PointCompletionHistoryRejected
 import com.github.mihanizzm.ultistats.service.validateApprovedCompletions
@@ -21,7 +26,9 @@ import java.util.UUID
 /** Validates the entire graph without accessing or modifying the destination database. */
 @Component
 class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
-    fun validate(data: MatchTransferPackage) {
+    fun validate(data: MatchTransferPackage) = validate(data, validateApprovedPreviews = false)
+
+    internal fun validate(data: MatchTransferPackage, validateApprovedPreviews: Boolean) {
         val expectedVersion = data.matches.requiredFormatVersion()
         check(data.formatVersion == expectedVersion, "formatVersion",
             "Expected version $expectedVersion for the included active events, announcements, point lineups and approved completions")
@@ -46,10 +53,10 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
             text(player.firstName, "players[$i].firstName", 255)
             text(player.lastName, "players[$i].lastName", 255)
         }
-        data.matches.forEachIndexed { index, match -> validateMatch(match, "matches[$index]") }
+        data.matches.forEachIndexed { index, match -> validateMatch(match, "matches[$index]", validateApprovedPreviews) }
     }
 
-    private fun validateMatch(match: PortableMatch, path: String) {
+    private fun validateMatch(match: PortableMatch, path: String, validateApprovedPreviews: Boolean) {
         check(match.playersPerTeam >= 2, "$path.playersPerTeam", "Minimum is 2")
         check(match.teams.size == 2, "$path.teams", "Exactly two teams are required")
         unique(match.teams.map { it.teamId }, "$path.teams")
@@ -105,8 +112,8 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
         match.approvedCompletions?.let { approvals ->
             val approvalPath = "$path.approvedCompletions"
             check(approvals.isNotEmpty(), approvalPath, "Omit this field when there are no approved completions")
-            val points = PointTimeline.from(match.id, match.status, storedEvents)
-            val byOpening = points.associateBy { it.openingEventId }
+            val points = PointTimeline.from(match.id, match.status, storedEvents).associateBy { it.pointId }
+            val byOpening = points.values.associateBy { it.openingEventId }
             val slotActors = buildMap {
                 for (lineup in match.pointLineups) {
                     val point = byOpening.getValue(lineup.openingEventId)
@@ -121,10 +128,32 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
                 }
             }
             try {
-                validateApprovedCompletions(match.status, storedEvents, points.associateBy { it.pointId },
+                validateApprovedCompletions(match.status, storedEvents, points,
                     approvals, teamByParticipant, slotActors)
             } catch (error: PointCompletionHistoryRejected) {
                 fail(approvalPath, error.message.orEmpty())
+            }
+            if (validateApprovedPreviews) {
+                val roster = match.teams.flatMap { team -> team.participants.map {
+                    MatchParticipant(match.id, it.participantId, team.teamId, it.kind)
+                } }
+                val matchFacts = Match(match.id, match.teams.map { it.teamId }, playersPerTeam = match.playersPerTeam,
+                    startedAt = match.startedAt, endedAt = match.endedAt)
+                val startingLineups = match.pointLineups.associateBy { it.openingEventId }
+                val introduced = match.pointLineups.flatMap { lineup -> lineup.substitutionSlots.orEmpty().map {
+                    IntroducedPointSlot(byOpening.getValue(lineup.openingEventId).pointId, it.toDomain())
+                } }
+                approvals.forEachIndexed { index, approval ->
+                    val boundary = points.getValue(approval.pointId)
+                    val point = requireNotNull(completionPoint(matchFacts, boundary, storedEvents, roster,
+                        startingLineups[boundary.openingEventId]?.toDomainLineup(), introduced, slotActors))
+                    val preview = completionPreview(point, approval.insertions.groupBy { it.afterEventId })
+                    val diagnostics = validateCompletionPreview(sequencePolicy, point, (point.marker.event as TeamEvent).team, preview)
+                    if (diagnostics.isNotEmpty()) {
+                        val diagnostic = diagnostics.first()
+                        fail("$approvalPath[$index]", "${diagnostic.code}: ${diagnostic.detail}")
+                    }
+                }
             }
         }
     }
@@ -200,14 +229,7 @@ class MatchTransferValidator(private val sequencePolicy: EventSequencePolicy) {
             val opening = lineup.openingEventId
             check(opening in pointsByOpening && opening !in lineupsByOpening,
                 "$path.pointLineups[$index].openingEventId", "Expected a distinct canonical point boundary")
-            lineupsByOpening[opening] = PointLineup(revision = 1, teams = lineup.teams.map { team ->
-                PointLineupTeam(team.teamId, team.entries.map { entry ->
-                    when (entry) {
-                        is PortablePointLineupPlayer -> PointLineupPlayer(entry.participantId)
-                        is PortablePointLineupTemporary -> PointLineupTemporary(entry.slotId, entry.number, entry.resolvedParticipantId)
-                    }
-                })
-            })
+            lineupsByOpening[opening] = lineup.toDomainLineup()
             val pointId = pointsByOpening.getValue(opening).pointId
             introduced += validateIntroductions(lineup, pointId, eventsByPoint[pointId].orEmpty(), "$path.pointLineups[$index]")
         }
@@ -363,3 +385,12 @@ internal fun PortableEvent.toDomain(): Event = when (type.category) {
     EventCategory.ANNOUNCEMENT -> AnnouncementStartEvent(teamId, occurredAt)
     EventCategory.SYSTEM -> SystemEvent(occurredAt, type)
 }
+
+private fun PortablePointLineup.toDomainLineup() = PointLineup(revision = 1, teams = teams.map { team ->
+    PointLineupTeam(team.teamId, team.entries.map { entry ->
+        when (entry) {
+            is PortablePointLineupPlayer -> PointLineupPlayer(entry.participantId)
+            is PortablePointLineupTemporary -> PointLineupTemporary(entry.slotId, entry.number, entry.resolvedParticipantId)
+        }
+    })
+})

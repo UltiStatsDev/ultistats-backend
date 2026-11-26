@@ -19,13 +19,18 @@ requesting an approved match receives 409 `POINT_COMPLETION_TRANSFER_CLIENT_REQU
 with capability 4 or 409 `POINT_RESULT_CLIENT_REQUIRED` without it. Corrupt
 approved history fails with 409 `POINT_COMPLETION_HISTORY_CONFLICT` once negotiated.
 
-Public `POST /api/v1/matches/import` rejects valid v8 packages with 409
-`POINT_COMPLETION_TRANSFER_IMPORT_DISABLED`. Versions 1–7 keep their existing
-import gates. Internal recovery for isolated verification validates all
-matches against the existing approved-history integrity rules before
-inserting and creates independent copies in one transaction. Public
-admission requires the approval command's gameplay and timing checks and
-protection of the match data referenced by approved actions. It creates new match, team, participant, event, slot, point, and
+Use `POST /api/v1/matches/import?acceptFormatVersion=8` with capability 4
+and the version 8 package. The same default-off point-result flag controls
+fresh approval and v8 import. A missing opt-in returns 409
+`POINT_COMPLETION_TRANSFER_CLIENT_REQUIRED`. A negotiated v8 import with the
+writer off returns 409 `POINT_COMPLETION_TRANSFER_IMPORT_DISABLED`. The
+existing lineup, substitution, incoming reserve, possession and announcement
+gates apply to included features. The entire package must pass structural
+validation and the approval command's gameplay, participant, possession and
+timing checks before copying. Invalid packages return 400 `INVALID_REQUEST`.
+Versions 1–7 retain their import behavior.
+
+Import creates new match, team, participant, event, slot, point, and
 restored action identities. The new point is derived from the remapped opening
 boundary, and restored anchors and actors refer to remapped original events
 and raw slots or participants. Restored IDs belong to the match's approved
@@ -34,7 +39,6 @@ retired rows. Registration times, elapsed times and ordering are preserved.
 
 For operational backup and recovery, use the PostgreSQL logical snapshot and
 start the same or a newer compatible JAR with point-result and approval writes
-off. The logical snapshot preserves both approved and draft rows with their
-original identities. Earlier binaries must stay disconnected from databases
+off. The logical snapshot preserves approvals, approval receipts and drafts with their original identities. Earlier binaries must stay disconnected from databases
 containing approved records. V8 export, approved history and approved
 statistics remain readable with writes off.

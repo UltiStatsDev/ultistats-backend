@@ -1,25 +1,24 @@
 package com.github.mihanizzm.ultistats.service
 
-import com.github.mihanizzm.ultistats.dto.request.PointCompletionInsertion
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.github.mihanizzm.ultistats.dto.request.PutPointCompletionApprovalRequest
 import com.github.mihanizzm.ultistats.dto.request.PutPointCompletionDraftRequest
 import com.github.mihanizzm.ultistats.dto.response.EventResponse
+import com.github.mihanizzm.ultistats.dto.response.PointCompletionApprovalResponse
 import com.github.mihanizzm.ultistats.dto.response.PointCompletionDiagnostic
 import com.github.mihanizzm.ultistats.dto.response.PointCompletionDiagnosticCode.*
 import com.github.mihanizzm.ultistats.dto.response.PointCompletionDraft
 import com.github.mihanizzm.ultistats.dto.response.PointCompletionDraftResponse
-import com.github.mihanizzm.ultistats.dto.response.PointCompletionPreviewEntry
 import com.github.mihanizzm.ultistats.dto.response.TeamEventResponse
 import com.github.mihanizzm.ultistats.model.Match
-import com.github.mihanizzm.ultistats.model.MatchParticipant
 import com.github.mihanizzm.ultistats.model.MatchStatus
-import com.github.mihanizzm.ultistats.model.PointLineup
-import com.github.mihanizzm.ultistats.model.PointLineupTemporary
-import com.github.mihanizzm.ultistats.model.PointSubstitutionSlot
 import com.github.mihanizzm.ultistats.model.events.EventCategory
-import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.model.events.PointTimeline
 import com.github.mihanizzm.ultistats.model.events.StoredEvent
-import com.github.mihanizzm.ultistats.model.events.scoringTeam
+import com.github.mihanizzm.ultistats.realtime.MatchRealtimePublisher
+import com.github.mihanizzm.ultistats.repository.jpa.ApprovalReceipt
+import com.github.mihanizzm.ultistats.repository.jpa.PointCompletionApprovalRepository
+import com.github.mihanizzm.ultistats.repository.jpa.StoredPointApproval
 import com.github.mihanizzm.ultistats.repository.jpa.PointCompletionDraftRepository
 import com.github.mihanizzm.ultistats.repository.jpa.PointLineupRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataEventRepository
@@ -35,7 +34,6 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
-import java.time.Instant
 import java.util.UUID
 
 @Service
@@ -47,6 +45,10 @@ class PointCompletionDraftService(
     private val lineups: PointLineupRepository,
     private val drafts: PointCompletionDraftRepository,
     private val sequencePolicy: EventSequencePolicy,
+    private val approvals: PointCompletionApprovalRepository,
+    private val history: PointCompletionHistoryService,
+    private val json: ObjectMapper,
+    private val realtime: MatchRealtimePublisher,
     @Value("\${ultistats.point-results.write-enabled:false}") private val writesEnabled: Boolean,
 ) {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -71,6 +73,7 @@ class PointCompletionDraftService(
         if (request.expectedLineupRevision != point.lineup?.revision) {
             reject(POINT_COMPLETION_DRAFT_STALE, "The point lineup revision has changed")
         }
+        checkUnapproved(matchId, pointId)
         val revision = currentDraft(point)?.revision ?: 0
         if (request.expectedDraftRevision != revision) reject(POINT_COMPLETION_DRAFT_STALE, "The draft revision has changed")
         if (request.insertions.size > 500 || request.insertions.map { it.id }.toSet().size != request.insertions.size) {
@@ -90,6 +93,58 @@ class PointCompletionDraftService(
         return result
     }
 
+    @Transactional(rollbackFor = [Exception::class])
+    fun approve(matchId: UUID, pointId: UUID, request: PutPointCompletionApprovalRequest,
+                client: PointLineupClient): PointCompletionApprovalResponse? {
+        checkClient(client)
+        val match = matches.findByIdForUpdate(matchId) ?: return null
+        approvals.findReceipt(matchId, request.operationId)?.let { receipt ->
+            if (receipt.response.pointId != pointId || receipt.response.closingEventId != request.expectedClosingEventId ||
+                receipt.expectedLogRevision != request.expectedLogRevision ||
+                receipt.expectedLineupRevision != request.expectedLineupRevision ||
+                receipt.response.draftRevision != request.expectedDraftRevision) {
+                reject(EVENT_IDEMPOTENCY_CONFLICT, "This operationId already identifies a different approval request")
+            }
+            return receipt.response
+        }
+        if (!writesEnabled) reject(POINT_RESULT_WRITE_DISABLED, "Point result writes are disabled")
+        if (request.expectedLogRevision < 0 || request.expectedDraftRevision <= 0 ||
+            (request.expectedLineupRevision ?: 0) < 0) invalid("Supply a positive saved draft revision and nonnegative source revisions")
+        checkUnapproved(matchId, pointId)
+        if (match.eventLogRevision != request.expectedLogRevision) reject(EVENT_LOG_STALE, "The event log revision has changed")
+        val point = snapshot(match, pointId)
+        if (request.expectedClosingEventId != point.marker.id) conflict("The closing event has changed")
+        if (request.expectedLineupRevision != point.lineup?.revision) {
+            reject(POINT_COMPLETION_DRAFT_STALE, "The point lineup revision has changed")
+        }
+        val stored = currentDraft(point)
+        if (stored == null || stored.revision != request.expectedDraftRevision) {
+            reject(POINT_COMPLETION_DRAFT_STALE, "Reload the saved draft revision")
+        }
+        val candidate = response(point, stored)
+        if (candidate.diagnostics.isNotEmpty()) {
+            throw PointCompletionDraftRejected(MatchProblem(
+                POINT_COMPLETION_APPROVAL_CONFLICT, "Point completion approval conflict",
+                "Resolve the candidate diagnostics before approval",
+            ), candidate.diagnostics)
+        }
+
+        val accepted = PointCompletionApprovalResponse(
+            request.operationId, pointId, point.marker.id, stored.revision, match.eventLogRevision + 1,
+            requireNotNull(events.findFirstByMatchIdOrderBySequenceNumberDesc(matchId)).sequenceNumber, replayed = false,
+        )
+        approvals.insert(matchId, StoredPointApproval(pointId, point.marker.id, json.writeValueAsString(stored.draft.insertions)))
+        approvals.insertReceipt(matchId, ApprovalReceipt(request.expectedLogRevision, request.expectedLineupRevision, accepted))
+        match.eventLogRevision = accepted.logRevision
+        match.lastEventLogInvalidationRevision = accepted.logRevision
+        realtime.matchChanged(matchId)
+        return accepted
+    }
+
+    private fun checkUnapproved(matchId: UUID, pointId: UUID) {
+        if (approvals.exists(matchId, pointId)) reject(POINT_COMPLETION_APPROVAL_LOCKED, "The point already has an approved completion")
+    }
+
     private fun currentDraft(point: CompletionPoint): StoredCompletionDraft? =
         drafts.find(point.match.id, point.pointId)?.also {
             if (it.draft.closingEventId != point.marker.id) conflict("The stored draft belongs to a different closing event")
@@ -101,30 +156,10 @@ class PointCompletionDraftService(
             .map { StoredEvent(it.id, it.sequenceNumber, it.toDomain()) }
         val point = PointTimeline.from(match.id, match.status, journal).firstOrNull { it.pointId == pointId }
             ?: conflict("This point is no longer canonical for this match")
-        val opening = journal.indexOfFirst { it.id == point.openingEventId }
-        val closing = journal.indexOfFirst { it.id == point.closingEventId }
-        val marker = journal.getOrNull(closing)?.takeIf { it.event.type == EventType.POINT_RESULT }
-            ?: conflict("Only points closed by an active POINT_RESULT can be completed")
-        val source = journal.subList(opening + 1, closing)
-        val roster = participants.findAllByMatchId(match.id)
-        val slots = lineups.slots(match.id)
-        val introduced = lineups.introducedSlots(match.id)
-        val sourceIds = source.map { it.id }.toSet()
-        val pointSlots = introduced.filter { it.pointId == pointId && it.slot.introducedByEventId in sourceIds }
-            .associate { it.slot.slotId to it.slot }
-        val rosterTeams = roster.associate { it.participantId to it.teamId }
         val teamIds = matchTeams.findAllByMatchIdOrderByPosition(match.id).map { it.teamId }
-        val lineup = lineups.list(match.id, teamIds)[pointId]
-        val starters = lineup?.teams.orEmpty().flatMap { team ->
-            team.entries.filterIsInstance<PointLineupTemporary>().map { it.slotId to team.teamId }
-        }.toMap()
-        val previousScore = journal.getOrNull(opening)?.event?.scoringTeam { rosterTeams[it] ?: slots[it]?.teamId }
-        val before = journal.subList(0, opening + 1).lastOrNull { it.event.type != EventType.POINT_RESULT }
-        val after = journal.subList(closing + 1, journal.size).firstOrNull { it.event.type != EventType.POINT_RESULT }
-        return CompletionPoint(
-            match, pointId, marker, source, opening < 0, before?.event?.occurredAt, after?.event?.occurredAt, previousScore,
-            lineup, roster, pointSlots, rosterTeams + starters + pointSlots.mapValues { it.value.teamId },
-        )
+        return completionPoint(match, point, journal, participants.findAllByMatchId(match.id),
+            lineups.list(match.id, teamIds)[pointId], lineups.introducedSlots(match.id), lineups.slots(match.id))
+            ?: conflict("Only points closed by an active POINT_RESULT can be completed")
     }
 
     private fun response(point: CompletionPoint, stored: StoredCompletionDraft?, saving: Boolean = false): PointCompletionDraftResponse {
@@ -136,7 +171,10 @@ class PointCompletionDraftService(
         }
         val anchors = point.source.map { it.id }.toSet()
         val insertions = draft?.insertions.orEmpty()
-        val usedIds = events.findAllById(insertions.map { it.id }).map { it.id }.toSet()
+        val usedIds = if (insertions.isEmpty()) emptySet() else {
+            events.findAllByMatchIdAndIdIn(point.match.id, insertions.map { it.id }).mapTo(mutableSetOf()) { it.id } +
+                history.restoredIds(point.match.id)
+        }
         val grouped = insertions.filter { insertion ->
             val unsafe = when {
                 insertion.afterEventId != null && insertion.afterEventId !in anchors ->
@@ -153,13 +191,7 @@ class PointCompletionDraftService(
                 false
             }
         }.groupBy { it.afterEventId }
-        val preview = buildList {
-            grouped[null].orEmpty().forEach { add(PointCompletionPreviewEntry(insertion = it)) }
-            for (event in point.source) {
-                add(PointCompletionPreviewEntry(original = EventResponse.from(event)))
-                grouped[event.id].orEmpty().forEach { add(PointCompletionPreviewEntry(insertion = it)) }
-            }
-        }
+        val preview = completionPreview(point, grouped)
         val marker = EventResponse.from(point.marker) as TeamEventResponse
         problems.addAll(validateCompletionPreview(sequencePolicy, point, marker.teamId, preview))
         return PointCompletionDraftResponse(
@@ -178,19 +210,7 @@ class PointCompletionDraftService(
         throw PointCompletionDraftRejected(MatchProblem(code, "Point completion draft", detail))
 }
 
-class PointCompletionDraftRejected(val problem: MatchProblem) : RuntimeException(problem.detail)
-
-internal data class CompletionPoint(
-    val match: Match,
-    val pointId: UUID,
-    val marker: StoredEvent,
-    val source: List<StoredEvent>,
-    val firstPoint: Boolean,
-    val priorActionTime: Instant?,
-    val nextActionTime: Instant?,
-    val previousScoringTeam: UUID?,
-    val lineup: PointLineup?,
-    val roster: List<MatchParticipant>,
-    val introduced: Map<UUID, PointSubstitutionSlot>,
-    val actorTeams: Map<UUID, UUID>,
-)
+class PointCompletionDraftRejected(
+    val problem: MatchProblem,
+    val diagnostics: List<PointCompletionDiagnostic> = emptyList(),
+) : RuntimeException(problem.detail)
