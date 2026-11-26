@@ -14,6 +14,8 @@ data class PointLineupsResponse(
     val substitutionsWriteEnabled: Boolean,
     @field:Schema(description = "Capability 3 discovery. True when all write gates permit creating an incoming reserve.")
     val incomingReservesWriteEnabled: Boolean,
+    @field:Schema(description = "Whether point lineup writes permit editing a confirmed NEXT point.")
+    val nextLineupEditsWriteEnabled: Boolean,
     val points: List<PointLineupResponse>,
 )
 

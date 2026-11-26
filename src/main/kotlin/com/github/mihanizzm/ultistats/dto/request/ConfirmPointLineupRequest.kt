@@ -20,6 +20,13 @@ data class ConfirmPointLineupRequest(
     val expectedLogRevision: Long?,
     @param:JsonSetter(contentNulls = Nulls.FAIL)
     val teams: List<ConfirmPointLineupTeam>,
+    @param:JsonSetter(nulls = Nulls.FAIL)
+    @field:JsonDeserialize(using = UndoLogRevisionDeserializer::class)
+    @field:Schema(
+        type = "integer", format = "int64", minimum = "0", requiredMode = Schema.RequiredMode.NOT_REQUIRED,
+        description = "Omit to confirm. Supply the observed lineup revision to edit a confirmed NEXT point.",
+    )
+    val expectedLineupRevision: Long? = null,
 )
 
 data class ConfirmPointLineupTeam(
