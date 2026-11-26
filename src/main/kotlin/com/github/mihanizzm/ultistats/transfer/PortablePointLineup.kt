@@ -15,7 +15,7 @@ data class PortablePointLineup(
     @param:JsonProperty(required = true)
     @get:JsonInclude(JsonInclude.Include.ALWAYS)
     @field:Schema(
-        description = "Null for the first point. Otherwise the preceding active GOAL or CALLAHAN event ID.",
+        description = "Null for the first point. Otherwise the preceding active GOAL, CALLAHAN or POINT_RESULT event ID.",
         types = ["string", "null"], format = "uuid", requiredMode = Schema.RequiredMode.REQUIRED,
     )
     val openingEventId: UUID?,
@@ -23,7 +23,7 @@ data class PortablePointLineup(
     val teams: List<PortablePointLineupTeam>,
     @get:JsonInclude(JsonInclude.Include.NON_EMPTY)
     @field:Schema(
-        description = "Active substitution-introduced temporary slots for this point. Requires format version 6 and is omitted when empty.",
+        description = "Active substitution-introduced temporary slots for this point. Requires format version 6 or 7 and is omitted when empty.",
         requiredMode = Schema.RequiredMode.NOT_REQUIRED,
     )
     @param:JsonSetter(nulls = Nulls.FAIL)

@@ -35,6 +35,7 @@ import java.time.OffsetDateTime
 import java.util.HexFormat
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 
@@ -113,7 +114,7 @@ class PointResultPostgresTest {
             (events as ArrayNode).add(next)
             val rejection = http.call("POST", "/api/v1/matches/import", 400, doc)
             assertEquals("INVALID_REQUEST", rejection["code"].asText())
-            assertEquals("matches[0].events[3].type: POINT_RESULT is unsupported in this format", rejection["detail"].asText())
+            assertTrue(rejection["detail"].asText().startsWith("formatVersion: Expected version 7"))
             assertEquals(matchCount, before.queryForObject("SELECT count(*) FROM matches", Long::class.java))
             assertEquals(afterGoal, http.get(v2))
 

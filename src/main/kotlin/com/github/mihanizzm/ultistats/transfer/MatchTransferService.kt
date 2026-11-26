@@ -7,10 +7,13 @@ import com.github.mihanizzm.ultistats.model.events.StoredEvent
 import com.github.mihanizzm.ultistats.repository.jpa.*
 import com.github.mihanizzm.ultistats.service.MatchAnnouncementService
 import com.github.mihanizzm.ultistats.service.MatchService
+import com.github.mihanizzm.ultistats.service.PointLineupClient
 import com.github.mihanizzm.ultistats.service.PointLineupProblemCode
 import com.github.mihanizzm.ultistats.service.PointLineupRejectedException
+import com.github.mihanizzm.ultistats.service.PointResultClientRequiredException
 import com.github.mihanizzm.ultistats.service.PossessionChangeWrites
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
+import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Isolation
@@ -31,13 +34,14 @@ class MatchTransferService(
     private val possessionChangeWrites: PossessionChangeWrites,
     private val validator: MatchTransferValidator,
     private val lineups: PointLineupRepository,
+    @Value("\${ultistats.point-results.write-enabled:false}") private val pointResultWritesEnabled: Boolean,
     @Value("\${ultistats.point-lineups.write-enabled:false}") private val pointLineupWritesEnabled: Boolean,
     @Value("\${ultistats.point-substitutions.write-enabled:false}") private val substitutionWritesEnabled: Boolean,
     @Value("\${ultistats.point-incoming-reserves.write-enabled:false}") private val incomingReserveWritesEnabled: Boolean,
 ) {
     /** All queries see one source snapshot, even while an in-progress match changes. */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    fun export(matchIds: List<UUID>): MatchTransferPackage {
+    fun export(matchIds: List<UUID>, client: PointLineupClient): MatchTransferPackage {
         if (matchIds.isEmpty() || matchIds.distinct().size != matchIds.size) {
             throw InvalidMatchTransferException("matchIds", "Select at least one match, without duplicate IDs")
         }
@@ -46,6 +50,9 @@ class MatchTransferService(
             val roster = participants.findAllByMatchId(id)
             val snapshotTeams = matchTeams.findAllByMatchIdOrderByPosition(id)
             val journal = events.findAllByMatchIdAndDeletedAtIsNullOrderBySequenceNumber(id)
+            if (!client.supportsPointResults && journal.any { it.eventType == EventType.POINT_RESULT }) {
+                throw PointResultClientRequiredException()
+            }
             PortableMatch(
                 id, match.playersPerTeam, match.plannedStartTimestamp, match.effectiveStartedAt, match.effectiveEndedAt,
                 snapshotTeams.map { team ->
@@ -85,8 +92,15 @@ class MatchTransferService(
     }
 
     @Transactional
-    fun importPackage(data: MatchTransferPackage): MatchTransferResult {
+    fun importPackage(data: MatchTransferPackage, client: PointLineupClient): MatchTransferResult {
         validator.validate(data)
+        if (data.formatVersion == POINT_RESULT_TRANSFER_VERSION) {
+            if (!client.supportsPointResults) throw PointResultClientRequiredException()
+            if (!pointResultWritesEnabled) throw TransferWriteDisabledException(MatchProblem(
+                MatchProblemCode.POINT_RESULT_WRITE_DISABLED, "Point result writes disabled",
+                "Importing POINT_RESULT requires point result writes to be enabled",
+            ))
+        }
         if (data.matches.containsSubstitutions() && !substitutionWritesEnabled) {
             throw PointLineupRejectedException(
                 PointLineupProblemCode.POINT_SUBSTITUTION_WRITE_DISABLED, "Point substitution writes are disabled",
