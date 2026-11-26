@@ -22,8 +22,13 @@ import org.springframework.web.bind.annotation.RestController
 class ObsInfographicsPresentationController(private val presentations: ObsInfographicsPresentationService) {
     @PostMapping
     @ApiResponse(responseCode = "200", description = "Зафиксированный ответ команды показа", useReturnTypeSchema = true)
-    @Operation(summary = "Показать лидеров или итоги матча", description = "kind LEADERS (по умолчанию) или STATS. EXACT/AUTO с захваченными матчем, ревизиями и поколением. Повтор той же операции возвращает исходные времена и не продлевает показ.")
+    @Operation(summary = "Показать лидеров, ростеры, состав на поинт или итоги матча", description = "kind LEADERS (по умолчанию), ROSTER, POINT или STATS. EXACT/AUTO с захваченными матчем, ревизиями и поколением. Повтор той же операции возвращает исходные времена и не продлевает показ.")
     fun show(@RequestBody request: ObsPresentationRequest) = presentations.show(request)
+
+    @PostMapping("/hide-phase")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Скрыть текущую автоматическую фазу", description = "Токен фазы и поколение должны соответствовать выбранному EXACT/AUTO. Повтор команды не меняет новый показ.")
+    fun hidePhase(@RequestBody request: ObsPhaseHideRequest) = presentations.hidePhase(request)
 
     @DeleteMapping("/{generation}")
     @ResponseStatus(HttpStatus.NO_CONTENT)

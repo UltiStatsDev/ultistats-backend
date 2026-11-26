@@ -16,7 +16,7 @@ export function validateInfographics(value, matchId, origin = globalThis.locatio
   if (finished ? kind !== 'HIDDEN' || value.postmatch == null : value.postmatch != null) invalid();
   const postmatch = finished ? validatePostmatch(value.postmatch,value.teams) : null;
   const stats = value.statsPresentation;
-  if (stats != null && (!finished || value.leaderPresentation != null || stats.kind !== 'STATS' ||
+  if (stats != null && (!finished || stats.kind !== 'STATS' ||
       !['AUTO','MANUAL'].includes(stats.origin) || stats.matchId !== matchId || !uuid.test(stats.generation) ||
       !Number.isInteger(stats.pageSeconds) || stats.pageSeconds <= 0 ||
       Date.parse(stats.expiresAt) - Date.parse(stats.startedAt) !== stats.pageSeconds * 1000)) invalid();
@@ -27,8 +27,11 @@ export function validateInfographics(value, matchId, origin = globalThis.locatio
   if (value.phase.pageSeconds != null && (!Number.isInteger(value.phase.pageSeconds) || value.phase.pageSeconds < 2 || value.phase.pageSeconds > 15)) invalid();
   if (value.phase.lineupPageSeconds != null && (!Number.isInteger(value.phase.lineupPageSeconds) || value.phase.lineupPageSeconds < 2 || value.phase.lineupPageSeconds > 15)) invalid();
   validatePresentation(value.leaderPresentation, value.teams);
+  const choices = [value.leaderPresentation,value.statsPresentation,value.playerPresentation,value.suppressedPhase];
+  if (choices.filter(choice=>choice!=null).length > 1 ||
+      (value.suppressedPhase != null && (!['ROSTER','LINEUP'].includes(kind) || value.suppressedPhase !== kind))) invalid();
   const identities = new Set();
-  return {...value, postmatch, teams:value.teams.map(team => {
+  const teams = value.teams.map(team => {
     if (!uuid.test(team.teamId) || typeof team.name !== 'string' || !Array.isArray(team.roster)) invalid();
     const players = (entries, selected = false) => entries.map(player => {
       if (!uuid.test(player.participantId) || (!selected && identities.has(player.participantId)) || typeof player.name !== 'string' ||
@@ -46,7 +49,24 @@ export function validateInfographics(value, matchId, origin = globalThis.locatio
     const places = players(team.places ?? [], true);
     if (new Set(places.map(p=>p.participantId)).size !== places.length) invalid();
     return {...team,roster:players(team.roster),places};
-  })};
+  });
+  validatePlayerPresentation(value, teams);
+  return {...value,postmatch,teams};
+}
+
+const pageSize = 5;
+const pageCount = players => Math.ceil(players.length/pageSize);
+function validatePlayerPresentation(value, teams) {
+  const command = value.playerPresentation;
+  if (command == null) return;
+  const lineup = command.kind === 'POINT';
+  if ((!lineup && command.kind !== 'ROSTER') || command.origin !== 'MANUAL' ||
+      command.matchId !== value.matchId || !uuid.test(command.generation) ||
+      !Number.isInteger(command.pageSeconds) || command.pageSeconds < 2 || command.pageSeconds > 15) invalid();
+  if (lineup && (value.status !== 'IN_PROGRESS' || !uuid.test(value.phase.pointId) ||
+      !Number.isSafeInteger(value.phase.lineupRevision) || value.phase.lineupRevision <= 0)) invalid();
+  const pages = Math.max(...teams.map(team=>pageCount(lineup ? team.places : team.roster)));
+  if (!pages || Date.parse(command.expiresAt) - Date.parse(command.startedAt) !== pages * command.pageSeconds * 1000) invalid();
 }
 const categories = ['attack','defense'];
 const slotCount = (teams, category) => Math.max(...teams.map(team => team[category].length));
@@ -74,9 +94,12 @@ function validatePresentation(command, teams) {
   if (!slots || Date.parse(expiresAt) - Date.parse(startedAt) !== slots * pageSeconds * 1000) invalid();
 }
 
+const isOnAir = (command, now) =>
+  command && now >= Date.parse(command.startedAt) && now < Date.parse(command.expiresAt);
+
 export function infographicsPage(snapshot, serverNow) {
   const command = snapshot?.leaderPresentation;
-  if (command && serverNow >= Date.parse(command.startedAt) && serverNow < Date.parse(command.expiresAt)) {
+  if (isOnAir(command, serverNow)) {
     let page = Math.floor((serverNow - Date.parse(command.startedAt)) / (command.pageSeconds * 1000));
     for (const category of categories) {
       const slots = slotCount(command.teams, category);
@@ -91,8 +114,14 @@ export function infographicsPage(snapshot, serverNow) {
     }
   }
   const stats = snapshot?.statsPresentation;
-  if (stats && serverNow >= Date.parse(stats.startedAt) && serverNow < Date.parse(stats.expiresAt)) {
+  if (isOnAir(stats, serverNow)) {
     return {...snapshot,phase:{...snapshot.phase,kind:'POSTMATCH'}};
+  }
+  const players = snapshot?.playerPresentation;
+  if (isOnAir(players, serverNow)) {
+    const page = Math.floor((serverNow-Date.parse(players.startedAt))/(players.pageSeconds*1000));
+    const kind = players.kind === 'POINT' ? 'LINEUP' : 'ROSTER';
+    return {...playerPage(snapshot,kind,playerTeams(snapshot,kind),page),playerGeneration:players.generation};
   }
   return rosterPage(snapshot, serverNow);
 }
@@ -104,12 +133,21 @@ export function rosterPage(snapshot, serverNow) {
   const kind = lineup ? 'LINEUP' : snapshot.phase.kind;
   const startedAt = lineup ? snapshot.phase.lineupStartedAt : snapshot.phase.startedAt;
   const seconds = lineup ? (snapshot.phase.lineupPageSeconds ?? snapshot.phase.pageSeconds ?? snapshot.settings.pointPageSeconds) : (snapshot.phase.pageSeconds ?? snapshot.settings.rosterPageSeconds);
-  const teams = snapshot.teams.map(t=>({...t,roster:lineup ? t.places : t.roster}));
-  const pages = Math.max(1,...teams.map(t=>Math.ceil(t.roster.length/5)));
+  if (kind === snapshot.suppressedPhase) return null;
+  const teams = playerTeams(snapshot,kind);
+  const pages = Math.max(1,...teams.map(t=>pageCount(t.roster)));
   const page = Math.floor(Math.max(0,serverNow-Date.parse(startedAt))/(seconds*1000)) % pages;
+  return playerPage(snapshot,kind,teams,page);
+}
+
+function playerTeams(snapshot, kind) {
+  return kind === 'LINEUP' ? snapshot.teams.map(team=>({...team,roster:team.places})) : snapshot.teams;
+}
+
+function playerPage(snapshot, kind, teams, page) {
   return {...snapshot,phase:{...snapshot.phase,kind},page,teams:teams.map(team => {
-    const first = Math.max(0,Math.min(page,Math.ceil(team.roster.length/5)-1))*5;
-    return {...team,total:team.roster.length,first,roster:team.roster.slice(first,first+5)};
+    const first = Math.max(0,Math.min(page,pageCount(team.roster)-1))*pageSize;
+    return {...team,total:team.roster.length,first,roster:team.roster.slice(first,first+pageSize)};
   })};
 }
 
