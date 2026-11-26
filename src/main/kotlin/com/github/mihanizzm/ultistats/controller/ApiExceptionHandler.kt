@@ -5,6 +5,7 @@ import com.github.mihanizzm.ultistats.validation.query.InvalidQueryParameterExce
 import com.github.mihanizzm.ultistats.validation.match.MatchProblem
 import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
 import com.github.mihanizzm.ultistats.service.EventIdempotencyConflictException
+import com.github.mihanizzm.ultistats.service.PointCompletionHistoryRejected
 import com.github.mihanizzm.ultistats.service.PointLineupProblemCode
 import com.github.mihanizzm.ultistats.service.PointLineupRejectedException
 import com.github.mihanizzm.ultistats.service.PointResultClientRequiredException
@@ -37,6 +38,14 @@ class ApiExceptionHandler {
         }
         return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON)
             .cacheControl(CacheControl.noStore()).varyBy(POINT_LINEUPS_HEADER).body(problem)
+    }
+
+    @ExceptionHandler(PointCompletionHistoryRejected::class)
+    fun rejected(error: PointCompletionHistoryRejected, request: HttpServletRequest): ResponseEntity<ProblemDetail> {
+        val status = HttpStatus.CONFLICT
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON)
+            .cacheControl(CacheControl.noStore()).varyBy(POINT_LINEUPS_HEADER)
+            .body(error.problem.toProblemDetail(status, URI.create(request.requestURI)))
     }
 
     @ExceptionHandler(InvalidPatchException::class)

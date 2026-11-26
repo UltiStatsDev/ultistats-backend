@@ -34,6 +34,8 @@ class EventController(
 ) {
     @GetMapping
     @Operation(summary = "Получить все события матча")
+    @ApiResponse(responseCode = "409", description = "POINT_COMPLETION_HISTORY_REQUIRED when approved completion requires the v3 full history.",
+        content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = ProblemDetail::class))])
     fun getAll(@PathVariable matchId: UUID, request: HttpServletRequest): ResponseEntity<List<EventResponse>> =
         when (val result = eventFacade.getAll(matchId, request.pointLineupClient())) {
             is EventResult.EventList -> ResponseEntity.ok().cacheControl(CacheControl.noStore()).varyBy(POINT_LINEUPS_HEADER).body(result.events)

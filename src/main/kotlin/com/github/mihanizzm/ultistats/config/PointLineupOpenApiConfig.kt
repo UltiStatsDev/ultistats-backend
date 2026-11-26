@@ -19,6 +19,7 @@ class PointLineupOpenApiConfig {
     @Bean
     fun pointLineupOpenApi() = OpenApiCustomizer { api ->
         val schemas = api.components.schemas
+        if ("ProjectedEvent" in schemas) flattenDiscriminatedLeaves(schemas, "ProjectedEvent")
         flattenDiscriminatedLeaves(schemas, "ConfirmPointLineupEntry")
         flattenDiscriminatedLeaves(schemas, "PointLineupEntry")
         flattenDiscriminatedLeaves(schemas, "PortablePointLineupEntry")
@@ -36,6 +37,7 @@ class PointLineupOpenApiConfig {
         val pointLineups = "/api/v1/matches/{matchId}/point-lineups"
         api.paths["$pointLineups/{pointId}"]?.put?.lineupProtocol(lineupMutation = true)
         api.paths["$pointLineups/{pointId}/slots/{slotId}"]?.patch?.lineupProtocol(lineupMutation = true)
+        api.paths["/api/v3/matches/{matchId}/events"]?.get?.lineupProtocol(read = true)
         for (version in listOf("v1", "v2")) {
             val journal = "/api/$version/matches/{matchId}/events"
             api.paths[journal]?.get?.lineupProtocol(read = true)

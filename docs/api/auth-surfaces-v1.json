@@ -125,6 +125,14 @@
     },
     {
       "method": "GET",
+      "path": "/api/v3/matches/{matchId}/events",
+      "policy": "PUBLIC",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/EventHistoryController.kt",
+      "line": 23
+    },
+    {
+      "method": "GET",
       "path": "/api/v2/matches/{matchId}/events",
       "policy": "PUBLIC",
       "owner": "enforcement",
