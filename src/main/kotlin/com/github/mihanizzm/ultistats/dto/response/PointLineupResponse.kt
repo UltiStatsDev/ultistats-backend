@@ -22,6 +22,8 @@ data class PointLineupsResponse(
     val pointResultsReadSupported: Boolean,
     @field:Schema(description = "Whether fresh point result commands are enabled. Authorization is still required.")
     val pointResultsWriteEnabled: Boolean,
+    @field:Schema(description = "Whether this server supports protected capability 4 completion draft reads.")
+    val pointCompletionDraftsReadSupported: Boolean,
     val points: List<PointLineupResponse>,
 )
 

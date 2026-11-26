@@ -82,6 +82,68 @@ class PointLineupHttpTest {
     }
 
     @Test
+    fun `completion drafts persist independently with a compare and set`() {
+        val fixture = fixture()
+        val point = get(fixture.path)["points"].single()["pointId"].asText()
+        val markerId = UUID.randomUUID()
+        val pointPath = "${fixture.path}/$point"
+        val path = "$pointPath/completion-draft"
+        val marker = response(send("PUT", "$pointPath/result", resultBody(markerId, fixture.teamIds[0]),
+            login, capability = "4"), 200)
+        response(send("GET", path, session = login, capability = "4"), 409)
+        val journalPath = fixture.matchPath.replace("/v1/", "/v2/") + "/events"
+        response(send("POST", "${fixture.matchPath}/end", mapOf("timestamp" to Instant.now().plusSeconds(1)),
+            login, capability = "4"), 200)
+        val journal = response(send("GET", journalPath, capability = "4"), 200)
+        val read = { send("GET", path, session = login, capability = "4") }
+        response(send("GET", path, capability = "4"), 401)
+        val empty = response(read(), 200)
+        assertTrue(empty["draft"].isNull)
+        assertEquals(0L, empty["draftRevision"].asLong())
+        val pull = UUID.randomUUID()
+        val pickup = UUID.randomUUID()
+        val insertions = listOf(
+            mapOf("id" to pull, "type" to "PULL", "fromActorId" to fixture.leftPlayers[0],
+                "afterEventId" to null, "toActorId" to null, "elapsedOffsetMs" to 0),
+            mapOf("id" to pickup, "type" to "PICKUP", "fromActorId" to fixture.rightPlayers[0],
+                "afterEventId" to null, "toActorId" to null, "elapsedOffsetMs" to null),
+        )
+        val body = mapOf("expectedClosingEventId" to markerId, "expectedLogRevision" to empty["logRevision"],
+            "expectedLineupRevision" to NullNode.instance, "expectedDraftRevision" to 0, "insertions" to insertions)
+        response(send("PUT", path, body, login, csrf = false, capability = "4"), 403)
+        response(send("PUT", path, body, login, capability = "3"), 409)
+        for (overrides in listOf(
+            mapOf("expectedClosingEventId" to UUID.randomUUID()),
+            mapOf("expectedLogRevision" to -1, "expectedDraftRevision" to 10),
+            mapOf("expectedLineupRevision" to 1),
+        )) {
+            val result = send("PUT", path, body + overrides, login, capability = "4")
+            assertTrue(result.statusCode() in listOf(400, 409), result.body())
+        }
+        val rejectedInsertions = listOf(
+            insertions.map { it + ("afterEventId" to markerId) },
+            insertions.map { it + ("fromActorId" to UUID.randomUUID()) },
+            insertions.map { it + ("elapsedOffsetMs" to 0.5) },
+            insertions.map { it + ("type" to "POINT_RESULT") },
+        )
+        for (invalid in rejectedInsertions) response(send("PUT", path, body + ("insertions" to invalid),
+            login, capability = "4"), 400)
+        assertEquals(empty, response(read(), 200))
+        val write = { send("PUT", path, body, login, capability = "4") }
+        val (stored, stale) = race(write, write).sortedBy { it.statusCode() }
+        val saved = response(stored, 200)
+        assertEquals("POINT_COMPLETION_DRAFT_STALE", response(stale, 409)["code"].asText())
+        assertEquals(1L, saved["draftRevision"].asLong())
+        assertEquals(saved, response(read(), 200))
+        assertEquals(marker["marker"], saved["marker"])
+        assertEquals(listOf(pull.toString(), pickup.toString()), saved["preview"].map { it["insertion"]["id"].asText() })
+        assertEquals(0L, saved["draft"]["insertions"][0]["elapsedOffsetMs"].asLong())
+        assertTrue(saved["draft"]["insertions"][1]["elapsedOffsetMs"].isNull)
+        assertTrue(saved["diagnostics"].any { it["code"].asText() == "MISSING_PERSONAL_RESULT" })
+        assertEquals(journal, response(send("GET", journalPath, capability = "4"), 200))
+    }
+
+    @Test
     fun `quick result closes an empty point exactly once and keeps the successor eligible for lineups`() {
         val fixture = fixture()
         val discovery = get(fixture.path)
