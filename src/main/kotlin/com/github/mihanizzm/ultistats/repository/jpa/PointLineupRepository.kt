@@ -126,11 +126,75 @@ class PointLineupRepository(private val jdbc: JdbcTemplate) {
             "INSERT INTO match_point_lineups (match_id, point_id, opening_event_id, revision, confirmed_at) VALUES (?, ?, ?, ?, ?)",
             matchId, point.pointId, point.openingEventId, lineup.revision, confirmedAt?.let(java.sql.Timestamp::from),
         )
-        val rows = lineup.teams.flatMap { team ->
-            team.entries.mapIndexed { index, entry ->
+        insertEntries(matchId, point.pointId, lineup.teams)
+    }
+
+    // Soft-deleted events retain their V15 foreign keys.
+    fun hasEventSlotReference(matchId: UUID, slotIds: Set<UUID>): Boolean {
+        if (slotIds.isEmpty()) return false
+        val placeholders = slotIds.joinToString(",") { "?" }
+        return jdbc.queryForObject(
+            """SELECT EXISTS (SELECT 1 FROM events WHERE match_id = ?
+                AND (from_slot_id IN ($placeholders) OR to_slot_id IN ($placeholders)))""",
+            Boolean::class.java, matchId, *slotIds.toTypedArray(), *slotIds.toTypedArray(),
+        ) == true
+    }
+
+    /** The caller holds the match lock and has checked removal of temporary actors. */
+    fun replaceSelection(
+        matchId: UUID, pointId: UUID, lineup: PointLineup, retainedSlotIds: Set<UUID>, removedSlotIds: Set<UUID>,
+    ) {
+        jdbc.update(
+            "DELETE FROM match_point_lineup_entries WHERE match_id = ? AND point_id = ? AND participant_id IS NOT NULL",
+            matchId, pointId,
+        )
+        if (removedSlotIds.isNotEmpty()) jdbc.batchUpdate(
+            "DELETE FROM match_point_lineup_entries WHERE match_id = ? AND point_id = ? AND slot_id = ?",
+            removedSlotIds.map { arrayOf<Any?>(matchId, pointId, it) },
+        )
+
+        val (lastPosition, firstPosition) = jdbc.queryForObject(
+            """SELECT COALESCE(MAX(position), -1), COALESCE(MAX(CASE WHEN introduced_by_event_id IS NOT NULL THEN position END), -1) + 1
+                FROM match_point_lineup_entries WHERE match_id = ? AND point_id = ?""",
+            { row, _ -> row.getInt(1) to row.getInt(2) }, matchId, pointId,
+        )!!
+        if (retainedSlotIds.isNotEmpty()) {
+            // Park retained initial slots above both position ranges. Their referenced keys never change.
+            val offset = maxOf(lastPosition + 1, firstPosition + lineup.teams.maxOf { it.entries.size })
+            jdbc.update(
+                """UPDATE match_point_lineup_entries SET position = position + ?
+                    WHERE match_id = ? AND point_id = ? AND introduced_by_event_id IS NULL""",
+                offset, matchId, pointId,
+            )
+            val positions = lineup.teams.flatMap { team ->
+                team.entries.mapIndexedNotNull { index, entry ->
+                    (entry as? PointLineupTemporary)?.slotId?.takeIf { it in retainedSlotIds }?.let {
+                        arrayOf<Any?>(firstPosition + index, matchId, pointId, it)
+                    }
+                }
+            }
+            jdbc.batchUpdate(
+                "UPDATE match_point_lineup_entries SET position = ? WHERE match_id = ? AND point_id = ? AND slot_id = ?",
+                positions,
+            )
+        }
+        insertEntries(matchId, pointId, lineup.teams, firstPosition, retainedSlotIds)
+        check(jdbc.update(
+            "UPDATE match_point_lineups SET revision = ? WHERE match_id = ? AND point_id = ?",
+            lineup.revision, matchId, pointId,
+        ) == 1)
+    }
+
+    private fun insertEntries(
+        matchId: UUID, pointId: UUID, teams: List<PointLineupTeam>,
+        firstPosition: Int = 0, retainedSlotIds: Set<UUID> = emptySet(),
+    ) {
+        val rows = teams.flatMap { team ->
+            team.entries.mapIndexedNotNull { index, entry ->
                 val player = entry as? PointLineupPlayer
                 val temporary = entry as? PointLineupTemporary
-                arrayOf<Any?>(matchId, point.pointId, team.teamId, index, player?.participantId,
+                if (temporary?.slotId in retainedSlotIds) return@mapIndexedNotNull null
+                arrayOf<Any?>(matchId, pointId, team.teamId, firstPosition + index, player?.participantId,
                     temporary?.slotId, temporary?.number, temporary?.resolvedParticipantId)
             }
         }

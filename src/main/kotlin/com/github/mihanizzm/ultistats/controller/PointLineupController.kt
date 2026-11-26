@@ -29,7 +29,7 @@ import java.util.UUID
 class PointLineupController(private val lineups: PointLineupService) {
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Read canonical points and their confirmed lineups",
-        description = "Public capability discovery. Returns the current journal revision and availability of confirmations, known substitutions and incoming reserve creation. effectiveTeams reflects the original lineup after substitutions. substitutionSlots supplies metadata for active introductions even after the actor has left. Point IDs survive PULL and change when an opening scoring boundary is replaced.")
+        description = "Public capability discovery. Returns the current journal revision and availability of confirmations, confirmed NEXT edits, known substitutions and incoming reserve creation. effectiveTeams reflects the original lineup after substitutions. substitutionSlots supplies metadata for active introductions even after the actor has left. Point IDs survive PULL and change when an opening scoring boundary is replaced.")
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Canonical point lineup snapshot", content = [Content(
             mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = PointLineupsResponse::class),
@@ -41,9 +41,11 @@ class PointLineupController(private val lineups: PointLineupService) {
             ?: ResponseEntity.notFound().build()
 
     @PutMapping("/{pointId}", consumes = [MediaType.APPLICATION_JSON_VALUE])
-    @Operation(summary = "Confirm both sides of the next point",
+    @Operation(summary = "Confirm or edit both sides of the next point",
         description = "Requires SPORTS_WRITE and CSRF. Each side may be empty or contain up to playersPerTeam entries. " +
-            "Use the current logRevision. The same selection for a still-canonical point returns its saved lineup even after PULL or with writes disabled.")
+            "Omit expectedLineupRevision to confirm. In this mode the same selection for a still-canonical point returns its saved lineup even after PULL or with writes disabled. " +
+            "Include expectedLineupRevision to edit a confirmed NEXT point before PULL, with writes enabled and a current logRevision. " +
+            "An unchanged selection at the current or immediately previous lineup revision returns the current lineup without a write.")
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Confirmed point", content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
             schema = Schema(implementation = PointLineupResponse::class))]),

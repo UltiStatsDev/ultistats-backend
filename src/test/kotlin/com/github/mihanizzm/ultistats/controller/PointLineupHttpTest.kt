@@ -358,6 +358,278 @@ class PointLineupHttpTest {
     }
 
     @Test
+    fun `edits confirmed NEXT once and preserves the observed journal score and other points`() {
+        val fixture = fixture()
+        val prior = confirm(fixture, fixture.leftPlayers.map(::player), fixture.rightPlayers.map(::player))
+        event(fixture, "PULL", fixture.rightPlayers[0], capability = "1")
+        event(fixture, "PICKUP", fixture.leftPlayers[0], capability = "1")
+        val goal = event(fixture, "GOAL", fixture.leftPlayers[0], fixture.leftPlayers[1], capability = "1")
+        val before = get(fixture.path)
+        val logRevision = before["logRevision"].asLong()
+        val point = before["points"].last()
+        val path = "${fixture.path}/${point["pointId"].asText()}"
+        val slot = temporary()
+        val original = fixture.selection(logRevision, listOf(slot, player(fixture.leftPlayers[0])), listOf(player(fixture.rightPlayers[0])))
+        val selection = fixture.selection(logRevision, listOf(player(fixture.leftPlayers[1]), slot), listOf(player(fixture.rightPlayers[1])))
+        val edit = selection + ("expectedLineupRevision" to 1)
+        assertConflict(send("PUT", path, edit, login))
+        val saved = response(send("PUT", path, original, login), 200)
+        assertConflict(send("PUT", path, original + ("expectedLineupRevision" to 0), login))
+        val journal = "${fixture.matchPath.replace("/v1/", "/v2/")}/events"
+        val journalBefore = response(send("GET", journal, capability = "1"), 200)
+        val matchBefore = get(fixture.matchPath)
+        val epoch = jdbc.queryForObject(
+            "SELECT confirmed_at FROM match_point_lineups WHERE match_id = ? AND point_id = ?",
+            java.sql.Timestamp::class.java, fixture.id, UUID.fromString(point["pointId"].asText()),
+        )
+        response(send("PUT", path, edit), 401)
+        assertEquals("CSRF_INVALID", response(send("PUT", path, edit, login, csrf = false), 403)["code"].asText())
+        val explicitNull = mapper.valueToTree<ObjectNode>(edit).putNull("expectedLineupRevision")
+        response(send("PUT", path, explicitNull, login), 400)
+        for (invalid in listOf(-1, 1.0, "1", "90071992547409930000".toBigInteger())) {
+            response(send("PUT", path, edit + ("expectedLineupRevision" to invalid), login), 400)
+        }
+        assertEquals("EVENT_LOG_STALE", response(send("PUT", path,
+            edit + ("expectedLogRevision" to logRevision - 1), login), 409)["code"].asText())
+        assertConflict(send("PUT", path, selection, login))
+        assertEquals(saved, get(fixture.path)["points"].last())
+
+        val changed = response(send("PUT", path, edit, login, capture = "next-edit-accepted"), 200)
+        assertEquals(point["pointId"], changed["pointId"])
+        assertEquals("NEXT", changed["status"].asText())
+        assertEquals(2, changed["lineup"]["revision"].asInt())
+        assertEquals(listOf(fixture.leftPlayers[1].toString(), slot["slotId"].toString()),
+            changed["lineup"]["teams"][0]["entries"].map { (it["participantId"] ?: it["slotId"]).asText() })
+        assertEquals(fixture.rightPlayers[1].toString(), changed["lineup"]["teams"][1]["entries"].single()["participantId"].asText())
+        assertEquals(changed, response(send("PUT", path, edit, login, capture = "next-edit-replay"), 200))
+        assertEquals(changed, response(send("PUT", path, edit + ("expectedLineupRevision" to 2), login), 200))
+        assertEquals(changed, response(send("PUT", path, selection, login), 200))
+        assertConflict(send("PUT", path, edit + ("expectedLineupRevision" to 0), login))
+        assertConflict(send("PUT", path, original + ("expectedLineupRevision" to 1), login))
+        val after = get(fixture.path)
+        assertTrue(after["nextLineupEditsWriteEnabled"].asBoolean())
+        assertEquals(logRevision, after["logRevision"].asLong())
+        assertEquals(changed, after["points"].last())
+        assertEquals(prior["lineup"], after["points"].first()["lineup"])
+        assertEquals(before["points"].first(), after["points"].first())
+        assertEquals(journalBefore, response(send("GET", journal, capability = "1"), 200))
+        assertEquals(matchBefore, get(fixture.matchPath))
+        assertEquals(epoch, jdbc.queryForObject(
+            "SELECT confirmed_at FROM match_point_lineups WHERE match_id = ? AND point_id = ?",
+            java.sql.Timestamp::class.java, fixture.id, UUID.fromString(point["pointId"].asText()),
+        ))
+        val portable = export(fixture.id)["matches"].single()["pointLineups"].last()
+        assertEquals(goal.toString(), portable["openingEventId"].asText())
+        assertEquals(changed["lineup"]["teams"], portable["teams"])
+
+        val requestSchema = response(send("GET", "/v3/api-docs", session = login), 200)
+            .path("components").path("schemas").path("ConfirmPointLineupRequest")
+        assertFalse(requestSchema["required"].any { it.asText() == "expectedLineupRevision" })
+        val revisionSchema = requestSchema["properties"]["expectedLineupRevision"]
+        assertEquals("integer", revisionSchema["type"].asText())
+        assertEquals("int64", revisionSchema["format"].asText())
+        assertEquals(0, revisionSchema["minimum"].asInt())
+    }
+
+    @Test
+    fun `competing next edits at one lineup revision admit only one different selection`() {
+        val fixture = fixture()
+        val original = confirm(fixture, emptyList(), emptyList())
+        val path = "${fixture.path}/${original["pointId"].asText()}"
+        val session = login
+        val edits = fixture.leftPlayers.map { candidate ->
+            fixture.selection(left = listOf(player(candidate))) + ("expectedLineupRevision" to 1)
+        }
+        val results = race(
+            { send("PUT", path, edits[0], session) },
+            { send("PUT", path, edits[1], session) },
+        )
+        assertEquals(listOf(200, 409), results.map { it.statusCode() }.sorted())
+        val saved = response(results.single { it.statusCode() == 200 }, 200)
+        assertEquals(2, saved["lineup"]["revision"].asInt())
+        assertConflict(results.single { it.statusCode() == 409 })
+        assertEquals(saved, get(fixture.path)["points"].single())
+    }
+
+    @Test
+    fun `edits validate the full selection before replacing an unused slot`() {
+        val fixture = fixture()
+        val unused = temporary()
+        val replacement = temporary()
+        val original = confirm(fixture, listOf(unused), emptyList())
+        val path = "${fixture.path}/${original["pointId"].asText()}"
+        fun edit(left: List<Any> = emptyList(), right: List<Any> = emptyList()) =
+            fixture.selection(left = left, right = right) + ("expectedLineupRevision" to 1)
+
+        for (invalid in listOf(
+            edit(left = listOf(replacement, replacement)),
+            edit(left = listOf(temporary(number = 3))),
+            edit(left = listOf(replacement), right = listOf(replacement)),
+            edit(left = listOf(player(fixture.rightPlayers[0]))),
+            edit(left = fixture.leftPlayers.map(::player) + replacement),
+            edit(left = listOf(replacement)) + ("teams" to emptyList<Any>()),
+        )) {
+            response(send("PUT", path, invalid, login), 400)
+        }
+        assertConflict(send("PUT", path, edit(right = listOf(unused)), login))
+        assertEquals(original, get(fixture.path)["points"].single())
+
+        val updated = response(send("PUT", path, edit(left = listOf(replacement)), login), 200)
+        assertEquals(2, updated["lineup"]["revision"].asInt())
+        assertEquals(replacement["slotId"].toString(), updated["lineup"]["teams"][0]["entries"].single()["slotId"].asText())
+        assertEquals(updated, get(fixture.path)["points"].single())
+    }
+
+    @Test
+    fun `rejects dropping slot actors referenced by undone events and retains bindings on reorder`() {
+        val fixture = fixture(rosterSize = 3)
+        val slot = UUID.randomUUID()
+        val (direct, candidate, replacement) = fixture.leftPlayers
+        val initial = confirm(fixture, listOf(temporary(slot), player(direct)), listOf(player(fixture.rightPlayers[0])))
+        event(fixture, "PULL", fixture.rightPlayers[0], capability = "1")
+        event(fixture, "PICKUP", slot, capability = "1")
+        val closing = event(fixture, "GOAL", slot, direct, capability = "1")
+        response(send("PATCH", slotPath(fixture, initial, slot), identification(candidate, 1, closing), login), 200)
+        repeat(3) {
+            response(send("POST", "${fixture.matchPath}/events/undo", session = login, capability = "1"), 200)
+        }
+        val snapshot = get(fixture.path)
+        val before = snapshot["points"].single()
+        assertEquals("NEXT", before["status"].asText())
+        val path = "${fixture.path}/${before["pointId"].asText()}"
+        val history = "SELECT COUNT(*) FROM events WHERE match_id = ? AND from_slot_id = ? AND deleted_at IS NOT NULL"
+        assertEquals(2, jdbc.queryForObject(history, Int::class.java, fixture.id, slot))
+        fun edit(left: List<Any>) = fixture.selection(snapshot["logRevision"].asLong(), left) + ("expectedLineupRevision" to 2)
+        assertConflict(send("PUT", path, edit(listOf(player(replacement))), login, capture = "next-edit-protected-history"))
+        assertConflict(send("PUT", path, edit(listOf(temporary(slot, 2))), login))
+        response(send("PUT", path, edit(listOf(temporary(slot), player(candidate))), login), 400)
+        assertEquals(before, get(fixture.path)["points"].single())
+
+        val updated = response(send("PUT", path, edit(listOf(player(replacement), temporary(slot))), login), 200)
+        assertEquals(3, updated["lineup"]["revision"].asInt())
+        val retained = updated["lineup"]["teams"][0]["entries"][1]
+        assertEquals(before["lineup"]["teams"][0]["entries"][0], retained)
+        assertEquals(candidate.toString(), retained["resolvedParticipantId"].asText())
+        assertEquals(2, jdbc.queryForObject(history, Int::class.java, fixture.id, slot))
+        assertEquals(updated, get(fixture.path)["points"].single())
+    }
+
+    @Test
+    fun `undone incoming reserves keep their slot keys and numbers across next lineup edits`() {
+        val fixture = fixture()
+        val slot = UUID.randomUUID()
+        val archived = UUID.randomUUID()
+        val puller = fixture.rightPlayers[0]
+        val initial = confirm(fixture, listOf(temporary(slot)), listOf(player(puller)))
+        val journal = "${fixture.matchPath.replace("/v1/", "/v2/")}/events"
+        response(send("POST", "$journal/batch", batch(0, 0,
+            eventBody(UUID.randomUUID(), "PULL", puller),
+            eventBody(UUID.randomUUID(), "PICKUP", slot).at(2),
+            reserveEvent(slot, archived, 5),
+        ), login, capability = "3"), 201)
+        repeat(3) {
+            response(send("POST", "${fixture.matchPath}/events/undo", session = login, capability = "3"), 200)
+        }
+        val snapshot = get(fixture.path)
+        val next = snapshot["points"].single()
+        assertEquals("NEXT", next["status"].asText())
+        assertEquals(initial["lineup"], next["lineup"])
+        assertTrue(next["substitutionSlots"].isEmpty)
+        val path = "${fixture.path}/${next["pointId"].asText()}"
+        fun edit(left: List<Any>) = fixture.selection(snapshot["logRevision"].asLong(), left) + ("expectedLineupRevision" to 1)
+        assertConflict(send("PUT", path, edit(listOf(temporary(slot), temporary(number = 2))), login))
+        response(send("PUT", path, edit(listOf(temporary(archived))), login), 400)
+        assertEquals(next, get(fixture.path)["points"].single())
+        val query = "SELECT * FROM match_point_lineup_entries WHERE match_id = ? AND slot_id = ?"
+        val historicRow = jdbc.queryForMap(query, fixture.id, archived)
+        val changed = response(send("PUT", path, edit(listOf(player(fixture.leftPlayers[0]), temporary(slot))), login), 200)
+        assertEquals(2, changed["lineup"]["revision"].asInt())
+        assertEquals(changed, get(fixture.path)["points"].single())
+        assertEquals(historicRow, jdbc.queryForMap(query, fixture.id, archived))
+    }
+
+    protected fun verifyNextEditRollsBackOnEntryWriteFailure() {
+        val fixture = fixture()
+        val retained = temporary()
+        val oldPlayer = fixture.leftPlayers[0]
+        val rejectedPlayer = fixture.leftPlayers[1]
+        val before = confirm(fixture, listOf(retained, player(oldPlayer)), emptyList())
+        val path = "${fixture.path}/${before["pointId"].asText()}"
+        val edit = fixture.selection(left = listOf(player(rejectedPlayer), retained)) + ("expectedLineupRevision" to 1)
+        val select = """
+            SELECT * FROM match_point_lineup_entries WHERE match_id = ? ORDER BY team_id, position
+        """.trimIndent()
+        val originalRows = jdbc.queryForList(select, fixture.id)
+        // Fail the new participant INSERT after the old participant was removed and the retained slot moved.
+        jdbc.execute("""ALTER TABLE match_point_lineup_entries ADD CONSTRAINT test_issue_283_entry_write
+            CHECK (participant_id <> CAST('$rejectedPlayer' AS UUID))""")
+        try {
+            response(send("PUT", path, edit, login), 500)
+            assertEquals(originalRows, jdbc.queryForList(select, fixture.id))
+            assertEquals(before, get(fixture.path)["points"].single())
+        } finally {
+            jdbc.execute("ALTER TABLE match_point_lineup_entries DROP CONSTRAINT test_issue_283_entry_write")
+        }
+        assertEquals(2, response(send("PUT", path, edit, login), 200)["lineup"]["revision"].asInt())
+    }
+
+    protected fun verifyNextLineupPullLockOrder(editFirst: Boolean) {
+        val fixture = fixture()
+        val (removed, kept) = fixture.rightPlayers
+        val initial = confirm(fixture, emptyList(), listOf(player(removed), player(kept)))
+        val path = "${fixture.path}/${initial["pointId"].asText()}"
+        val edit = fixture.selection(right = listOf(player(kept))) + ("expectedLineupRevision" to 1)
+        val actor = if (editFirst) removed else kept
+        val pull = eventBody(UUID.randomUUID(), "PULL", actor)
+        val journal = "${fixture.matchPath.replace("/v1/", "/v2/")}/events"
+        val editCommand = { send("PUT", path, edit, login, capability = "1", capture = "next-edit-race-$editFirst-edit") }
+        val pullCommand = { send("POST", "$journal/batch", batch(0, 0, pull), login,
+            capability = "1", capture = "next-edit-race-$editFirst-pull") }
+        // Enqueue both real requests behind the same PostgreSQL row lock in a known order.
+        fun awaitWaiters(count: Int) {
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(8)
+            val waiting = """
+                SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database()
+                    AND wait_event_type = 'Lock' AND query ~* 'from matches .*for (no key )?update'
+            """.trimIndent()
+            while (jdbc.queryForObject(waiting, Int::class.java)!! < count) {
+                check(System.nanoTime() < deadline) { "Expected $count requests waiting for the match row lock" }
+                Thread.sleep(20)
+            }
+        }
+        Executors.newFixedThreadPool(2).use { executor ->
+            jdbc.dataSource!!.connection.use { lock ->
+                lock.autoCommit = false
+                lock.prepareStatement("SELECT id FROM matches WHERE id = ? FOR UPDATE").use {
+                    it.setObject(1, fixture.id)
+                    it.executeQuery().close()
+                }
+                val first = executor.submit<HttpResponse<String>>(if (editFirst) editCommand else pullCommand)
+                awaitWaiters(1)
+                val second = executor.submit<HttpResponse<String>>(if (editFirst) pullCommand else editCommand)
+                awaitWaiters(2)
+                lock.commit()
+                val committed = response(first.get(20, TimeUnit.SECONDS), if (editFirst) 200 else 201)
+                val rejected = response(second.get(20, TimeUnit.SECONDS), 409)
+                val snapshot = get(fixture.path)
+                val reread = snapshot["points"].single()
+                if (editFirst) {
+                    assertEquals("POINT_LINEUP_CONFLICT", rejected["code"].asText())
+                    assertEquals(0, snapshot["logRevision"].asInt())
+                    assertEquals(committed, reread)
+                    assertEquals(2, reread["lineup"]["revision"].asInt())
+                } else {
+                    assertEquals("EVENT_LOG_STALE", rejected["code"].asText())
+                    assertEquals(1, snapshot["logRevision"].asInt())
+                    assertEquals(pull["eventId"].toString(), reread["pullEventId"].asText())
+                    assertEquals(initial["lineup"], reread["lineup"])
+                    assertConflict(send("PUT", path, edit + ("expectedLogRevision" to 1), login))
+                }
+            }
+        }
+    }
+
+    @Test
     fun `raw slot actions score and keep legacy readers and writers outside the managed journal`() {
         val fixture = fixture()
         val journal = "${fixture.matchPath}/events"
@@ -1909,6 +2181,10 @@ class PointLineupHttpTest {
         event(fixture, "PULL", fixture.rightPlayers[0], capability = "1")
         val anotherMatch = fixture()
         val nextId = get(anotherMatch.path)["points"].single()["pointId"].asText()
+        val confirmedNext = fixture()
+        val nextSelection = confirmedNext.selection()
+        val next = confirm(confirmedNext, emptyList(), emptyList())
+        val nextPath = "${confirmedNext.path}/${next["pointId"].asText()}"
 
         SpringApplicationBuilder(UltistatsApplication::class.java).profiles("postgres-list").run(
             "--server.port=0", "--app.auth.ingress.loopback-mode=true", "--app.auth.ingress.private-port=0",
@@ -1916,6 +2192,11 @@ class PointLineupHttpTest {
             val restartedPort = (app as ServletWebServerApplicationContext).webServer.port
             val log = response(send("GET", fixture.path, targetPort = restartedPort), 200)
             assertFalse(log["writesEnabled"].asBoolean())
+            assertFalse(log["nextLineupEditsWriteEnabled"].asBoolean())
+            val edit = nextSelection + ("expectedLineupRevision" to 1)
+            assertEquals("POINT_LINEUP_WRITE_DISABLED", response(send("PUT", nextPath, edit, login,
+                targetPort = restartedPort), 409)["code"].asText())
+            assertEquals(next, response(send("PUT", nextPath, nextSelection, login, targetPort = restartedPort), 200))
             val active = log["points"].single()
             assertEquals("ACTIVE", active["status"].asText())
             assertEquals(saved["lineup"], active["lineup"])
@@ -2027,6 +2308,18 @@ class PointLineupHttpTest {
 @ActiveProfiles("postgres-list", inheritProfiles = false)
 @EnabledIfEnvironmentVariable(named = "TEST_POSTGRES_URL", matches = ".+")
 class PointLineupPostgresTest : PointLineupHttpTest() {
+    @Test
+    fun `failed lineup entry write rolls back both teams and the revision`() =
+        verifyNextEditRollsBackOnEntryWriteFailure()
+
+    @Test
+    fun `next lineup edit commits before queued PULL and rejects the removed actor`() =
+        verifyNextLineupPullLockOrder(editFirst = true)
+
+    @Test
+    fun `PULL commits before queued next lineup edit and makes it stale`() =
+        verifyNextLineupPullLockOrder(editFirst = false)
+
     @Test
     fun `fresh reserve-off successor reads replays and undoes an incoming reserve`() = verifyFreshProcessIncomingReserve()
 

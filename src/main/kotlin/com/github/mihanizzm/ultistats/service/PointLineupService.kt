@@ -21,6 +21,7 @@ import com.github.mihanizzm.ultistats.model.events.StoredEvent
 import com.github.mihanizzm.ultistats.model.events.TwoPlayerEvent
 import com.github.mihanizzm.ultistats.model.events.afterSubstitution
 import com.github.mihanizzm.ultistats.model.events.substitutions
+import com.github.mihanizzm.ultistats.repository.jpa.IntroducedPointSlot
 import com.github.mihanizzm.ultistats.repository.jpa.PointLineupRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataEventRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataMatchParticipantRepository
@@ -54,7 +55,8 @@ class PointLineupService(
         val introduced = lineups.introducedSlots(matchId).groupBy { it.pointId }
         return PointLineupsResponse(
             match.eventLogRevision, writesEnabled, policy.substitutionsWriteEnabled, policy.incomingReservesWriteEnabled,
-            points.map { point ->
+            nextLineupEditsWriteEnabled = writesEnabled,
+            points = points.map { point ->
                 val pointJournal = byPoint[point.pointId].orEmpty()
                 val slots = activeSlots(introduced[point.pointId].orEmpty().map { it.slot }, pointJournal)
                 point.toResponse(saved[point.pointId], pointJournal.substitutions(), slots)
@@ -70,6 +72,10 @@ class PointLineupService(
         policy.requireSubstitutionReadClient(matchId, client)
         val revision = request.expectedLogRevision
         if (revision == null || revision < 0) invalid("expectedLogRevision must be a nonnegative integer")
+        val expectedLineupRevision = request.expectedLineupRevision
+        if (expectedLineupRevision != null && expectedLineupRevision < 0) {
+            invalid("expectedLineupRevision must be a nonnegative integer")
+        }
         val journal = journal(matchId)
         val points = PointTimeline.from(match.id, match.status, journal)
         val point = points.firstOrNull { it.pointId == pointId }
@@ -91,13 +97,10 @@ class PointLineupService(
 
         val saved = lineups.list(matchId, teamIds)
         val introduced = lineups.introducedSlots(matchId)
-        saved[pointId]?.let { existing ->
-            // Resolution is an attribution change. The original selection remains the retry key.
-            val original = existing.teams.map { team -> team.copy(entries = team.entries.map {
-                if (it is PointLineupTemporary) it.copy(resolvedParticipantId = null) else it
-            }) }
-            if (original != selection) {
-                reject(PointLineupProblemCode.POINT_LINEUP_CONFLICT, "A different lineup is already confirmed for this point")
+        val existing = saved[pointId]
+        if (expectedLineupRevision == null && existing != null) {
+            if (existing.selection() != selection) {
+                conflict("A different lineup is already confirmed for this point")
             }
             val pointJournal = PointTimeline.eventsByPoint(points, journal)[pointId].orEmpty()
             return point.toResponse(existing, pointJournal.substitutions(),
@@ -106,9 +109,14 @@ class PointLineupService(
 
         if (revision != match.eventLogRevision) reject(PointLineupProblemCode.EVENT_LOG_STALE, "The event log revision has changed")
         if (point.status != PointStatus.NEXT) {
-            reject(PointLineupProblemCode.POINT_LINEUP_CONFLICT, "Only the next point can receive a new lineup")
+            val detail = if (expectedLineupRevision == null) "Only the next point can receive a new lineup"
+                else "Only a confirmed next point can be edited before PULL"
+            conflict(detail)
         }
         if (!writesEnabled) reject(PointLineupProblemCode.POINT_LINEUP_WRITE_DISABLED, "Point lineup writes are disabled")
+        if (expectedLineupRevision != null) {
+            return editNext(match, point, selection, saved, introduced, expectedLineupRevision)
+        }
 
         validateSelection(match, selection, saved.values, introduced.mapTo(mutableSetOf()) { it.slot.slotId })?.let { invalid(it) }
         val confirmed = PointLineup(revision = 1, teams = selection)
@@ -174,6 +182,67 @@ class PointLineupService(
         })
     }
 
+    private fun editNext(
+        match: Match,
+        point: PointBoundary,
+        selection: List<PointLineupTeam>,
+        saved: Map<UUID, PointLineup>,
+        introduced: List<IntroducedPointSlot>,
+        expectedRevision: Long,
+    ): PointLineupResponse {
+        val existing = saved[point.pointId] ?: conflict("Point has no confirmed lineup")
+        val sameSelection = selection == existing.selection()
+        // With the same journal base, a retry can only read back an already-applied selection.
+        val replay = sameSelection && expectedRevision > 0 && expectedRevision == existing.revision - 1
+        if (expectedRevision != existing.revision && !replay) {
+            conflict("The point lineup revision has changed")
+        }
+        if (sameSelection) return point.toResponse(existing)
+
+        val originalSlots = existing.teams.flatMap { team ->
+            team.entries.filterIsInstance<PointLineupTemporary>().map { it.slotId to (team.teamId to it) }
+        }.toMap()
+        val retainedSlots = mutableSetOf<UUID>()
+        val updatedTeams = selection.map { team ->
+            team.copy(entries = team.entries.map { entry ->
+                val original = (entry as? PointLineupTemporary)?.let { originalSlots[it.slotId] }
+                if (original == null) {
+                    entry
+                } else {
+                    val (teamId, slot) = original
+                    if (team.teamId != teamId || entry != slot.copy(resolvedParticipantId = null)) {
+                        conflict("A retained temporary slot must keep its team and number")
+                    }
+                    retainedSlots.add(slot.slotId)
+                    slot
+                }
+            })
+        }
+        validateSelection(match, updatedTeams, (saved - point.pointId).values,
+            introduced.mapTo(mutableSetOf()) { it.slot.slotId })?.let { invalid(it) }
+
+        val removedSlots = originalSlots - retainedSlots
+        if (removedSlots.values.any { (_, slot) -> slot.resolvedParticipantId != null } ||
+            lineups.hasEventSlotReference(match.id, removedSlots.keys)) {
+            conflict("A temporary slot with an identification or event history cannot be removed")
+        }
+        val reservedNumbers = introduced.filter { it.pointId == point.pointId }.map { it.slot.teamId to it.slot.number }.toSet()
+        if (updatedTeams.any { team ->
+                team.entries.filterIsInstance<PointLineupTemporary>().any { (team.teamId to it.number) in reservedNumbers }
+            }) {
+            conflict("An archived incoming reserve already uses the temporary slot number")
+        }
+
+        val updated = PointLineup(existing.revision + 1, updatedTeams)
+        lineups.replaceSelection(match.id, point.pointId, updated, retainedSlots, removedSlots.keys)
+        return point.toResponse(updated)
+    }
+
+    // Resolution is an attribution change. The requested selection contains only raw actors.
+    private fun PointLineup.selection() = teams.map { team -> team.copy(entries = team.entries.map {
+        if (it is PointLineupTemporary) it.copy(resolvedParticipantId = null) else it
+    }) }
+
     private fun validateSelection(
         match: Match, selection: List<PointLineupTeam>, saved: Collection<PointLineup>, usedSlots: MutableSet<UUID>,
     ): String? {
@@ -197,6 +266,7 @@ class PointLineupService(
                     if (!usedPlayers.add(entry.participantId)) return "Duplicate player in lineup"
                 }
                 is PointLineupTemporary -> {
+                    if (entry.resolvedParticipantId?.let { !usedPlayers.add(it) } == true) return "Duplicate player in lineup"
                     if (entry.slotId in roster || !usedSlots.add(entry.slotId)) return "Temporary slot ID is already used in this match"
                     if (entry.number !in 1..match.playersPerTeam || !numbers.add(entry.number)) {
                         return "Temporary slot numbers must be unique per team and within lineup capacity"
