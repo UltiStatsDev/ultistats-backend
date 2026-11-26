@@ -25,6 +25,7 @@ h3{font-size:.85em;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:n
 }
 
 .photo{position:relative}.number{position:absolute;top:.3em;right:.3em;font-size:.3em;color:#f1f4fb;background:#141e30;padding:.1em .3em;border-radius:3px}
+.photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit}
 
 #infographics[data-graphic-kind=leaders] {
   left:27.5%;right:27.5%;top:50%;bottom:auto;transform:translateY(-50%);height:min(90%,26em);min-height:0;

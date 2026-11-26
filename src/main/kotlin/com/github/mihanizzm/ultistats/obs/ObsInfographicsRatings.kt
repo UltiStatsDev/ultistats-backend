@@ -9,7 +9,10 @@ data class ObsLeaderComponents(
     val blocks: Long, val blocksAsMarker: Long, val blocksAsFieldPlayer: Long,
     val interceptions: Long, val callahans: Long, val attackTenths: Long, val defenseTenths: Long,
 )
-data class ObsLeader(val participantId: UUID, val name: String, val number: Int?, val ratingTenths: Long, val components: ObsLeaderComponents)
+data class ObsLeader(
+    val participantId: UUID, val name: String, val number: Int?, val ratingTenths: Long,
+    val components: ObsLeaderComponents, val photoUrl: String? = null,
+)
 enum class ObsLeadersState { READY, UNAVAILABLE }
 data class ObsTeamLeaders(val teamId: UUID, val name: String, val state: ObsLeadersState, val attack: List<ObsLeader>, val defense: List<ObsLeader>)
 

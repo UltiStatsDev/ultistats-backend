@@ -104,6 +104,17 @@ internal data class ObsInfographicsBase(
     val teams: List<ObsInfographicsTeam>,
     val settings: ObsInfographicsSettings,
 ) {
+    fun withCurrentLeaderPhotos(leaderTeams: List<ObsTeamLeaders>): List<ObsTeamLeaders> {
+        val roster = teams.associate { team -> team.teamId to team.roster.associateBy { it.participantId } }
+        return leaderTeams.map { team ->
+            val players = roster[team.teamId].orEmpty()
+            fun photos(leaders: List<ObsLeader>) = leaders.map {
+                it.copy(photoUrl = players[it.participantId]?.photoUrl)
+            }
+            team.copy(attack = photos(team.attack), defense = photos(team.defense))
+        }
+    }
+
     fun playerPages(kind: ObsPresentationKind): Long = when (kind) {
         ObsPresentationKind.ROSTER -> teams.maxOfOrNull { pages(it.roster) } ?: 0
         ObsPresentationKind.POINT -> if (match.status == MatchStatus.IN_PROGRESS && phase.lineupRevision != null)
@@ -128,13 +139,16 @@ class ObsInfographicsBaseService(
         val match = matches.findByIdAndDeletedAtIsNull(matchId) ?: throw AuthProblem(404, "OBS_SOURCE_MATCH_NOT_FOUND")
         val roster = jdbc.query(
             """
-                SELECT participant_id, team_id, first_name, last_name, number FROM match_participants
-                WHERE match_id = ? AND kind = 'PLAYER' ORDER BY participant_id
+                SELECT mp.participant_id, mp.team_id, mp.first_name, mp.last_name, mp.number, p.photo_url
+                FROM match_participants mp
+                LEFT JOIN players p ON p.id = mp.participant_id AND p.deleted_at IS NULL
+                WHERE mp.match_id = ? AND mp.kind = 'PLAYER' ORDER BY mp.participant_id
             """.trimIndent(),
             { rs, _ -> rs.getObject("team_id", UUID::class.java) to ObsInfographicsPlayer(
                 rs.getObject("participant_id", UUID::class.java),
                 "${rs.getString("first_name")} ${rs.getString("last_name")}",
                 rs.getObject("number", Int::class.javaObjectType),
+                rs.getString("photo_url")?.takeIf(managedPhotoPath::matches),
             ) }, matchId,
         ).groupBy({ it.first }, { it.second })
         val teams = jdbc.query(
@@ -184,6 +198,9 @@ class ObsInfographicsBaseService(
         return ObsInfographicsBase(match, phase, projected, settings)
     }
 }
+
+// LocalFileStorageService creates a new UUID and one of these three suffixes on every upload.
+private val managedPhotoPath = Regex("/uploads/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\\.(?:jpg|png|webp)")
 
 internal fun obsInfographicsDigest(value: String): String =
     HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8)))

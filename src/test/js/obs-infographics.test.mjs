@@ -33,6 +33,30 @@ test('snapshot rejects stale binding, invalid phase and duplicate identities; op
   assert.equal(validateInfographics(photos,id(1),'https://localhost').teams[0].roster[0].photoUrl,null);
 });
 
+test('only a canonical same-origin uploaded image enters roster, point and leader cards', () => {
+  const value = fixture(), team = value.teams[0], player = team.roster[0];
+  const path = '/uploads/00000000-0000-0000-0000-000000000001.webp';
+  const origin = 'https://localhost';
+  team.places = [player];
+  value.leaderPresentation = {generation:id(500),startedAt:started,expiresAt:'2026-01-01T00:00:05Z',pageSeconds:5,
+    teams:value.teams.map(({teamId}, i) => ({teamId,state:'READY',defense:[],attack:i ? [] : [{
+      ...player,ratingTenths:1,components:{ordinaryAccuratePasses:1,ratedGoals:0,assists:0,
+        blocks:0,blocksAsMarker:0,blocksAsFieldPlayer:0,interceptions:0,callahans:0}
+    }]}))};
+  const leader = value.leaderPresentation.teams[0].attack[0];
+  for (const [source, expected] of [
+    [path, origin + path], ['/api/v1/players', null], [path + '?preview=1', null], [path + '#key', null],
+    [origin + path, null], ['//elsewhere' + path, null], [path.replace('.webp','.svg'), null],
+    [path + '\n', null], ['/uploads/%2e%2e'+path, null], ['/uploads/fake.png', null],
+  ]) {
+    leader.photoUrl = player.photoUrl = source;
+    const checked = validateInfographics(value,id(1),origin);
+    assert.equal(checked.teams[0].roster[0].photoUrl,expected);
+    assert.equal(checked.teams[0].places[0].photoUrl,expected);
+    assert.equal(checked.leaderPresentation.teams[0].attack[0].photoUrl,expected);
+  }
+});
+
 test('late repeated polls cannot rewind the current page; a new match resets the clock', () => {
   let monotonic = 0;
   const clock = new RosterClock(() => monotonic);
