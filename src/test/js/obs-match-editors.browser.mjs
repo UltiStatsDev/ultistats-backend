@@ -109,6 +109,8 @@ try {
   await page.waitForFunction(selector=>!document.querySelector(selector).matches(':disabled'),selector);
  };
  await page.goto(origin+'/obs-admin.html');
+ for(const fold of ['log-settings','scoreboard-settings','color-settings'])
+  await page.locator(`#${fold} > summary`).click();
  await waitForMatch('');
  assert.ok(await page.locator('#team-colors').evaluate(el=>el.disabled));
  assert.equal(await page.locator('[data-log-color], [data-scoreboard-color]').count(),0);

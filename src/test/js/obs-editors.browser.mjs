@@ -6,6 +6,8 @@ export function instrumentLegacyTransport() {
 }
 export async function verifyEditorTools(page,input,sql) {
   const {match,origin,staff}=input;
+  for(const fold of ['log-settings','log-preview-settings','scoreboard-settings'])
+   await page.locator(`#${fold} > summary`).click();
   await page.waitForFunction(id=>document.querySelector('#preview').getAttribute('src')===`/obs-editor/event-log.html?matchId=${id}`,match);
   assert.equal(await page.locator('#preview').getAttribute('src'),`/obs-editor/event-log.html?matchId=${match}`);
   assert.equal(await page.locator('#scoreboard-preview').getAttribute('src'),`/obs-editor/scoreboard.html?matchId=${match}`);

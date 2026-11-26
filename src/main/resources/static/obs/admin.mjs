@@ -1,31 +1,39 @@
 import {obsSession,bindObsPage,obsPageCurrent,assertObsPage} from '../auth/obs-session.mjs';
 import {mountScoreboardAdmin,bindScoreboardSession} from './scoreboard-admin.mjs';
 import {mountInfographicsSettings} from './infographics-settings-admin.mjs';
+import {mountOperatorDesk} from './operator-desk.mjs';
 import {mountActiveLinks} from './active-links-admin.mjs';
 import {readStaffJson,watchStaffJson} from './staff-reader.mjs';
 import {validateSnapshot} from './scoreboard-model.mjs';
 import {teamAccent,imageAccent} from './colors.mjs';
 
-const $=id=>document.getElementById(id), message=text=>$('save-status').textContent=text;
+const $=id=>document.getElementById(id);
+const message=text=>{ $('save-status').textContent=text; $('log-color-status').textContent=text; };
+const phases={PLANNED:'Запланирован',IN_PROGRESS:'Идёт матч',FINISHED:'Матч завершён'};
 const configPath='/api/v1/obs/config', previewPath='/api/v1/obs/previews/scoreboard/';
 const configFields=['maxRows','ttlSeconds','corner','backgroundColor','textColor'];
 const lifetime=new AbortController(), accentDrafts=new Map();
 let config, match=null, binding, teamsKey, auto={}, photos, globalDirty=false, saving=false, disposed=false;
-let page=0, loadGeneration=0, stopConfig=()=>{}, stopMatch=()=>{};
+let desk, links, resize, stopScoreboard, stopSettings, page=0, loadGeneration=0, stopConfig=()=>{}, stopMatch=()=>{};
 
 function controls() {
  $('log-fields').disabled=disposed||!config||saving;
+ $('log-colors').disabled=$('log-fields').disabled;
  $('team-colors').disabled=disposed||!config||!match||saving;
  $('save').disabled=disposed||!config||saving;
- $('test').disabled=disposed||!match;
+ $('save-log-colors').disabled=$('save').disabled;
+ $('test').disabled=disposed||!match||!$('log-settings').open||!$('log-preview-settings').open;
 }
 
 function end(clearDraft=false) {
  if(disposed)return;
  disposed=true;stopConfig();stopMatch();lifetime.abort();photos?.abort();
+ desk?.stop();links?.dispose();resize?.disconnect();stopScoreboard?.(clearDraft);stopSettings?.();obsSession.dispose();
  if(clearDraft){accentDrafts.clear();$('teams').replaceChildren();}
  controls();$('preview').src='about:blank';
  $('links-matches').replaceChildren();
+ $('editor-context').dataset.matchId='';$('editor-context').textContent='Матч недоступен';
+ $('match-phase').hidden=true;
  for(const id of ['links-mode','links-match','links-open','links-matches','previous','next'])$(id).disabled=true;
  $('auth-status').textContent='Сессия изменилась. Введённые данные остаются локально; откройте страницу заново.';
  $('status').textContent='Редакторы остановлены. Изменения не отправляются.';
@@ -71,22 +79,37 @@ function renderTeams() {
  updateColors();
 }
 
+function updateLogPreview() {
+ const id=match?.matchId, frame=$('preview');
+ const path=!disposed&&id&&$('log-settings').open&&$('log-preview-settings').open
+  ? `/obs-editor/event-log.html?matchId=${id}` : 'about:blank';
+ if(frame.getAttribute('src')!==path)frame.src=path;
+ controls();
+}
+$('log-settings').addEventListener('toggle',updateLogPreview);
+$('log-preview-settings').addEventListener('toggle',updateLogPreview);
+
 function showMatch(value, emptyText='Нет матча для трансляции.') {
  const oldId=match?.matchId;match=value;
  const id=match?.matchId;
- $('editor-context').dataset.matchId=id??'';
- $('editor-context').textContent=match?`${match.teams.map(team=>team.teamName).join(' — ')} · ${match.status}`:emptyText;
+ const header=$('editor-context'), phase=$('match-phase');
+ const text=match?match.teams.map(team=>team.teamName).join(' — '):emptyText;
+ header.dataset.matchId=id??'';
+ if(header.textContent!==text)header.textContent=text;
+ phase.hidden=!match;
+ phase.textContent=phases[match?.status]??'';
+ desk?.resolve(id);
  if(oldId!==id){
   mountScoreboardAdmin(id);
-  $('preview').src=id?`/obs-editor/event-log.html?matchId=${id}`:'about:blank';
-  $('status').textContent=id?'Подключение журнала событий…':emptyText;
+  updateLogPreview();
+  $('status').textContent='';
  }
  const key=JSON.stringify([id,match?.teams.map(team=>[team.teamId,team.teamName,team.photoUrl])]);
  if(key!==teamsKey){teamsKey=key;renderTeams();}
 }
 function watchMatch(id) {
  if(binding===id)return;
- binding=id;stopMatch();showMatch(null,'Проверка текущего матча…');
+ binding=id;desk.select(id);stopMatch();showMatch(null,'Проверка текущего матча…');
  stopMatch=watchStaffJson(obsSession,previewPath+(id??'auto'),value=>{
   const snapshot=id?value:value.snapshot;
   if(snapshot)validateSnapshot(snapshot,id??snapshot.matchId);
@@ -110,7 +133,8 @@ function watchConfig() {
   if(text!=='Синхронизировано'&&!saving)message(text);
  },end);
 }
-$('log-fields').addEventListener('input',()=>{globalDirty=true;updateColors();});
+for(const id of ['log-fields','log-colors'])
+ $(id).addEventListener('input',()=>{globalDirty=true;updateColors();});
 $('settings').addEventListener('submit',async event=>{
  event.preventDefault();if(!config||disposed||saving)return;
  const id=match?.matchId;
@@ -154,9 +178,14 @@ addEventListener('message',event=>{
 try {
  await obsSession.bootstrap('OBS_ADMIN');
  if(disposed){obsSession.dispose();throw Error('Страница закрыта');}
- bindObsPage();bindScoreboardSession();
+ bindObsPage();stopScoreboard=bindScoreboardSession();
  obsSession.subscribe(()=>{if(!obsPageCurrent())end();});
- mountActiveLinks(obsSession,{onContext:watchMatch});mountInfographicsSettings(obsSession);
+ desk=mountOperatorDesk(obsSession,end);
+ links=mountActiveLinks(obsSession,{onContext:watchMatch});
+ stopSettings=mountInfographicsSettings(obsSession);
+ const stage=$('preview-stage');
+ resize=new ResizeObserver(([entry])=>stage.style.setProperty('--preview-scale',entry.contentRect.width/1920));
+ resize.observe(stage);
  $('auth-status').textContent='Организатор · защищённая сессия проверена.';
  for(const id of ['links-mode','links-match','links-open','links-matches'])$(id).disabled=false;
  watchConfig();void loadMatches();

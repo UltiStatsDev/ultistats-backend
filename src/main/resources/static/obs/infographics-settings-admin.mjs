@@ -2,7 +2,7 @@ import {readStaffJson} from './staff-reader.mjs';
 const path = '/api/v1/obs/infographics/settings';
 export function mountInfographicsSettings(session, form = document.querySelector('#infographics-settings'), status = document.querySelector('#infographics-status')) {
   const captured = session.capture(), controller = new AbortController();
-  const fields = ['rosterPageSeconds','pointPageSeconds','leaderPageSeconds'];
+  const fields = ['rosterPageSeconds','pointPageSeconds','leaderPageSeconds','statsSeconds'];
   const fieldset = form.querySelector('fieldset');
   let stopped = false, unsubscribe = () => {};
   const current = () => !stopped && session.isCurrent(captured);
@@ -21,8 +21,8 @@ export function mountInfographicsSettings(session, form = document.querySelector
   form.addEventListener('submit', async event => {
     event.preventDefault(); if (!current() || fieldset.disabled) return;
     const body = Object.fromEntries(fields.map(name => [name, Number(form.elements[name].value)]));
-    if (fields.some(name => form.elements[name].value === '' || !Number.isInteger(body[name]) || body[name] < 2 || body[name] > 15)) {
-      status.textContent = 'Введите целые значения от 2 до 15'; return;
+    if (fields.some(name => form.elements[name].value === '' || !Number.isInteger(body[name]) || body[name] < Number(form.elements[name].min) || body[name] > Number(form.elements[name].max))) {
+      status.textContent = 'Проверьте диапазон значений'; return;
     }
     fieldset.disabled = true;
     try {
@@ -32,7 +32,7 @@ export function mountInfographicsSettings(session, form = document.querySelector
       if ([401,403].includes(response.status)) {end(); return;}
       if (!response.ok) throw Error(`HTTP ${response.status}`);
       const saved = await response.json();
-      if (current()) {render(saved); status.textContent = 'Сохранено. Интервалы действуют со следующей фазы';}
+      if (current()) {render(saved); status.textContent = 'Сохранено. Интервалы действуют со следующего показа';}
     } catch (error) {if (current()) status.textContent = error.message;}
     finally {if (current()) fieldset.disabled = false;}
   });

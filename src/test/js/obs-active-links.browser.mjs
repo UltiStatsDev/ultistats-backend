@@ -35,7 +35,11 @@ try {
   const r=await context.request.get(`${origin}/api/v1/obs/sources/${kind}/${data.key.matchId??'auto'}`,{headers:{Authorization:'Bearer '+url.hash.slice(5)}});
   assert.equal(r.status(),expected);return expected===200?r.json():null;
  };
- await page.goto(origin+'/obs-admin.html');await settled();
+ await page.goto(origin+'/obs-admin.html');
+ await page.locator('#active-links > summary').click();
+ await page.locator('#log-settings > summary').click();
+ await page.locator('#scoreboard-settings > summary').click();
+ await settled();
  assert.equal(await field('scoreboard').inputValue(),'');assert.equal(wire.filter(r=>r.method==='POST').length,0);
  const autoScore=await issue('scoreboard'),autoLog=await issue('event-log');
  assert.equal((await viewer(autoScore,200)).snapshot,null);assert.equal((await viewer(autoLog,200)).snapshot,null);
