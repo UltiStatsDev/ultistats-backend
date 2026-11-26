@@ -14,7 +14,7 @@ const configPath='/api/v1/obs/config', previewPath='/api/v1/obs/previews/scorebo
 const configFields=['maxRows','ttlSeconds','corner','backgroundColor','textColor'];
 const lifetime=new AbortController(), accentDrafts=new Map();
 let config, match=null, binding, teamsKey, auto={}, photos, globalDirty=false, saving=false, disposed=false;
-let desk, links, resize, stopScoreboard, stopSettings, page=0, loadGeneration=0, stopConfig=()=>{}, stopMatch=()=>{};
+let logPreviewReady=false, desk, links, resize, stopScoreboard, stopSettings, page=0, loadGeneration=0, stopConfig=()=>{}, stopMatch=()=>{};
 
 function controls() {
  $('log-fields').disabled=disposed||!config||saving;
@@ -22,7 +22,7 @@ function controls() {
  $('team-colors').disabled=disposed||!config||!match||saving;
  $('save').disabled=disposed||!config||saving;
  $('save-log-colors').disabled=$('save').disabled;
- $('test').disabled=disposed||!match||!$('log-settings').open||!$('log-preview-settings').open;
+ $('test').disabled=disposed||!logPreviewReady||!$('log-settings').open||!$('log-preview-settings').open;
 }
 
 function end(clearDraft=false) {
@@ -83,7 +83,11 @@ function updateLogPreview() {
  const id=match?.matchId, frame=$('preview');
  const path=!disposed&&id&&$('log-settings').open&&$('log-preview-settings').open
   ? `/obs-editor/event-log.html?matchId=${id}` : 'about:blank';
- if(frame.getAttribute('src')!==path)frame.src=path;
+ if(frame.getAttribute('src')!==path){
+  logPreviewReady=false;
+  $('status').textContent=path==='about:blank'?'':'Подключение журнала событий…';
+  frame.src=path;
+ }
  controls();
 }
 $('log-settings').addEventListener('toggle',updateLogPreview);
@@ -102,7 +106,6 @@ function showMatch(value, emptyText='Нет матча для трансляци
  if(oldId!==id){
   mountScoreboardAdmin(id);
   updateLogPreview();
-  $('status').textContent='';
  }
  const key=JSON.stringify([id,match?.teams.map(team=>[team.teamId,team.teamName,team.photoUrl])]);
  if(key!==teamsKey){teamsKey=key;renderTeams();}
@@ -170,10 +173,13 @@ async function loadMatches() {
 }
 $('previous').onclick=()=>{page=Math.max(0,page-1);void loadMatches();};
 $('next').onclick=()=>{page++;void loadMatches();};
-$('test').onclick=()=>{if(match&&!disposed&&obsPageCurrent())$('preview').contentWindow?.postMessage({type:'obs-test'},location.origin);};
+$('test').onclick=()=>{if(logPreviewReady&&!disposed&&obsPageCurrent())$('preview').contentWindow?.postMessage({type:'obs-test'},location.origin);};
 addEventListener('message',event=>{
- if(match&&!disposed&&obsPageCurrent()&&event.origin===location.origin&&event.source===$('preview').contentWindow&&event.data?.type==='obs-status')
+ if(match&&!disposed&&obsPageCurrent()&&event.origin===location.origin&&event.source===$('preview').contentWindow&&event.data?.type==='obs-status'){
+  logPreviewReady=event.data.matchId===match.matchId&&event.data.message==='Синхронизировано';
   $('status').textContent=event.data.message;
+  controls();
+ }
 });
 try {
  await obsSession.bootstrap('OBS_ADMIN');

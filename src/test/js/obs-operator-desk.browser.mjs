@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 export async function exerciseOperatorDesk({
   origin, staff, viewer, fixture, other, teams, otherPair, exact, commands, settings, control, readExact, readAuto,
-  tally, confirm, score, finish, config, profile, screenshot,
+  tally, confirm, score, finish, config, profile, readEventLogKey, screenshot,
 }) {
   const page = await staff.newPage();
   const broadcast = await viewer.newPage();
@@ -30,7 +30,12 @@ export async function exerciseOperatorDesk({
     assert.equal(reply.status(), expected);
     return reply;
   }
-  const operate = kind => action(show(kind), 'POST', commands).then(r => r.json());
+  const operate = async kind => {
+    await action(show(kind), 'POST', commands);
+    const receipt = (await control()).activePresentation;
+    assert.equal(receipt?.kind,kind);
+    return receipt;
+  };
   const hide = generation => action(at('#air-hide'),'DELETE',`${commands}/${generation}`,204);
   const frame = page.frameLocator('#links-preview');
   const airGraphic = broadcast.locator('#infographics');
@@ -89,6 +94,25 @@ export async function exerciseOperatorDesk({
   assert.deepEqual((await config()).teamColors,{[teams[0].id]:'#aa3412',[otherPair[0].id]:'#123456'});
   assert.equal((await profile()).teamColors[teams[0].id],'#246bca');
   await at('#color-settings > summary').click();
+
+  const logWrites = writes.length;
+  const localLogPath=`**/api/v1/obs/previews/event-log/${fixture.id}`;
+  const previewRequest=Promise.withResolvers(), continuePreview=Promise.withResolvers();
+  await page.route(localLogPath,async route=>{
+    previewRequest.resolve();
+    await continuePreview.promise;
+    await route.continue();
+  },{times:1});
+  await at('#log-settings > summary').click();
+  await at('#log-preview-settings > summary').click();
+  const localLog = page.frameLocator('#preview');
+  await previewRequest.promise;
+  assert.ok(await at('#test').isDisabled());
+  continuePreview.resolve();
+  await at('#test').click();
+  await localLog.locator('[data-event-id=preview-test]').waitFor();
+  assert.equal(writes.length,logWrites);
+  await at('#log-settings > summary').click();
 
   await finish();
   const automated = (await control()).activePresentation;
@@ -156,10 +180,13 @@ export async function exerciseOperatorDesk({
     await at(actionId).click();
     return action(at('#links-confirm'),method,path,status);
   };
-  const first = await (await changeLink('#link-event-log-issue','POST',linkPath,201)).json();
-  const rotated = await (await changeLink('#link-event-log-issue','POST',linkPath,201)).json();
+  await changeLink('#link-event-log-issue','POST',linkPath,201);
+  const first = await readEventLogKey();
+  await changeLink('#link-event-log-issue','POST',linkPath,201);
+  const rotated = await readEventLogKey();
   assert.notEqual(first.key.keyId,rotated.key.keyId);
   await changeLink('#link-event-log-revoke','DELETE',`${linkPath}/${rotated.key.keyId}`,204);
+  assert.equal((await readEventLogKey()).status,'NO_ACTIVE_LINK');
   for (const request of writes) {
     assert.ok(await request.headerValue('x-ultistats-session-id'));
     assert.ok(await request.headerValue('x-csrf-token'));
