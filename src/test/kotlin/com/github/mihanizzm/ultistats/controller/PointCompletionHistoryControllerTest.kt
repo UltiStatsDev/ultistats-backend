@@ -109,6 +109,21 @@ class PointCompletionHistoryControllerTest : MatchAbstractTest() {
         }
     }
 
+    @Test
+    fun `ordered history has nonrecursive OpenAPI schemas with distinct tags`() {
+        val schemas = read("/v3/api-docs", 200)["components"]["schemas"]
+        val union = schemas["ProjectedEvent"]
+        assertEquals("kind", union["discriminator"]["propertyName"].asText())
+        for ((kind, field) in listOf("ORIGINAL" to "event", "RESTORED" to "insertion")) {
+            val name = union["discriminator"]["mapping"][kind].asText().substringAfterLast('/')
+            val leaf = schemas[name]
+            assertFalse(leaf.has("allOf"))
+            val props = leaf["properties"]
+            assertEquals(listOf(kind), props["kind"]["enum"].map(JsonNode::asText))
+            assertTrue(props.has(field))
+        }
+    }
+
     private fun fixture(): FinishedFixture {
         matchService.create(Match(matchId, MATCH.teamIds))
         matchService.startMatch(matchId, Instant.parse(START_DATE))

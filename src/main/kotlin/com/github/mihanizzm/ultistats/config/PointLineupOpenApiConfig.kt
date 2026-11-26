@@ -19,6 +19,7 @@ class PointLineupOpenApiConfig {
     @Bean
     fun pointLineupOpenApi() = OpenApiCustomizer { api ->
         val schemas = api.components.schemas
+        if ("ProjectedEvent" in schemas) flattenDiscriminatedLeaves(schemas, "ProjectedEvent")
         flattenDiscriminatedLeaves(schemas, "ConfirmPointLineupEntry")
         flattenDiscriminatedLeaves(schemas, "PointLineupEntry")
         flattenDiscriminatedLeaves(schemas, "PortablePointLineupEntry")
