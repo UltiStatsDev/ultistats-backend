@@ -1,6 +1,9 @@
 import {validatePostmatch} from './infographics-postmatch.mjs';
 
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+const managedPhotoPath = /^\/uploads\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\.(?:jpg|png|webp)$(?!.)/s;
+const photoSource = (path, origin) =>
+  typeof path === 'string' && origin.startsWith('https://') && managedPhotoPath.test(path) ? origin + path : null;
 const invalid = () => { throw Error('Некорректные данные инфографики'); };
 export function validateInfographics(value, matchId, origin = globalThis.location?.origin ?? 'https://localhost') {
   if (!value || value.matchId !== matchId || !uuid.test(matchId) || !Number.isFinite(Date.parse(value.serverNow)) ||
@@ -26,7 +29,7 @@ export function validateInfographics(value, matchId, origin = globalThis.locatio
   if (value.phase.kind === 'LINEUP' && value.phase.lineupStartedAt == null) invalid();
   if (value.phase.pageSeconds != null && (!Number.isInteger(value.phase.pageSeconds) || value.phase.pageSeconds < 2 || value.phase.pageSeconds > 15)) invalid();
   if (value.phase.lineupPageSeconds != null && (!Number.isInteger(value.phase.lineupPageSeconds) || value.phase.lineupPageSeconds < 2 || value.phase.lineupPageSeconds > 15)) invalid();
-  validatePresentation(value.leaderPresentation, value.teams);
+  const leaderPresentation = validatePresentation(value.leaderPresentation, value.teams, origin);
   const choices = [value.leaderPresentation,value.statsPresentation,value.playerPresentation,value.suppressedPhase];
   if (choices.filter(choice=>choice!=null).length > 1 ||
       (value.suppressedPhase != null && (!['ROSTER','LINEUP'].includes(kind) || value.suppressedPhase !== kind))) invalid();
@@ -38,12 +41,7 @@ export function validateInfographics(value, matchId, origin = globalThis.locatio
           (player.number !== null && (!Number.isSafeInteger(player.number) || player.number < 0))) invalid();
       if (!selected) identities.add(player.participantId);
       if (player.temporary === true && (player.name !== 'Игрок неизвестен' || player.number !== null || player.photoUrl !== null)) invalid();
-      let photoUrl = null;
-      if (typeof player.photoUrl === 'string') try {
-        const url = new URL(player.photoUrl,origin);
-        if (url.origin === origin && url.protocol === 'https:' && !url.username && !url.password && !url.hash) photoUrl=url.href;
-      } catch {}
-      return {...player,photoUrl};
+      return {...player,photoUrl:photoSource(player.photoUrl, origin)};
     });
     if (team.places != null && !Array.isArray(team.places)) invalid();
     const places = players(team.places ?? [], true);
@@ -51,7 +49,7 @@ export function validateInfographics(value, matchId, origin = globalThis.locatio
     return {...team,roster:players(team.roster),places};
   });
   validatePlayerPresentation(value, teams);
-  return {...value,postmatch,teams};
+  return {...value,postmatch,teams,leaderPresentation};
 }
 
 const pageSize = 5;
@@ -71,8 +69,8 @@ function validatePlayerPresentation(value, teams) {
 const categories = ['attack','defense'];
 const slotCount = (teams, category) => Math.max(...teams.map(team => team[category].length));
 const components = ['ordinaryAccuratePasses','ratedGoals','assists','blocks','blocksAsMarker','blocksAsFieldPlayer','interceptions','callahans'];
-function validatePresentation(command, teams) {
-  if (command == null) return;
+function validatePresentation(command, teams, origin) {
+  if (command == null) return command;
   const {generation, startedAt, expiresAt, pageSeconds} = command;
   if (!uuid.test(generation) || !Number.isFinite(Date.parse(startedAt)) ||
       !Number.isInteger(pageSeconds) || pageSeconds < 2 || pageSeconds > 15 ||
@@ -92,6 +90,8 @@ function validatePresentation(command, teams) {
   });
   const slots = categories.reduce((sum, category) => sum + slotCount(command.teams, category), 0);
   if (!slots || Date.parse(expiresAt) - Date.parse(startedAt) !== slots * pageSeconds * 1000) invalid();
+  const photos = players => players.map(player => ({...player,photoUrl:photoSource(player.photoUrl, origin)}));
+  return {...command,teams:command.teams.map(team => ({...team,attack:photos(team.attack),defense:photos(team.defense)}))};
 }
 
 const isOnAir = (command, now) =>

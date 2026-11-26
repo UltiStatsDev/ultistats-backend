@@ -134,9 +134,10 @@ class ObsInfographicsPresentationService(
         val active = latest?.takeIf { it.input == input }?.active(matchId, revision, now)
         val phase = currentPhase(base, selectionRevision)?.takeUnless { active != null || latest?.entry?.phaseToken == it.phaseToken }
         val availability = ObsPresentationKind.entries.associateWith { pages(it, ratings, base) > 0 }
-        return ratings.copy(presentation = ObsPresentationControl(input, revision, latest?.entry?.generation,
-            active?.generation, availability.getValue(ObsPresentationKind.LEADERS), availability.getValue(ObsPresentationKind.STATS),
-            now, active, if (isAuto) ObsPresentationBinding.AUTO else ObsPresentationBinding.EXACT, matchId, availability, phase))
+        return ratings.copy(teams = base.withCurrentLeaderPhotos(ratings.teams),
+            presentation = ObsPresentationControl(input, revision, latest?.entry?.generation,
+                active?.generation, availability.getValue(ObsPresentationKind.LEADERS), availability.getValue(ObsPresentationKind.STATS),
+                now, active, if (isAuto) ObsPresentationBinding.AUTO else ObsPresentationBinding.EXACT, matchId, availability, phase))
     }
 
     internal data class Active(
@@ -161,7 +162,8 @@ class ObsInfographicsPresentationService(
             ObsPresentationKind.ROSTER, ObsPresentationKind.POINT -> Active(players = receipt)
             ObsPresentationKind.LEADERS -> Active(leaders = ObsLeaderPresentation(
                 receipt.generation, receipt.startedAt, receipt.expiresAt, receipt.pageSeconds,
-                mapper.readValue(current.teamsJson, object : TypeReference<List<ObsTeamLeaders>>() {}),
+                // Ratings and page timing are frozen by the command. Media follows the live player catalog.
+                base.withCurrentLeaderPhotos(mapper.readValue(current.teamsJson, object : TypeReference<List<ObsTeamLeaders>>() {})),
             ))
         }
     }

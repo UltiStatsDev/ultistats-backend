@@ -108,6 +108,34 @@ class ObsInfographicsPresentationTest : MatchAbstractTest() {
         assertEquals("OBS_PRESENTATION_INPUT_STALE", assertFailsWith<AuthProblem> { commands.show(beforeUndo) }.code)
     }
 
+    @Test fun `leader generation keeps its ratings while the current player photo changes`() {
+        goal()
+        val player = PLAYERS_1[0].id
+        val first = "/uploads/00000000-0000-0000-0000-000000000001.png"
+        val second = "/uploads/00000000-0000-0000-0000-000000000002.webp"
+        fun store(url: String?) = jdbc.update("UPDATE players SET photo_url = ? WHERE id = ?", url, player)
+        fun onAir() = assertNotNull(preview.infographics(MATCH.id).leaderPresentation)
+        // Check the wire shape so this regression test also runs against the old DTO.
+        fun photo(leader: ObsLeader) = json.valueToTree<com.fasterxml.jackson.databind.JsonNode>(leader).path("photoUrl").asText(null)
+        fun leader(teams: List<ObsTeamLeaders>) = teams.first().attack.single { it.participantId == player }
+        store(first)
+        assertEquals(first, preview.infographics(MATCH.id).teams.first().roster.single { it.participantId == player }.photoUrl)
+        val request = request()
+        val generation = commands.show(request).generation
+        assertEquals(first, photo(leader(onAir().teams)))
+        val rating = leader(onAir().teams).ratingTenths
+        store(second)
+        assertEquals(generation, onAir().generation)
+        assertEquals(rating, leader(onAir().teams).ratingTenths)
+        assertEquals(second, photo(leader(onAir().teams)))
+        val control = commands.exactLeaders(MATCH.id)
+        assertEquals(second, photo(leader(control.teams)))
+        assertEquals(request.expectedInputRevision, control.presentation!!.expectedInputRevision)
+        jdbc.update("UPDATE players SET deleted_at = ? WHERE id = ?", java.sql.Timestamp.from(Instant.now()), player)
+        assertNull(preview.infographics(MATCH.id).teams.first().roster.single { it.participantId == player }.photoUrl)
+        assertNull(photo(leader(onAir().teams)))
+    }
+
     @Test fun `AUTO switch and soft deletion cannot revive a prior presentation`() {
         goal()
         val operation = request(ObsPresentationBinding.AUTO)
