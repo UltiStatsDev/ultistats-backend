@@ -11,6 +11,30 @@
 
 #status:not(:empty){display:block;padding:12px;color:#fff;background:#17202e;font:16px system-ui,sans-serif}
 
-.feed-row[data-kind=cancellation]{flex-wrap:wrap;gap:0 16px}
-.feed-row[data-kind=cancellation] .player{text-decoration:line-through}
-.cancel-label{flex-basis:100%;padding:8px 16px 0;font-size:14px;font-weight:650}
+/* Use the original row's padding for the label, preserving its intrinsic size. */
+.feed-row[data-kind=cancellation]{
+  position:relative;
+  --cancel-offset:6px;
+}
+.feed-row[data-kind=cancellation].leaving{position:absolute}
+.feed-row[data-kind=cancellation] .player{
+  padding-block:calc(12px + var(--cancel-offset)) calc(12px - var(--cancel-offset));
+}
+.feed-row[data-kind=cancellation] svg{transform:translateY(var(--cancel-offset))}
+.cancel-label{
+  position:absolute;
+  inset-block-start:2px;
+  inset-inline-start:16px;
+  font-size:12px;
+  line-height:14px;
+  white-space:nowrap;
+}
+.feed-row[data-kind=cancellation]::after{
+  content:'';
+  position:absolute;
+  inset-inline:16px;
+  top:calc(50% + var(--cancel-offset) - .75px);
+  height:1.5px;
+  background:currentColor;
+  pointer-events:none;
+}
