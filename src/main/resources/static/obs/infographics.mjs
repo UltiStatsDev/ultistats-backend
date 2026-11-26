@@ -52,7 +52,7 @@ function render() {
   if (disposed || !page) {clear();return;}
   const key = page.generation
     ? `${page.generation}:${page.category}:${page.page}`
-    : JSON.stringify([page.matchId,page.presentationRevision,page.statsPresentation?.generation,page.page,page.teams]);
+    : JSON.stringify([page.matchId,page.presentationRevision,page.phase.kind,page.statsPresentation?.generation,page.playerGeneration,page.page,page.teams]);
   if (key===viewKey) return;
   viewKey=key;
   if (page.generation) {renderLeaders(page);return;}

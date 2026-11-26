@@ -145,3 +145,44 @@ test('canonical final stats air only within the latest stats show deadline', () 
   value.statsPresentation.matchId=id(99);
   assert.throws(()=>at(0));
 });
+
+test('manual roster starts at page zero, holds the shorter side and restores the live lineup at expiry', () => {
+  const value = fixture();
+  value.phase = {kind:'LINEUP',startedAt:started,lineupStartedAt:started,pointId:id(50),
+    lineupRevision:1,anchorKind:'CONFIRMED'};
+  value.teams.forEach(team => team.places = team.roster.slice(0,1));
+  value.playerPresentation = {kind:'ROSTER',origin:'MANUAL',generation:id(500),matchId:id(1),
+    startedAt:'2026-01-01T00:00:06Z',expiresAt:'2026-01-01T00:00:15Z',pageSeconds:3};
+  const at = sec => infographicsPage(validateInfographics(value,id(1)),Date.parse(started)+sec*1000);
+  assert.equal(at(5).phase.kind,'LINEUP');
+  assert.deepEqual([6,9,12].map(sec=>at(sec).teams.map(team=>team.roster[0].number)),[[0,0],[5,0],[10,0]]);
+  assert.equal(at(15).phase.kind,'LINEUP');
+  value.playerPresentation.expiresAt='2026-01-01T00:00:18Z';
+  assert.throws(()=>at(6));
+});
+
+test('manual confirmed point can air before its scheduled automatic phase', () => {
+  const value = fixture();
+  value.phase = {kind:'ROSTER',startedAt:started,lineupStartedAt:'2026-01-01T00:00:15Z',pointId:id(50),
+    lineupRevision:1,anchorKind:'CONFIRMED'};
+  value.teams.forEach(team => team.places = team.roster.slice(-1));
+  value.playerPresentation = {kind:'POINT',origin:'MANUAL',generation:id(501),matchId:id(1),
+    startedAt:'2026-01-01T00:00:06Z',expiresAt:'2026-01-01T00:00:09Z',pageSeconds:3};
+  const at = sec => infographicsPage(validateInfographics(value,id(1)),Date.parse(started)+sec*1000);
+  assert.equal(at(6).phase.kind,'LINEUP');
+  assert.deepEqual(at(6).teams.map(t=>t.roster[0].number),[11,1]);
+  assert.equal(at(9).phase.kind,'ROSTER');
+  delete value.phase.lineupRevision;
+  assert.throws(()=>at(6));
+});
+
+test('phase hide keeps the next scheduled phase playable without a fresh poll', () => {
+  const value = fixture();
+  value.phase = {kind:'ROSTER',startedAt:started,lineupStartedAt:'2026-01-01T00:00:15Z',pointId:id(50),
+    lineupRevision:1,anchorKind:'CONFIRMED'};
+  value.teams.forEach(team => team.places = team.roster.slice(0,1));
+  value.suppressedPhase='ROSTER';
+  const at = sec => infographicsPage(validateInfographics(value,id(1)),Date.parse(started)+sec*1000);
+  assert.equal(at(14),null);
+  assert.equal(at(15).phase.kind,'LINEUP');
+});

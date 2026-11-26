@@ -270,12 +270,18 @@ CREATE TABLE obs_infographics_presentations (
     input_revision VARCHAR(129) NOT NULL,
     settings_revision BIGINT NOT NULL CHECK (settings_revision >= 0),
     started_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    expires_at TIMESTAMP WITH TIME ZONE NOT NULL CHECK (expires_at > started_at),
+    expires_at TIMESTAMP WITH TIME ZONE CHECK (expires_at > started_at),
     kind VARCHAR(16) NOT NULL DEFAULT 'LEADERS',
     origin VARCHAR(6) NOT NULL DEFAULT 'MANUAL' CHECK (origin IN ('MANUAL', 'AUTO')),
-    page_seconds INTEGER NOT NULL CHECK (page_seconds > 0 AND (kind = 'STATS' OR page_seconds BETWEEN 2 AND 15)),
+    page_seconds INTEGER CHECK (page_seconds > 0 AND (kind = 'STATS' OR page_seconds BETWEEN 2 AND 15)),
     teams_json TEXT NOT NULL,
     hidden BOOLEAN NOT NULL DEFAULT FALSE,
+    phase_token VARCHAR(64),
+    CHECK (
+        (phase_token IS NULL AND expires_at IS NOT NULL AND page_seconds IS NOT NULL) OR
+        (phase_token IS NOT NULL AND expires_at IS NULL AND page_seconds IS NULL AND
+            kind IN ('ROSTER', 'POINT') AND origin = 'MANUAL' AND hidden)
+    ),
     UNIQUE (binding, ordinal)
 );
 

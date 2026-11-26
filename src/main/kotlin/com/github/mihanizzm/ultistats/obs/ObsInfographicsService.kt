@@ -2,6 +2,7 @@ package com.github.mihanizzm.ultistats.obs
 
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.github.mihanizzm.ultistats.auth.security.AuthProblem
+import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.model.MatchStatus
 import com.github.mihanizzm.ultistats.model.PointLineupPlayer
 import com.github.mihanizzm.ultistats.model.PointLineupTemporary
@@ -50,6 +51,12 @@ data class ObsInfographicsSnapshot(
     @get:JsonInclude(JsonInclude.Include.ALWAYS)
     @field:Schema(description = "Active timed final statistics for this binding", nullable = true)
     val statsPresentation: ObsPresentationReceipt? = null,
+    @get:JsonInclude(JsonInclude.Include.ALWAYS)
+    @field:Schema(description = "Active timed roster or confirmed NEXT lineup for this binding", nullable = true)
+    val playerPresentation: ObsPresentationReceipt? = null,
+    @get:JsonInclude(JsonInclude.Include.ALWAYS)
+    @field:Schema(description = "Suppressed base phase of this binding", allowableValues = ["ROSTER", "LINEUP"], nullable = true)
+    val suppressedPhase: String? = null,
 )
 @JsonInclude(JsonInclude.Include.ALWAYS)
 data class ObsAutoInfographicsSnapshot(val snapshot: ObsInfographicsSnapshot?)
@@ -58,15 +65,10 @@ data class ObsAutoInfographicsSnapshot(val snapshot: ObsInfographicsSnapshot?)
 class ObsInfographicsService(
     private val presentations: ObsInfographicsPresentationService,
     private val postmatchService: ObsInfographicsPostmatchService,
-    private val settingsService: ObsInfographicsSettingsService,
+    private val baseService: ObsInfographicsBaseService,
     private val keys: ObsSourceKeyService,
     private val auto: ObsAutoSourceService,
-    private val matches: SpringDataMatchRepository,
-    private val jdbc: JdbcTemplate,
     private val clock: Clock,
-    private val lineups: PointLineupService,
-    private val lineupRepository: PointLineupRepository,
-    private val events: SpringDataEventRepository,
 ) {
     // The first key lookup and all selected-match reads share the original snapshot.
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -85,6 +87,44 @@ class ObsInfographicsService(
 
     // Staff calls also arrive inside the preview service's original repeatable-read transaction.
     internal fun buildSnapshot(matchId: UUID, isAuto: Boolean = false): ObsInfographicsSnapshot {
+        val now = clock.instant()
+        val base = baseService.read(matchId, now)
+        val postmatch = if (base.match.status == MatchStatus.FINISHED) postmatchService.finished(matchId, base.teams.map { it.teamId }) else null
+        val input = "${base.match.eventLogRevision}:${base.match.status}:${base.match.effectiveStartedAt}:${base.phase}:${base.teams}:${base.settings.revision}:$postmatch"
+        val revision = obsInfographicsDigest(input)
+        val presentation = presentations.effective(base, isAuto, now)
+        return ObsInfographicsSnapshot(matchId, now, revision, base.match.status, base.phase, base.teams, base.settings,
+            presentation?.leaders, postmatch, presentation?.stats, presentation?.players, presentation?.suppressedPhase)
+    }
+}
+
+internal data class ObsInfographicsBase(
+    val match: Match,
+    val phase: ObsInfographicsPhase,
+    val teams: List<ObsInfographicsTeam>,
+    val settings: ObsInfographicsSettings,
+) {
+    fun playerPages(kind: ObsPresentationKind): Long = when (kind) {
+        ObsPresentationKind.ROSTER -> teams.maxOfOrNull { pages(it.roster) } ?: 0
+        ObsPresentationKind.POINT -> if (match.status == MatchStatus.IN_PROGRESS && phase.lineupRevision != null)
+            teams.maxOfOrNull { pages(it.places) } ?: 0 else 0
+        else -> error("Expected a player presentation kind")
+    }
+
+    private fun pages(players: List<ObsInfographicsPlayer>) = (players.size + 4L) / 5
+}
+
+// Admission, on-air and staff status share the canonical roster and confirmed NEXT projection.
+@Service
+class ObsInfographicsBaseService(
+    private val settingsService: ObsInfographicsSettingsService,
+    private val matches: SpringDataMatchRepository,
+    private val jdbc: JdbcTemplate,
+    private val lineups: PointLineupService,
+    private val lineupRepository: PointLineupRepository,
+    private val events: SpringDataEventRepository,
+) {
+    internal fun read(matchId: UUID, now: Instant): ObsInfographicsBase {
         val match = matches.findByIdAndDeletedAtIsNull(matchId) ?: throw AuthProblem(404, "OBS_SOURCE_MATCH_NOT_FOUND")
         val roster = jdbc.query(
             """
@@ -102,7 +142,6 @@ class ObsInfographicsService(
             { rs, _ -> rs.getObject("team_id", UUID::class.java).let { ObsInfographicsTeam(it, rs.getString("team_name"), roster[it].orEmpty()) } },
             matchId,
         )
-        val now = clock.instant()
         val points = lineups.read(matchId)?.points.orEmpty()
         val next = points.firstOrNull { it.status == PointStatus.NEXT }
         val selected = next?.lineup
@@ -115,7 +154,7 @@ class ObsInfographicsService(
         val settings = settingsService.get()
         val rosterSeconds = settingsService.at(match.effectiveStartedAt).rosterPageSeconds
         val firstPassEnd = match.effectiveStartedAt?.plusSeconds(
-            rosterSeconds.toLong() * maxOf(1, teams.maxOf { (it.roster.size + 4) / 5 }),
+            rosterSeconds.toLong() * maxOf(1, teams.maxOfOrNull { (it.roster.size + 4) / 5 } ?: 0),
         )
         val anchor = confirmedAt ?: openingAt
         val lineupStart = anchor?.let { if (next?.number == 1 && firstPassEnd != null) maxOf(it, firstPassEnd) else it }
@@ -142,11 +181,9 @@ class ObsInfographicsService(
                 }
             })
         }
-        val postmatch = if (match.status == MatchStatus.FINISHED) postmatchService.finished(matchId, teams.map { it.teamId }) else null
-        val input = "${match.eventLogRevision}:${match.status}:${match.effectiveStartedAt}:$phase:$projected:${settings.revision}:$postmatch"
-        val revision = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8)))
-        val presentation = presentations.effective(matchId, isAuto, settings.revision, now)
-        return ObsInfographicsSnapshot(matchId, now, revision, match.status, phase, projected, settings,
-            presentation?.leaders, postmatch, presentation?.stats)
+        return ObsInfographicsBase(match, phase, projected, settings)
     }
 }
+
+internal fun obsInfographicsDigest(value: String): String =
+    HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8)))
