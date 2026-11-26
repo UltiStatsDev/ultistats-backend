@@ -18,6 +18,10 @@ data class PointLineupsResponse(
     val nextLineupEditsWriteEnabled: Boolean,
     @field:Schema(description = "Whether point lineup writes permit correcting known starters on completed points.")
     val starterCorrectionsWriteEnabled: Boolean,
+    @field:Schema(description = "True when this server supports capability 4 reads, independently of the writer flag.")
+    val pointResultsReadSupported: Boolean,
+    @field:Schema(description = "Whether fresh point result commands are enabled. Authorization is still required.")
+    val pointResultsWriteEnabled: Boolean,
     val points: List<PointLineupResponse>,
 )
 

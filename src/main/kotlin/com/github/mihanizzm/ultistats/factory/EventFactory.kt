@@ -100,7 +100,7 @@ class EventFactory(
         }
     }
 
-    private fun hasTeam(matchId: UUID, teamId: UUID): Boolean =
+    internal fun hasTeam(matchId: UUID, teamId: UUID): Boolean =
         matchTeamRepository.findAllByMatchIdOrderByPosition(matchId).any { it.teamId == teamId }
 
     private fun invalid(detail: String) = EventCreationResult.Invalid(detail)

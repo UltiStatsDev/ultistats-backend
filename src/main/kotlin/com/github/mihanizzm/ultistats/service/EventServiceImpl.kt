@@ -19,16 +19,23 @@ import com.github.mihanizzm.ultistats.model.EventBatchReceipt
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataEventBatchReceiptRepository
 import com.github.mihanizzm.ultistats.service.result.EventBatchResult
 import com.github.mihanizzm.ultistats.dto.response.realtime.MatchRealtimeOperation
+import com.github.mihanizzm.ultistats.dto.request.PutPointResultRequest
+import com.github.mihanizzm.ultistats.dto.response.PointResultResponse
+import com.github.mihanizzm.ultistats.dto.response.TeamEventResponse
 import com.github.mihanizzm.ultistats.model.EventEntity
 import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.model.MatchStatus
 import com.github.mihanizzm.ultistats.model.events.Event
 import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.model.events.StoredEvent
+import com.github.mihanizzm.ultistats.model.events.PointTimeline
+import com.github.mihanizzm.ultistats.model.events.TeamEvent
 import com.github.mihanizzm.ultistats.realtime.MatchRealtimePublisher
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataEventRepository
 import com.github.mihanizzm.ultistats.repository.jpa.IntroducedPointSlot
+import com.github.mihanizzm.ultistats.repository.jpa.MatchAnnouncementRepository
 import com.github.mihanizzm.ultistats.service.result.EventCommandResult
+import com.github.mihanizzm.ultistats.service.result.MatchCommandResult
 import com.github.mihanizzm.ultistats.validation.match.MatchLifecycleDecision
 import com.github.mihanizzm.ultistats.validation.match.MatchLifecyclePolicy
 import com.github.mihanizzm.ultistats.validation.event.EventSequenceDecision
@@ -41,6 +48,8 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional as ReadTransaction
+import org.springframework.beans.factory.annotation.Value
+import java.time.Clock
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.time.Instant
@@ -60,6 +69,9 @@ class EventServiceImpl(
     private val objectMapper: ObjectMapper,
     private val possessionChangeWrites: PossessionChangeWrites,
     private val pointLineups: PointLineupEventPolicy,
+    private val announcements: MatchAnnouncementRepository,
+    private val clock: Clock,
+    @Value("\${ultistats.point-results.write-enabled:false}") private val pointResultWritesEnabled: Boolean,
 ) : EventService {
     @Transactional
     override fun create(event: Event, matchId: UUID, eventId: UUID?): EventCommandResult {
@@ -82,6 +94,83 @@ class EventServiceImpl(
                 MatchProblem(MatchProblemCode.INVALID_REQUEST, "Invalid event request", created.detail),
             )
         }
+    }
+
+    @Transactional
+    override fun putPointResult(
+        matchId: UUID, pointId: UUID, request: PutPointResultRequest, client: PointLineupClient,
+    ): MatchCommandResult<PointResultResponse> {
+        if (!client.supportsPointResults) throw PointResultClientRequiredException()
+        val match = matchService.getForUpdate(matchId) ?: return MatchCommandResult.NotFound
+        val (id, teamId, revision, sequence) = request
+        fun invalid(detail: String) = MatchCommandResult.InvalidRequest(
+            MatchProblem(MatchProblemCode.INVALID_REQUEST, "Invalid point result", detail),
+        )
+        fun conflict(code: MatchProblemCode, detail: String) =
+            MatchCommandResult.Conflict(MatchProblem(code, "Point result conflict", detail))
+
+        if (revision < 0 || sequence !in 0..Int.MAX_VALUE.toLong()) {
+            return invalid("Nonnegative event log revision and sequence number are required")
+        }
+        val fingerprint = sha256("point-result:v1|$pointId|$teamId|$revision|$sequence")
+        eventRepository.findById(id).orElse(null)?.let { existing ->
+            if (existing.matchId == matchId && existing.eventType == EventType.POINT_RESULT &&
+                existing.deletedAt == null && existing.creationFingerprint == fingerprint
+            ) {
+                val journal = activeEvents(matchId).map { it.toStored() }
+                val response = pointResultResponse(match, pointId, existing.toStored(), journal, replayed = true)
+                if (response != null) return MatchCommandResult.Success(response)
+            }
+            return MatchCommandResult.Conflict(idempotencyConflict(id))
+        }
+        if (!pointResultWritesEnabled) {
+            return conflict(MatchProblemCode.POINT_RESULT_WRITE_DISABLED, "Point result writes are disabled")
+        }
+        if (revision != match.eventLogRevision || sequence != lastSequence(matchId).toLong()) {
+            return conflict(MatchProblemCode.EVENT_LOG_STALE, "The expected event log position is stale; reload the canonical event log")
+        }
+        if (match.status != MatchStatus.IN_PROGRESS) {
+            return MatchCommandResult.InvalidState(MatchProblem(
+                MatchProblemCode.MATCH_NOT_IN_PROGRESS, "Match state conflict",
+                "Point results can only be recorded while the match is in progress", match.status,
+            ))
+        }
+        val active = activeEvents(matchId)
+        val journal = active.map { it.toStored() }
+        if (PointTimeline.from(matchId, match.status, journal).last().pointId != pointId) {
+            return conflict(MatchProblemCode.POINT_RESULT_CONFLICT, "Only the current point can receive a result")
+        }
+        if (!eventFactory.hasTeam(matchId, teamId)) return invalid("The scoring team is not in this match")
+        if (announcements.list(matchId).any { it.endedAt == null }) {
+            return conflict(MatchProblemCode.POINT_RESULT_CONFLICT, "The standalone announcement is still open")
+        }
+        val event = TeamEvent(teamId, clock.instant(), EventType.POINT_RESULT)
+        val pending = PendingEvent(id, event, requestFingerprint = fingerprint)
+        return when (val appended = appendLocked(match, listOf(pending), active)) {
+            is AppendResult.Applied -> {
+                val marker = appended.events.single()
+                MatchCommandResult.Success(requireNotNull(pointResultResponse(match, pointId, marker, journal + marker, replayed = false)))
+            }
+            is AppendResult.LineupRejected -> throw appended.problem
+            is AppendResult.Rejected -> when (val result = appended.result) {
+                is EventCommandResult.InvalidState -> MatchCommandResult.InvalidState(result.problem)
+                is EventCommandResult.Conflict -> MatchCommandResult.Conflict(result.problem)
+                else -> error("Unexpected point result append rejection")
+            }
+        }
+    }
+
+    private fun pointResultResponse(
+        match: Match, pointId: UUID, marker: StoredEvent, journal: List<StoredEvent>, replayed: Boolean,
+    ): PointResultResponse? {
+        // Include the conceptual successor even if the match was finished since this operation.
+        val points = PointTimeline.from(match.id, MatchStatus.IN_PROGRESS, journal)
+        val closedIndex = points.indexOfFirst { it.closingEventId == marker.id && it.pointId == pointId }
+        if (closedIndex < 0) return null
+        return PointResultResponse(
+            replayed, EventResponse.from(marker) as TeamEventResponse, pointId,
+            points[closedIndex + 1].pointId, logResponse(match, journal),
+        )
     }
 
     private val pointResultReadOnly = MatchProblem(
@@ -236,16 +325,19 @@ class EventServiceImpl(
         }
     }
 
-    private data class PendingEvent(val id: UUID, val event: Event, val createsReserve: Boolean = false)
+    private data class PendingEvent(
+        val id: UUID, val event: Event, val createsReserve: Boolean = false, val requestFingerprint: String? = null,
+    )
     private sealed interface AppendResult {
         data class Applied(val events: List<StoredEvent>) : AppendResult
         data class Rejected(val result: EventCommandResult, val index: Int) : AppendResult
         data class LineupRejected(val problem: PointLineupRejectedException, val index: Int) : AppendResult
     }
 
-    /** Shared v1/v2 append pipeline. Validate every prefix before the first write. Caller holds the match lock. */
-    private fun appendLocked(match: Match, pending: List<PendingEvent>): AppendResult {
-        val active = activeEvents(match.id)
+    /** Shared append pipeline. Validate every prefix before the first write. Caller holds the match lock. */
+    private fun appendLocked(
+        match: Match, pending: List<PendingEvent>, active: List<EventEntity> = activeEvents(match.id),
+    ): AppendResult {
         val policyMatch = match.toPolicyMatch(active)
         val lineup = pointLineups.journal(match.id)
         val prefix = active.map { it.toStored() }.toMutableList()
@@ -521,6 +613,7 @@ class EventServiceImpl(
     )
 
     private fun PendingEvent.fingerprint(): String {
+        requestFingerprint?.let { return it }
         val original = event.creationFingerprint()
         return if (createsReserve) sha256("$original|createIncomingReserve=true") else original
     }

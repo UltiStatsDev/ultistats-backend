@@ -66,6 +66,7 @@ class AuthSurfacePolicyImpl(private val matches: MatchService) : AuthSurfacePoli
         rule("POST", "/api/v1/matches/{id}/end", AuthPermission.SPORTS_WRITE),
         rule("GET", "/api/v1/matches/{matchId}/point-lineups"),
         rule("PUT", "/api/v1/matches/{matchId}/point-lineups/{pointId}", AuthPermission.SPORTS_WRITE),
+        rule("PUT", "/api/v1/matches/{matchId}/point-lineups/{pointId}/result", AuthPermission.SPORTS_WRITE),
         rule("PATCH", "/api/v1/matches/{matchId}/point-lineups/{pointId}/slots/{slotId}", AuthPermission.SPORTS_WRITE),
         rule("POST", "/api/v1/matches/{matchId}/point-lineups/{pointId}/starter-correction/preview", AuthPermission.SPORTS_WRITE),
         rule("PUT", "/api/v1/matches/{matchId}/point-lineups/{pointId}/starter-correction", AuthPermission.SPORTS_WRITE),

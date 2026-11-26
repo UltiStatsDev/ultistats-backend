@@ -428,6 +428,14 @@
       "line": 43
     },
     {
+      "method": "PUT",
+      "path": "/api/v1/matches/{matchId}/point-lineups/{pointId}/result",
+      "policy": "SPORTS_WRITE",
+      "owner": "enforcement",
+      "source": "src/main/kotlin/com/github/mihanizzm/ultistats/controller/PointResultController.kt",
+      "line": 30
+    },
+    {
       "method": "PATCH",
       "path": "/api/v1/matches/{matchId}/point-lineups/{pointId}/slots/{slotId}",
       "policy": "SPORTS_WRITE",
