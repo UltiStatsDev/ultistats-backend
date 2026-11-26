@@ -176,3 +176,34 @@ test("protected lifetimes ignore local wall-clock jumps and config/retraction re
     time(4000); assert.equal(feed.rows().length,0);
   } finally {Date.now=wall;}
 });
+
+test("team results preserve the protected source and never create player cards", () => {
+  const snapshot = sample();
+  snapshot.events = [];
+  let now = 0;
+  const feed = new Feed(snapshot.config, () => now, { protected: true });
+  const update = () => {
+    const next = { ...snapshot, logRevision: ++snapshot.logRevision, serverNow: instant(now) };
+    feed.reconcile(validateEventLog(next, id));
+  };
+  update();
+  snapshot.events.push(event(1, "GOAL"));
+  update();
+  const original = feed.rows()[0];
+  now = 1000;
+  const marker = {
+    id: event(2).id,
+    sequenceNumber: 2,
+    type: "POINT_RESULT",
+    occurredAt: instant(now),
+    teamId: id,
+  };
+  snapshot.events.push(marker);
+  snapshot.teams[0].score++;
+  update();
+  assert.deepEqual(feed.rows(), [original]);
+  now = 2000;
+  snapshot.events.push(event(3, "CALLAHAN"));
+  update();
+  assert.deepEqual(feed.rows().map(row => row.event.type), ["CALLAHAN", "GOAL"]);
+});

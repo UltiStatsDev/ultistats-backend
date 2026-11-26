@@ -655,6 +655,9 @@ class EventControllerTest {
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.POSSESSION_SET").value("#/components/schemas/OnePlayerEventResponse"))
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.BLOCK").value("#/components/schemas/TwoPlayerEventResponse"))
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.PASS").value("#/components/schemas/TwoPlayerEventResponse"))
+            .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.POINT_RESULT").value("#/components/schemas/TeamEventResponse"))
+            .andExpect(jsonPath("$.components.schemas.CreateEventRequest.discriminator.mapping.POINT_RESULT").doesNotExist())
+            .andExpect(jsonPath("$.components.schemas.UpdateEventRequest.discriminator.mapping.POINT_RESULT").doesNotExist())
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.TIMEOUT_START").value("#/components/schemas/TeamEventResponse"))
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.HALFTIME_START").value("#/components/schemas/SystemEventResponse"))
             .andExpect(jsonPath("$.components.schemas.EventResponse.discriminator.mapping.ANNOUNCEMENT_START").value("#/components/schemas/AnnouncementStartResponse"))
@@ -700,7 +703,7 @@ class EventControllerTest {
             "ANNOUNCEMENT_END" to commonFields,
         )
 
-        assertEquals(EventType.entries.filterNot { it == EventType.PLAYER_SUBSTITUTION }.map { it.name }.toSet(), expectedFields.keys)
+        assertEquals((EventType.entries - setOf(EventType.PLAYER_SUBSTITUTION, EventType.POINT_RESULT)).map { it.name }.toSet(), expectedFields.keys)
         assertEquals(expectedFields.keys, examples.fieldNames().asSequence().toSet())
         expectedFields.forEach { (type, fields) ->
             val example = examples[type]["value"]

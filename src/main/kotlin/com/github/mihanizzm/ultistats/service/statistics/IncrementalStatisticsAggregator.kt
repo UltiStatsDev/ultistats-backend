@@ -4,6 +4,7 @@ import com.github.mihanizzm.ultistats.model.MatchAnnouncement
 import com.github.mihanizzm.ultistats.model.events.Event
 import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.model.events.OnePlayerEvent
+import com.github.mihanizzm.ultistats.model.events.TeamEvent
 import com.github.mihanizzm.ultistats.model.events.TwoPlayerEvent
 import com.github.mihanizzm.ultistats.model.statistics.MatchStatistics
 import com.github.mihanizzm.ultistats.model.statistics.PlayerStatistics
@@ -38,6 +39,12 @@ class IncrementalStatisticsAggregator : StatisticsAggregator {
     ): MatchStatistics {
         return when (event.type) {
             EventType.PASS -> applyPass(stats, event as TwoPlayerEvent, teamByParticipantId)
+            EventType.POINT_RESULT -> {
+                val teamId = (event as TeamEvent).team
+                stats.copy(teamStatistics = stats.teamStatistics.map { team ->
+                    if (team.teamId == teamId) team.copy(attack = team.attack.copy(score = team.attack.score + 1)) else team
+                })
+            }
             EventType.GOAL -> applyGoal(stats, event as TwoPlayerEvent, teamByParticipantId)
             EventType.INCOMPLETE_PASS -> applyIncompletePass(stats, event as OnePlayerEvent, teamByParticipantId)
             EventType.PULL -> applyPull(stats, event as OnePlayerEvent, teamByParticipantId)

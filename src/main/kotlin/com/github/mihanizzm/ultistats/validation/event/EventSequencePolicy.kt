@@ -26,17 +26,20 @@ class EventSequencePolicy {
     ): EventSequenceState? = when (state) {
         EventSequenceState.BeforeFirstPull -> when (type) {
             EventType.PULL -> EventSequenceState.PullInFlight
+            EventType.POINT_RESULT -> EventSequenceState.PointEnded
             EventType.TIMEOUT_START -> EventSequenceState.Timeout(state)
             else -> null
         }
         EventSequenceState.PointEnded -> when (type) {
             EventType.PULL -> EventSequenceState.PullInFlight
+            EventType.POINT_RESULT -> EventSequenceState.PointEnded
             EventType.TIMEOUT_START -> EventSequenceState.Timeout(state)
             EventType.HALFTIME_START -> EventSequenceState.Halftime
             else -> null
         }
         EventSequenceState.AfterHalftime -> when (type) {
             EventType.PULL -> EventSequenceState.PullInFlight
+            EventType.POINT_RESULT -> EventSequenceState.PointEnded
             EventType.TIMEOUT_START -> EventSequenceState.Timeout(state)
             else -> null
         }
@@ -45,19 +48,21 @@ class EventSequencePolicy {
             EventType.ANNOUNCEMENT_START -> EventSequenceState.Announcement(state)
             EventType.BRICK -> EventSequenceState.PickupRequired
             EventType.PICKUP, EventType.POSSESSION_SET -> EventSequenceState.PossessionActive
+            EventType.POINT_RESULT -> EventSequenceState.PointEnded
             else -> null
         }
         EventSequenceState.PickupRequired -> when (type) {
             EventType.PLAYER_SUBSTITUTION -> state
             EventType.ANNOUNCEMENT_START -> EventSequenceState.Announcement(state)
             EventType.PICKUP, EventType.POSSESSION_SET -> EventSequenceState.PossessionActive
+            EventType.POINT_RESULT -> EventSequenceState.PointEnded
             else -> null
         }
         EventSequenceState.PossessionActive -> when (type) {
             EventType.PLAYER_SUBSTITUTION -> state
             EventType.ANNOUNCEMENT_START -> EventSequenceState.Announcement(state)
             EventType.PASS, EventType.INTERCEPTION, EventType.POSSESSION_SET -> EventSequenceState.PossessionActive
-            EventType.GOAL, EventType.CALLAHAN -> EventSequenceState.PointEnded
+            EventType.GOAL, EventType.CALLAHAN, EventType.POINT_RESULT -> EventSequenceState.PointEnded
             EventType.INCOMPLETE_PASS,
             EventType.BLOCK,
             EventType.BLOCK_MARKER,
