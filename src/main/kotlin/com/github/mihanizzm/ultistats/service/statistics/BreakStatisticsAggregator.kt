@@ -1,10 +1,7 @@
 package com.github.mihanizzm.ultistats.service.statistics
 
 import com.github.mihanizzm.ultistats.model.MatchAnnouncement
-import com.github.mihanizzm.ultistats.model.events.Event
 import com.github.mihanizzm.ultistats.model.events.EventType
-import com.github.mihanizzm.ultistats.model.events.OnePlayerEvent
-import com.github.mihanizzm.ultistats.model.events.scoringTeam
 import com.github.mihanizzm.ultistats.model.statistics.MatchStatistics
 import org.springframework.stereotype.Component
 import java.util.UUID
@@ -12,9 +9,9 @@ import java.util.UUID
 /** Rebuilds breaks from the current canonical log, using match participant snapshot identities. */
 @Component
 class BreakStatisticsAggregator : StatisticsAggregator {
-    override fun aggregate(
+    override fun aggregateObservations(
         previousStatisticsState: MatchStatistics,
-        events: List<Event>,
+        events: List<StatisticsEvent>,
         teamByParticipantId: Map<UUID, UUID>,
         announcements: List<MatchAnnouncement>,
     ): MatchStatistics {
@@ -23,10 +20,10 @@ class BreakStatisticsAggregator : StatisticsAggregator {
         for (event in events) {
             when {
                 event.type == EventType.PULL ->
-                    pullingTeam = teamByParticipantId.getValue((event as OnePlayerEvent).participant)
-                event.type.closesPoint -> {
-                    val scoringTeam = event.scoringTeam(teamByParticipantId::getValue)
-                    if (scoringTeam != null && scoringTeam == pullingTeam) {
+                    pullingTeam = teamByParticipantId.getValue(event.fromActor)
+                event.scoresPoint -> {
+                    val scoringTeam = event.teamId ?: teamByParticipantId.getValue(event.toActor)
+                    if (scoringTeam == pullingTeam) {
                         breaksByTeam.merge(scoringTeam, 1, Int::plus)
                     }
                     pullingTeam = null

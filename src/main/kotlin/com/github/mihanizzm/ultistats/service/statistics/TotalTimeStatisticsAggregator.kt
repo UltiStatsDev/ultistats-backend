@@ -1,15 +1,11 @@
 package com.github.mihanizzm.ultistats.service.statistics
 
 import com.github.mihanizzm.ultistats.model.MatchAnnouncement
-import com.github.mihanizzm.ultistats.model.events.AnnouncementStartEvent
-import com.github.mihanizzm.ultistats.model.events.Event
 import com.github.mihanizzm.ultistats.model.events.EventType
-import com.github.mihanizzm.ultistats.model.events.OnePlayerEvent
-import com.github.mihanizzm.ultistats.model.events.TeamEvent
-import com.github.mihanizzm.ultistats.model.events.TwoPlayerEvent
 import com.github.mihanizzm.ultistats.model.statistics.AnnouncementStatistics
 import com.github.mihanizzm.ultistats.model.statistics.MatchStatistics
 import com.github.mihanizzm.ultistats.model.statistics.MatchTimeStatistics
+import com.github.mihanizzm.ultistats.service.statistics.StatisticsEvent.Source
 import org.springframework.stereotype.Component
 import java.time.Duration
 import java.time.Instant
@@ -18,19 +14,20 @@ import java.util.UUID
 @Component
 @Suppress("unused")
 class TotalTimeStatisticsAggregator : StatisticsAggregator {
-    override fun aggregate(
+    override fun aggregateObservations(
         previousStatisticsState: MatchStatistics,
-        events: List<Event>,
+        events: List<StatisticsEvent>,
         teamByParticipantId: Map<UUID, UUID>,
         announcements: List<MatchAnnouncement>,
     ): MatchStatistics {
         var lastEventTime: Instant? = null
         var awaitingTimedPull = false
+        var immediatelyAfterRestoredFinish = false
         var currentTeamPossessing: UUID? = null
         var currentParticipantPossessing: UUID? = null
         var isStopped = false
-        var timeoutStart: TeamEvent? = null
-        var announcementStart: AnnouncementStartEvent? = null
+        var timeoutStart: StatisticsEvent? = null
+        var announcementStart: StatisticsEvent? = null
         val announcementTotals = mutableMapOf<UUID?, AnnouncementStatistics>()
         val announcementCoverage = AnnouncementCoverage(announcements)
         var standaloneOverlap = Duration.ZERO
@@ -53,22 +50,31 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
         // Accumulate a hold separately: an unfinished suffix remains in total possession
         // time, but must never enter the completed-hold average.
         var holdingDuration = Duration.ZERO
+        var fullyObservedHold = true
         val completedHoldingDuration = mutableMapOf<UUID, Duration>()
         val completedHoldCount = mutableMapOf<UUID, Long>()
         var totalMatchTime = Duration.ZERO
         var timeSpentOnHalftime = Duration.ZERO
 
         for (event in events) {
+            // The adjacent restored result already supplied the end of play, even if its clock is unknown.
+            if (event.source == Source.RESULT_MARKER && immediatelyAfterRestoredFinish) {
+                immediatelyAfterRestoredFinish = false
+                continue
+            }
+            immediatelyAfterRestoredFinish = event.source == Source.RESTORED && event.type.closesPoint
+
             // Across a team result, only explicitly timed pauses count until a pull starts observed play.
             val previousEventTime = lastEventTime?.takeIf {
                 event.type != EventType.POINT_RESULT && (!awaitingTimedPull || isStopped)
             }
+            val eventTime = event.occurredAt
             var duration = Duration.ZERO
-            if (previousEventTime != null) {
-                duration = Duration.between(previousEventTime, event.occurredAt)
+            if (previousEventTime != null && eventTime != null) {
+                duration = Duration.between(previousEventTime, eventTime)
                 totalMatchTime = totalMatchTime.plus(duration)
 
-                val standalone = announcementCoverage.overlap(previousEventTime, event.occurredAt)
+                val standalone = announcementCoverage.overlap(previousEventTime, eventTime)
                 standaloneOverlap = standaloneOverlap.plus(standalone)
                 if (!isStopped) {
                     val active = duration.minus(standalone)
@@ -78,40 +84,45 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
                         holdingDuration = holdingDuration.plus(active)
                     }
                 }
+            } else if (!isStopped && currentParticipantPossessing != null && (lastEventTime == null || eventTime == null)) {
+                fullyObservedHold = false
             }
 
-            lastEventTime = event.occurredAt
+            if (eventTime == null) lastBetweenPointsStart = null
+            lastEventTime = eventTime
 
             val completesHold = when (event.type) {
                 EventType.PASS, EventType.GOAL, EventType.PICKUP,
                 EventType.BLOCK, EventType.BLOCK_MARKER, EventType.BLOCK_FIELD,
                 EventType.INCOMPLETE_PASS, EventType.INTERCEPTION, EventType.CALLAHAN,
                 EventType.HALFTIME_START -> true
-                EventType.POSSESSION_SET -> currentParticipantPossessing != (event as OnePlayerEvent).participant
-                EventType.PLAYER_SUBSTITUTION -> currentParticipantPossessing == (event as TwoPlayerEvent).fromParticipant
+                EventType.POSSESSION_SET -> currentParticipantPossessing != event.fromActor
+                EventType.PLAYER_SUBSTITUTION -> currentParticipantPossessing == event.fromActor
                 else -> false // Timeouts and announcements pause the hold without completing it.
             }
             if (completesHold) {
-                currentParticipantPossessing?.let { participant ->
+                currentParticipantPossessing?.takeIf { fullyObservedHold }?.let { participant ->
                     completedHoldingDuration.merge(participant, holdingDuration, Duration::plus)
                     completedHoldCount.merge(participant, 1L, Long::plus)
                 }
                 holdingDuration = Duration.ZERO
+                fullyObservedHold = true
             }
 
             when (event.type) {
                 EventType.PLAYER_SUBSTITUTION -> {
-                    if (completesHold) currentParticipantPossessing = (event as TwoPlayerEvent).toParticipant
+                    if (completesHold) currentParticipantPossessing = event.toActor
                 }
                 EventType.PASS -> {
-                    currentParticipantPossessing = (event as TwoPlayerEvent).toParticipant
+                    currentParticipantPossessing = event.toActor
                 }
                 EventType.POINT_RESULT -> {
                     currentParticipantPossessing = null
                     currentTeamPossessing = null
                     holdingDuration = Duration.ZERO
+                    fullyObservedHold = true
                     lastBetweenPointsStart = null
-                    awaitingTimedPull = true
+                    awaitingTimedPull = event.source == Source.JOURNAL
                     isStopped = false
                 }
                 EventType.GOAL -> {
@@ -119,20 +130,18 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
                     currentTeamPossessing = null
                     isStopped = true
                     // Начинаем отсчет времени между поинтами от момента гола
-                    lastBetweenPointsStart = event.occurredAt
+                    lastBetweenPointsStart = eventTime
                 }
                 EventType.PULL -> {
-                    val pullTeam = teamByParticipantId.getValue((event as OnePlayerEvent).participant)
+                    val pullTeam = teamByParticipantId.getValue(event.fromActor)
                     // Добавляем во время между поинтами только чистый отрезок между окончанием предыдущего поинта
                     // и текущим пуллом, исключая таймауты и халфтайм.
-                    val between = if (lastBetweenPointsStart != null) {
-                        Duration.between(lastBetweenPointsStart, event.occurredAt)
-                    } else {
-                        duration
-                    }
-                    if (!between.isNegative && !between.isZero) {
-                        teamTimeBetweenPoints.merge(pullTeam, between, Duration::plus)
-                        recordExistingPause(lastBetweenPointsStart ?: previousEventTime, event.occurredAt)
+                    if (eventTime != null) {
+                        val between = lastBetweenPointsStart?.let { Duration.between(it, eventTime) } ?: duration
+                        if (!between.isNegative && !between.isZero) {
+                            teamTimeBetweenPoints.merge(pullTeam, between, Duration::plus)
+                            recordExistingPause(lastBetweenPointsStart ?: previousEventTime, eventTime)
+                        }
                     }
                     // После пулла отсчет между поинтами завершен
                     awaitingTimedPull = false
@@ -141,52 +150,52 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
                 }
                 EventType.BRICK -> { }
                 EventType.PICKUP, EventType.POSSESSION_SET -> {
-                    val ope = event as OnePlayerEvent
-                    currentTeamPossessing = teamByParticipantId.getValue(ope.participant)
-                    currentParticipantPossessing = ope.participant
+                    currentTeamPossessing = teamByParticipantId.getValue(event.fromActor)
+                    currentParticipantPossessing = event.fromActor
                 }
                 EventType.BLOCK, EventType.BLOCK_MARKER, EventType.BLOCK_FIELD, EventType.INCOMPLETE_PASS -> {
                     currentTeamPossessing = null
                     currentParticipantPossessing = null
                 }
                 EventType.INTERCEPTION -> {
-                    val tpe = event as TwoPlayerEvent
-                    currentTeamPossessing = teamByParticipantId.getValue(tpe.toParticipant)
-                    currentParticipantPossessing = tpe.toParticipant
+                    currentTeamPossessing = teamByParticipantId.getValue(event.toActor)
+                    currentParticipantPossessing = event.toActor
                 }
                 EventType.CALLAHAN -> {
                     currentTeamPossessing = null
                     currentParticipantPossessing = null
                     isStopped = true
                     // Кэллахан завершает поинт
-                    lastBetweenPointsStart = event.occurredAt
+                    lastBetweenPointsStart = eventTime
                 }
                 EventType.ANNOUNCEMENT_START -> {
-                    announcementStart = event as AnnouncementStartEvent
+                    announcementStart = event
                     isStopped = true
                 }
                 EventType.ANNOUNCEMENT_END -> {
                     announcementStart?.let { start ->
-                        countAnnouncement(start.team, Duration.between(start.occurredAt, event.occurredAt))
-                        recordExistingPause(start.occurredAt, event.occurredAt)
+                        val end = requireNotNull(eventTime)
+                        countAnnouncement(start.teamId, Duration.between(start.occurredAt, end))
+                        recordExistingPause(start.occurredAt, end)
                         isStopped = false
                     }
                     announcementStart = null
                 }
                 EventType.TIMEOUT_START -> {
-                    timeoutStart = event as TeamEvent
+                    timeoutStart = event
                     isStopped = true
                 }
                 EventType.TIMEOUT_END -> {
                     isStopped = false
                     timeoutStart?.let { start ->
-                        timeSpentOnTimeouts.merge(start.team, Duration.between(start.occurredAt, event.occurredAt), Duration::plus)
-                        recordExistingPause(start.occurredAt, event.occurredAt)
+                        val end = requireNotNull(eventTime)
+                        timeSpentOnTimeouts.merge(requireNotNull(start.teamId), Duration.between(start.occurredAt, end), Duration::plus)
+                        recordExistingPause(start.occurredAt, end)
                     }
                     timeoutStart = null
                     // Между поинтами не должно включать время таймаута, поэтому старт переносим на конец таймаута
                     if (lastBetweenPointsStart != null) {
-                        lastBetweenPointsStart = event.occurredAt
+                        lastBetweenPointsStart = eventTime
                     }
                 }
                 EventType.HALFTIME_START -> {
@@ -197,10 +206,10 @@ class TotalTimeStatisticsAggregator : StatisticsAggregator {
                 EventType.HALFTIME_END -> {
                     isStopped = false
                     timeSpentOnHalftime = timeSpentOnHalftime.plus(duration)
-                    recordExistingPause(previousEventTime, event.occurredAt)
+                    recordExistingPause(previousEventTime, requireNotNull(eventTime))
                     // Между поинтами не должно включать время халфтайма, поэтому старт переносим на конец халфтайма
                     if (lastBetweenPointsStart != null) {
-                        lastBetweenPointsStart = event.occurredAt
+                        lastBetweenPointsStart = eventTime
                     }
                 }
             }

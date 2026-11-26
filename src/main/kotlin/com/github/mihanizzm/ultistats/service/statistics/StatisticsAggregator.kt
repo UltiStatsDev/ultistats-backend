@@ -11,5 +11,14 @@ interface StatisticsAggregator {
         events: List<Event>,
         teamByParticipantId: Map<UUID, UUID>,
         announcements: List<MatchAnnouncement> = emptyList(),
+    ): MatchStatistics = aggregateObservations(
+        previousStatisticsState, events.map(StatisticsEvent::original), teamByParticipantId, announcements,
+    )
+
+    fun aggregateObservations(
+        previousStatisticsState: MatchStatistics,
+        events: List<StatisticsEvent>,
+        teamByParticipantId: Map<UUID, UUID>,
+        announcements: List<MatchAnnouncement>,
     ): MatchStatistics
 }
