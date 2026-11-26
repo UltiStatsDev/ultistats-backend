@@ -13,7 +13,7 @@ export async function verifyEditorTools(page,input,sql) {
   assert.equal(await page.locator('#scoreboard-preview').getAttribute('src'),`/obs-editor/scoreboard.html?matchId=${match}`);
   const log=page.frameLocator('#preview'),score=page.frameLocator('#scoreboard-preview');
   await score.locator('.scoreboard-score').waitFor();
-  const configSave=page.waitForResponse(r=>r.request().method()==='PUT'&&r.url().endsWith('/api/v1/obs/config'));
+  const configSave=page.waitForResponse(r=>r.request().method()==='PUT'&&new URL(r.url()).pathname==='/api/v1/obs/config' && new URL(r.url()).searchParams.get('matchId')===match);
   await page.locator('#ttlSeconds').fill('2');await page.locator('#corner').selectOption('TOP_LEFT');await page.locator('#save').click();assert.equal((await configSave).status(),200);
   await page.waitForFunction(()=>document.querySelector('#preview').contentDocument.querySelector('#feed').dataset.corner==='TOP_LEFT');
   const count=sql('SELECT count(*) FROM events;');

@@ -136,7 +136,9 @@ export async function exerciseOperatorDesk({
   const readOnlyTally = tally(), readOnlyWrites = writes.length;
   await preview('stats');
   await frame.locator('.postmatch-panel').waitFor();
-  await page.screenshot({path:screenshot});
+  assert.equal(await at('#links-preview').evaluate(el=>el.contentWindow.getComputedStyle(el.contentDocument.documentElement).colorScheme),'dark');
+  await page.evaluate(() => window.scrollTo(0,0));
+  await page.screenshot({path:screenshot,fullPage:true,animations:'disabled'});
   const frameSizes = [];
   for (const width of [1440, 600]) {
     await page.setViewportSize({width,height:1000});
@@ -148,6 +150,7 @@ export async function exerciseOperatorDesk({
     const size = await at('#links-preview').evaluate(el=>[el.contentWindow.innerWidth,el.contentWindow.innerHeight,el.getBoundingClientRect().width]);
     assert.deepEqual(size.slice(0,2),[1920,1080]);
     frameSizes.push(size);
+    if (width===600) await page.screenshot({path:screenshot.replace('-wide','-narrow'),fullPage:true,animations:'disabled'});
   }
   assert.notEqual(frameSizes[0][2],frameSizes[1][2]);
   const refreshed = page.waitForResponse(response=>response.request().method()==='GET' &&
@@ -196,6 +199,6 @@ export async function exerciseOperatorDesk({
   await page.waitForFunction(() => document.querySelector('#links-preview').getAttribute('src')==='about:blank' &&
     [...document.querySelectorAll('[data-show], #air-hide, #preview-refresh, #save, #scoreboard-fields')].every(el=>el.disabled));
   assert.deepEqual(errors,[]);
-  return {frameSizes, colorPairPreserved:true, exactAutoIsolation:true, rosterPhaseHide:true, rosterPointLeadersAndStats:true,
+  return {frameSizes, localLogPreviewReadiness:true, colorPairPreserved:true, exactAutoIsolation:true, rosterPhaseHide:true, rosterPointLeadersAndStats:true,
     finiteHide:true, keyLifecycle:true, deadlinePreservedAcrossSaveAndReload:true, manualStatsMS:3000, readOnlyStatsAfterExpiry:true, sessionLoss:true};
 }
