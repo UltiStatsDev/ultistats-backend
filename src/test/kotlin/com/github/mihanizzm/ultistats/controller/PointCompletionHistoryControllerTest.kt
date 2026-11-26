@@ -53,6 +53,14 @@ class PointCompletionHistoryControllerTest : MatchAbstractTest() {
         val afterPull = insertion(after = pull)
         val alsoAfterPull = insertion(after = pull, offset = 1500)
         seed(point, marker, listOf(afterPull, atStart, alsoAfterPull))
+        val separateMatch = UUID.randomUUID()
+        matchService.create(Match(separateMatch, MATCH.teamIds))
+        matchService.startMatch(separateMatch, Instant.parse(START_DATE))
+        jdbc.update(
+            """INSERT INTO events (id, match_id, sequence_number, event_type, occurred_at, from_participant_id)
+               VALUES (?, ?, 1, 'PULL', ?, ?)""",
+            atStart["id"], separateMatch, OffsetDateTime.parse(START_DATE), PLAYERS_1[0].id,
+        )
 
         val projected = read(v3, 200)
         val entries = projected["entries"].toList()

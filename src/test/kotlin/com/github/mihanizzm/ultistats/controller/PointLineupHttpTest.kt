@@ -432,7 +432,11 @@ class PointLineupHttpTest {
         assertFalse(portableMatch["required"].any { it.asText() == "pointLineups" })
         assertEquals("#/components/schemas/PortablePointLineup",
             portableMatch["properties"]["pointLineups"]["items"]["\$ref"].asText())
-        assertEquals(7, schemas["MatchTransferPackage"]["properties"]["formatVersion"]["maximum"].asInt())
+        assertEquals(8, schemas["MatchTransferPackage"]["properties"]["formatVersion"]["maximum"].asInt())
+        assertFalse(portableMatch["required"].any { it.asText() == "approvedCompletions" })
+        assertEquals("#/components/schemas/ApprovedPointCompletion",
+            portableMatch["properties"]["approvedCompletions"]["items"]["\$ref"].asText())
+        assertEquals("integer", schemas["MatchExportRequest"]["properties"]["acceptFormatVersion"]["type"].asText())
         val portableLineup = schemas["PortablePointLineup"]
         assertFalse(portableLineup["required"].any { it.asText() == "substitutionSlots" })
         assertEquals("#/components/schemas/PortableSubstitutionSlot",

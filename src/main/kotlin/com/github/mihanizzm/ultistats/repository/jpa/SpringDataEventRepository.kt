@@ -20,5 +20,6 @@ interface SpringDataEventRepository : JpaRepository<EventEntity, UUID>, EventIns
     fun findAllByMatchIdAndDeletedAtIsNull(matchId: UUID): List<EventEntity>
     fun findByIdAndMatchIdAndDeletedAtIsNull(id: UUID, matchId: UUID): EventEntity?
     fun countByMatchIdAndDeletedAtIsNull(matchId: UUID): Long
+    fun existsByMatchIdAndIdIn(matchId: UUID, ids: Collection<UUID>): Boolean
     fun existsByMatchIdAndEventTypeAndDeletedAtIsNull(matchId: UUID, eventType: EventType): Boolean
 }

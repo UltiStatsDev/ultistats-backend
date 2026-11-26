@@ -10,6 +10,14 @@ class PointCompletionApprovalRepository(private val jdbc: JdbcTemplate) {
         "SELECT EXISTS (SELECT 1 FROM match_point_completion_approvals WHERE match_id = ?)", Boolean::class.java, matchId,
     ) == true
 
+    internal fun insert(matchId: UUID, approval: StoredPointApproval) {
+        jdbc.update(
+            """INSERT INTO match_point_completion_approvals (match_id, point_id, closing_event_id, insertions)
+               VALUES (?, ?, ?, ?)""",
+            matchId, approval.pointId, approval.closingEventId, approval.insertionPayload,
+        )
+    }
+
     fun findAll(matchId: UUID): List<StoredPointApproval> = jdbc.query(
         "SELECT point_id, closing_event_id, insertions FROM match_point_completion_approvals WHERE match_id = ?",
         { row, _ -> StoredPointApproval(

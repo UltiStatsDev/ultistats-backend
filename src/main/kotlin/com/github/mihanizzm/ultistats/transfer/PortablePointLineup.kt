@@ -23,7 +23,7 @@ data class PortablePointLineup(
     val teams: List<PortablePointLineupTeam>,
     @get:JsonInclude(JsonInclude.Include.NON_EMPTY)
     @field:Schema(
-        description = "Active substitution-introduced temporary slots for this point. Requires format version 6 or 7 and is omitted when empty.",
+        description = "Active substitution-introduced temporary slots for this point. Requires format version 6 through 8 and is omitted when empty.",
         requiredMode = Schema.RequiredMode.NOT_REQUIRED,
     )
     @param:JsonSetter(nulls = Nulls.FAIL)
