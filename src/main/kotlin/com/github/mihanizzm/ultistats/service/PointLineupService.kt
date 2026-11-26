@@ -55,6 +55,7 @@ class PointLineupService(
     private val sequencePolicy: EventSequencePolicy,
     private val realtimePublisher: MatchRealtimePublisher,
     @Value("\${ultistats.point-lineups.write-enabled:false}") private val writesEnabled: Boolean,
+    @Value("\${ultistats.point-results.write-enabled:false}") private val pointResultWritesEnabled: Boolean,
 ) {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     fun read(matchId: UUID): PointLineupsResponse? {
@@ -68,6 +69,8 @@ class PointLineupService(
             match.eventLogRevision, writesEnabled, policy.substitutionsWriteEnabled, policy.incomingReservesWriteEnabled,
             nextLineupEditsWriteEnabled = writesEnabled,
             starterCorrectionsWriteEnabled = writesEnabled,
+            pointResultsReadSupported = true,
+            pointResultsWriteEnabled = pointResultWritesEnabled,
             points = points.map { point ->
                 val pointJournal = byPoint[point.pointId].orEmpty()
                 val slots = activeSlots(introduced[point.pointId].orEmpty().map { it.slot }, pointJournal)

@@ -6,10 +6,13 @@ import com.github.mihanizzm.ultistats.service.result.UndoCommandResult
 import com.github.mihanizzm.ultistats.dto.request.CreateEventBatchRequest
 import com.github.mihanizzm.ultistats.dto.request.CreateEventRequest
 import com.github.mihanizzm.ultistats.dto.response.EventLogResponse
+import com.github.mihanizzm.ultistats.dto.request.PutPointResultRequest
+import com.github.mihanizzm.ultistats.dto.response.PointResultResponse
 import com.github.mihanizzm.ultistats.service.result.EventBatchResult
 import com.github.mihanizzm.ultistats.model.events.Event
 import com.github.mihanizzm.ultistats.model.events.StoredEvent
 import com.github.mihanizzm.ultistats.service.result.EventCommandResult
+import com.github.mihanizzm.ultistats.service.result.MatchCommandResult
 import java.util.UUID
 
 interface EventService {
@@ -17,6 +20,10 @@ interface EventService {
     fun undoOutcome(matchId: UUID, commandId: UUID): UndoCommandResponse?
 
     fun appendBatch(matchId: UUID, request: CreateEventBatchRequest, client: PointLineupClient = PointLineupClient.LEGACY): EventBatchResult
+    fun putPointResult(
+        matchId: UUID, pointId: UUID, request: PutPointResultRequest, client: PointLineupClient,
+    ): MatchCommandResult<PointResultResponse>
+
     fun snapshot(matchId: UUID, client: PointLineupClient = PointLineupClient.LEGACY): EventLogResponse?
     fun requirePointResultCommandClient(matchId: UUID, client: PointLineupClient, batch: Boolean)
 

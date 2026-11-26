@@ -29,7 +29,7 @@ import java.util.UUID
 class PointLineupController(private val lineups: PointLineupService) {
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Read canonical points and their confirmed lineups",
-        description = "Public capability discovery. Returns the current journal revision and availability of confirmations, confirmed NEXT edits, known substitutions and incoming reserve creation. effectiveTeams reflects the original lineup after substitutions. substitutionSlots supplies metadata for active introductions even after the actor has left. Point IDs survive PULL and change when an opening scoring boundary is replaced.")
+        description = "Public capability discovery. Returns the current journal revision and availability of confirmations, confirmed NEXT edits, known substitutions and incoming reserve creation. pointResultsReadSupported advertises capability 4 even when pointResultsWriteEnabled is false. effectiveTeams reflects the original lineup after substitutions. substitutionSlots supplies metadata for active introductions even after the actor has left. Point IDs survive PULL and change when an opening scoring boundary is replaced.")
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Canonical point lineup snapshot", content = [Content(
             mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = PointLineupsResponse::class),
