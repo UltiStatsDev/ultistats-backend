@@ -124,6 +124,16 @@ class EventServiceImpl(
         return logResponse(match, active.map { it.toStored() })
     }
 
+    /** Preflight before HTTP body binding. Commands also recheck under their write lock. */
+    @Transactional
+    override fun requirePointResultCommandClient(matchId: UUID, client: PointLineupClient, batch: Boolean) {
+        if (!pointLineups.pointResultClientRequired(matchId, client)) return
+        val match = matchService.getForUpdate(matchId) ?: return
+        if (!pointLineups.pointResultClientRequired(matchId, client)) return
+        val rejection = PointResultClientRequiredException()
+        throw if (batch) rejection.forBatch(lastSequence(matchId), match.eventLogRevision) else rejection
+    }
+
     @Transactional
     override fun appendBatch(matchId: UUID, request: CreateEventBatchRequest, client: PointLineupClient): EventBatchResult {
         val match = matchService.getForUpdate(matchId) ?: return EventBatchResult.NotFound
@@ -131,6 +141,8 @@ class EventServiceImpl(
         try {
             pointLineups.requireWriteClient(matchId, client)
         } catch (rejection: PointLineupRejectedException) {
+            throw rejection.forBatch(lastSequence, match.eventLogRevision)
+        } catch (rejection: PointResultClientRequiredException) {
             throw rejection.forBatch(lastSequence, match.eventLogRevision)
         }
         fun reject(
@@ -164,7 +176,7 @@ class EventServiceImpl(
             if (requestEvent.type == EventType.POINT_RESULT) return reject(pointResultReadOnly, index, badRequest = true)
             val createsReserve = requestEvent is TwoPlayerEventRequest && requestEvent.createIncomingReserve != null
             if (requestEvent is TwoPlayerEventRequest && createsReserve) {
-                if (client != PointLineupClient.INCOMING_RESERVES) {
+                if (!client.supportsIncomingReserves) {
                     throw pointLineups.incomingReserveClientRequired().forBatch(lastSequence, match.eventLogRevision, id, index)
                 }
                 // Permit typed parsing of the incoming actor and subsequent requests. The

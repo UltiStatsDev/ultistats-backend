@@ -18,6 +18,7 @@ interface EventService {
 
     fun appendBatch(matchId: UUID, request: CreateEventBatchRequest, client: PointLineupClient = PointLineupClient.LEGACY): EventBatchResult
     fun snapshot(matchId: UUID, client: PointLineupClient = PointLineupClient.LEGACY): EventLogResponse?
+    fun requirePointResultCommandClient(matchId: UUID, client: PointLineupClient, batch: Boolean)
 
     fun create(event: Event, matchId: UUID, eventId: UUID? = null): EventCommandResult
     fun create(matchId: UUID, request: CreateEventRequest, client: PointLineupClient): EventCommandResult

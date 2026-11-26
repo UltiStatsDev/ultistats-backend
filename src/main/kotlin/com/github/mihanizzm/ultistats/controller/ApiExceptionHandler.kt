@@ -7,6 +7,7 @@ import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
 import com.github.mihanizzm.ultistats.service.EventIdempotencyConflictException
 import com.github.mihanizzm.ultistats.service.PointLineupProblemCode
 import com.github.mihanizzm.ultistats.service.PointLineupRejectedException
+import com.github.mihanizzm.ultistats.service.PointResultClientRequiredException
 import com.github.mihanizzm.ultistats.exception.AnnouncementConflictException
 import com.github.mihanizzm.ultistats.exception.InvalidPatchException
 import jakarta.servlet.http.HttpServletRequest
@@ -23,6 +24,21 @@ import java.net.URI
 
 @RestControllerAdvice
 class ApiExceptionHandler {
+    @ExceptionHandler(PointResultClientRequiredException::class)
+    fun rejected(error: PointResultClientRequiredException, request: HttpServletRequest): ResponseEntity<ProblemDetail> {
+        val status = HttpStatus.CONFLICT
+        val problem = MatchProblem(
+            MatchProblemCode.POINT_RESULT_CLIENT_REQUIRED, "Point result capability required", error.message.orEmpty(),
+        ).toProblemDetail(status, URI.create(request.requestURI)).apply {
+            error.batch?.let {
+                setProperty("lastSequenceNumber", it.lastSequenceNumber)
+                setProperty("logRevision", it.logRevision)
+            }
+        }
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_PROBLEM_JSON)
+            .cacheControl(CacheControl.noStore()).varyBy(POINT_LINEUPS_HEADER).body(problem)
+    }
+
     @ExceptionHandler(InvalidPatchException::class)
     fun handleInvalidPatch(
         exception: InvalidPatchException,

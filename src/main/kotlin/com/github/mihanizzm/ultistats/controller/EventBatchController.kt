@@ -62,8 +62,8 @@ class EventBatchController(
         description = "Server assigns consecutive sequence numbers in request order. Both expected bases are required. " +
             "The entire batch commits or nothing commits; lifecycle, participants, timestamps and EventSequencePolicy match v1. " +
             "POSSESSION_SET requires participantId from either team and an active point after PULL. " +
-            "PLAYER_SUBSTITUTION requires capability 2 or 3 and a confirmed active point after PULL. " +
-            "The outgoing actor can be a roster player or temporary slot. The incoming actor can be an off-field roster player on the same team. Capability 3 can set createIncomingReserve to true with a fresh toParticipantId slot UUID. " +
+            "PLAYER_SUBSTITUTION requires capability 2, 3 or 4 and a confirmed active point after PULL. " +
+            "The outgoing actor can be a roster player or temporary slot. The incoming actor can be an off-field roster player on the same team. Capabilities 3 and 4 can set createIncomingReserve to true with a fresh toParticipantId slot UUID. " +
             "Write gates do not affect canonical reads, exact retries or Undo. " +
             "Equal timestamps are allowed; backwards timestamps are rejected. Score is recalculated once. " +
             "201 confirms a new batch; 200 replays the exact original batch (same bases, UUIDs, payloads and order), even after later appends. " +
@@ -77,6 +77,7 @@ class EventBatchController(
         ApiResponse(responseCode = "404", description = "Match not found"),
         ApiResponse(responseCode = "409", description = "EVENT_LOG_STALE, EVENT_BATCH_CONFLICT, EVENT_IDEMPOTENCY_CONFLICT, EVENT_SEQUENCE_VIOLATION, POSSESSION_CHANGE_WRITE_DISABLED, POINT_SUBSTITUTION_WRITE_DISABLED, POINT_SUBSTITUTION_CONFLICT or existing lifecycle/timestamp code. No writes. Includes current position and offending eventId/eventIndex when applicable (zero-based index).", content = [Content(mediaType = MediaType.APPLICATION_PROBLEM_JSON_VALUE, schema = Schema(implementation = EventBatchProblem::class))]),
     )
+    @PointResultCommand(batch = true)
     fun append(
         @PathVariable matchId: UUID,
         @RequestBody body: CreateEventBatchRequest,
@@ -86,7 +87,7 @@ class EventBatchController(
         val result = try {
             events.appendBatch(matchId, body, request.pointLineupClient())
         } catch (exception: EventIdempotencyConflictException) {
-            val snapshot = events.snapshot(matchId, PointLineupClient.INCOMING_RESERVES) ?: return ResponseEntity.notFound().build<Void>()
+            val snapshot = events.snapshot(matchId, PointLineupClient.POINT_RESULTS) ?: return ResponseEntity.notFound().build<Void>()
             EventBatchResult.Rejected(
                 MatchProblem(MatchProblemCode.EVENT_IDEMPOTENCY_CONFLICT, "Event idempotency conflict", "Event ${exception.eventId} already exists with a different payload"),
                 snapshot.lastSequenceNumber, snapshot.logRevision, exception.eventId,

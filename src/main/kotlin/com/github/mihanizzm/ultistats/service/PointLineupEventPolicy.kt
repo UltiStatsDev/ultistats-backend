@@ -39,12 +39,13 @@ class PointLineupEventPolicy(
     val substitutionsWriteEnabled: Boolean get() = writesEnabled && substitutionsEnabled
 
     fun requireWriteClient(matchId: UUID, client: PointLineupClient) {
+        requirePointResultClient(matchId, client)
         requireSubstitutionReadClient(matchId, client)
         if (client == PointLineupClient.LEGACY && lineups.exists(matchId)) requireClient()
     }
 
     fun requireSubstitutionReadClient(matchId: UUID, client: PointLineupClient) {
-        if (client != PointLineupClient.INCOMING_RESERVES && lineups.hasActiveIntroducedSlots(matchId)) {
+        if (!client.supportsIncomingReserves && lineups.hasActiveIntroducedSlots(matchId)) {
             throw incomingReserveClientRequired()
         }
         if (!client.supportsSubstitutions && events.existsByMatchIdAndEventTypeAndDeletedAtIsNull(matchId, EventType.PLAYER_SUBSTITUTION)) {
@@ -53,8 +54,16 @@ class PointLineupEventPolicy(
     }
 
     fun requireReadClient(matchId: UUID, events: Iterable<EventEntity>, client: PointLineupClient) {
+        requirePointResultClient(matchId, client)
         requireSubstitutionReadClient(matchId, client)
         if (client == PointLineupClient.LEGACY && events.any { it.fromSlotId != null || it.toSlotId != null }) requireClient()
+    }
+
+    fun pointResultClientRequired(matchId: UUID, client: PointLineupClient): Boolean =
+        !client.supportsPointResults && events.existsByMatchIdAndEventTypeAndDeletedAtIsNull(matchId, EventType.POINT_RESULT)
+
+    fun requirePointResultClient(matchId: UUID, client: PointLineupClient) {
+        if (pointResultClientRequired(matchId, client)) throw PointResultClientRequiredException()
     }
 
     fun incomingReserveClientRequired() = PointLineupRejectedException(
@@ -89,6 +98,13 @@ class PointLineupEventPolicy(
     private fun requireClient(): Nothing = throw PointLineupRejectedException(
         PointLineupProblemCode.POINT_LINEUP_CLIENT_REQUIRED, "This journal requires a point-lineup-aware client",
     )
+}
+
+class PointResultClientRequiredException(
+    val batch: PointLineupBatchPosition? = null,
+) : RuntimeException("This journal requires POINT_RESULT support (capability 4)") {
+    fun forBatch(lastSequenceNumber: Int, logRevision: Long) =
+        PointResultClientRequiredException(PointLineupBatchPosition(lastSequenceNumber, logRevision, null, null))
 }
 
 class ConfirmedJournal(

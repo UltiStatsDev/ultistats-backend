@@ -10,5 +10,6 @@ internal fun HttpServletRequest.pointLineupClient(): PointLineupClient =
         "1" -> PointLineupClient.LINEUPS
         "2" -> PointLineupClient.SUBSTITUTIONS
         "3" -> PointLineupClient.INCOMING_RESERVES
+        "4" -> PointLineupClient.POINT_RESULTS
         else -> PointLineupClient.LEGACY
     }

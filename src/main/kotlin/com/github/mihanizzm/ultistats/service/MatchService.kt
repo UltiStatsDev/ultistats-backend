@@ -41,9 +41,9 @@ interface MatchService {
 
     fun recalculateScore(matchId: UUID)
 
-    fun startMatch(matchId: UUID, timestamp: Instant): MatchCommandResult<Match>
+    fun startMatch(matchId: UUID, timestamp: Instant, client: PointLineupClient = PointLineupClient.LEGACY): MatchCommandResult<Match>
 
-    fun endMatch(matchId: UUID, timestamp: Instant): MatchCommandResult<Match>
+    fun endMatch(matchId: UUID, timestamp: Instant, client: PointLineupClient = PointLineupClient.LEGACY): MatchCommandResult<Match>
 
     fun getForUpdate(matchId: UUID): Match?
 }

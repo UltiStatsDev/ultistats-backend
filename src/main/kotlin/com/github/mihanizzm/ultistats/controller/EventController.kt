@@ -105,6 +105,7 @@ class EventController(
             ),
         ],
     )
+    @PointResultCommand
     fun create(
         @PathVariable matchId: UUID,
         @OpenApiRequestBody(
@@ -286,6 +287,7 @@ class EventController(
             ),
         ],
     )
+    @PointResultCommand
     fun update(
         @PathVariable matchId: UUID,
         @PathVariable eventId: UUID,

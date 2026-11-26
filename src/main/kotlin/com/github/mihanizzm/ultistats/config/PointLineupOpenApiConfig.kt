@@ -48,22 +48,31 @@ class PointLineupOpenApiConfig {
             api.paths["$journal/batch"]?.post?.lineupProtocol()
             api.paths["$journal/undo"]?.post?.lineupProtocol()
         }
+        for (command in listOf("start", "end")) {
+            api.paths["/api/v1/matches/{id}/$command"]?.post?.lineupProtocol(lifecycle = true)
+        }
     }
 
-    private fun Operation.lineupProtocol(read: Boolean = false, lineupMutation: Boolean = false) {
+    private fun Operation.lineupProtocol(read: Boolean = false, lineupMutation: Boolean = false, lifecycle: Boolean = false) {
         addParametersItem(HeaderParameter().name(POINT_LINEUPS_HEADER).required(false)
-            .description("Send 1 for raw temporary slot UUIDs, 2 to also replay known-player substitutions, or 3 to also replay incoming reserves.")
-            .schema(StringSchema().addEnumItem("1").addEnumItem("2").addEnumItem("3")))
-        val detail = if (lineupMutation) {
-            ""
-        } else if (read) {
-            "POINT_LINEUP_CLIENT_REQUIRED when this response contains temporary actor UUIDs and the capability header is absent."
-        } else {
-            "POINT_LINEUP_CLIENT_REQUIRED for a managed journal without capability. " +
+            .description("Cumulative journal capabilities: 1 for raw temporary slot UUIDs, 2 for known-player substitutions, 3 for incoming reserves, 4 for POINT_RESULT.")
+            .schema(StringSchema().addEnumItem("1").addEnumItem("2").addEnumItem("3").addEnumItem("4")))
+        val details = buildList {
+            if (read) add("POINT_LINEUP_CLIENT_REQUIRED when this response contains temporary actor UUIDs and the capability header is absent.")
+            if (!read && !lineupMutation && !lifecycle) add(
+                "POINT_LINEUP_CLIENT_REQUIRED for a managed journal without capability. " +
                 "POINT_LINEUP_CONFLICT for a missing lineup, actor outside its point, or an invalid boundary edit. " +
-                "POINT_LINEUP_WRITE_DISABLED for a new temporary actor write while the feature is off."
+                "POINT_LINEUP_WRITE_DISABLED for a new temporary actor write while the feature is off.",
+            )
+            if (!lifecycle) add(
+                "POINT_LINEUP_CLIENT_REQUIRED for active substitutions without capability 2, 3 or 4, or active incoming reserves without capability 3 or 4.",
+            )
+            if (!lineupMutation) add(
+                "POINT_RESULT_CLIENT_REQUIRED when the journal contains an active POINT_RESULT and capability 4 is absent. " +
+                    "The conflict uses Cache-Control: no-store and varies by $POINT_LINEUPS_HEADER.",
+            )
         }
-        val protocol = "$detail POINT_LINEUP_CLIENT_REQUIRED for a journal containing substitutions without capability 2 or 3, or active incoming reserves without capability 3.".trimStart()
+        val protocol = details.joinToString(" ")
         val existing = responses["409"]
         if (existing != null) {
             existing.description += " $protocol"

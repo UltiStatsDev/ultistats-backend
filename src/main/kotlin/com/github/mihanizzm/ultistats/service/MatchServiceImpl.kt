@@ -54,6 +54,7 @@ class MatchServiceImpl(
     private val realtimePublisher: MatchRealtimePublisher,
     private val applicationEvents: ApplicationEventPublisher,
     private val pointLineups: PointLineupRepository,
+    private val pointLineupEventPolicy: PointLineupEventPolicy,
 ) : MatchService {
     override fun get(matchId: UUID): Match? =
         matchRepository.findByIdAndDeletedAtIsNull(matchId)?.hydrate(includeEvents = true)
@@ -181,8 +182,10 @@ class MatchServiceImpl(
     }
 
     @Transactional
-    override fun startMatch(matchId: UUID, timestamp: Instant): MatchCommandResult<Match> {
-        val match = getForUpdate(matchId)?.hydrate(includeEvents = true) ?: return MatchCommandResult.NotFound
+    override fun startMatch(matchId: UUID, timestamp: Instant, client: PointLineupClient): MatchCommandResult<Match> {
+        val locked = getForUpdate(matchId) ?: return MatchCommandResult.NotFound
+        pointLineupEventPolicy.requirePointResultClient(matchId, client)
+        val match = locked.hydrate(includeEvents = true)
         lifecyclePolicy.validateStart(match, timestamp).toCommandRejection()?.let { return it }
 
         matchRepository.save(match.copy(startedAt = timestamp, originalStartedAtSecond = timestamp.epochSecond, originalStartedAtNano = timestamp.nano))
@@ -191,8 +194,10 @@ class MatchServiceImpl(
     }
 
     @Transactional
-    override fun endMatch(matchId: UUID, timestamp: Instant): MatchCommandResult<Match> {
-        val match = getForUpdate(matchId)?.hydrate(includeEvents = true) ?: return MatchCommandResult.NotFound
+    override fun endMatch(matchId: UUID, timestamp: Instant, client: PointLineupClient): MatchCommandResult<Match> {
+        val locked = getForUpdate(matchId) ?: return MatchCommandResult.NotFound
+        pointLineupEventPolicy.requirePointResultClient(matchId, client)
+        val match = locked.hydrate(includeEvents = true)
         lifecyclePolicy.validateFinish(match, timestamp).toCommandRejection()?.let { return it }
         when (val sequence = sequencePolicy.validate(match.events, requirePointEnded = true)) {
             is EventSequenceDecision.Allowed -> Unit

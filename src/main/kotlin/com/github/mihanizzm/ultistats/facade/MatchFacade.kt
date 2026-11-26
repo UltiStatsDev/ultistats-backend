@@ -13,6 +13,7 @@ import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.model.MatchParticipantKind
 import com.github.mihanizzm.ultistats.service.MatchService
 import com.github.mihanizzm.ultistats.service.PlayerService
+import com.github.mihanizzm.ultistats.service.PointLineupClient
 import com.github.mihanizzm.ultistats.service.TeamService
 import com.github.mihanizzm.ultistats.service.result.MatchCommandResult
 import com.github.mihanizzm.ultistats.service.patch.MatchPatch
@@ -95,12 +96,12 @@ class MatchFacade(
         return true
     }
 
-    fun startMatch(id: UUID, request: MatchTimestampRequest): MatchCommandResult<MatchResponse> {
-        return matchService.startMatch(id, request.timestamp).toResponse()
+    fun startMatch(id: UUID, request: MatchTimestampRequest, client: PointLineupClient): MatchCommandResult<MatchResponse> {
+        return matchService.startMatch(id, request.timestamp, client).toResponse()
     }
 
-    fun endMatch(id: UUID, request: MatchTimestampRequest): MatchCommandResult<MatchResponse> {
-        return matchService.endMatch(id, request.timestamp).toResponse()
+    fun endMatch(id: UUID, request: MatchTimestampRequest, client: PointLineupClient): MatchCommandResult<MatchResponse> {
+        return matchService.endMatch(id, request.timestamp, client).toResponse()
     }
 
     private fun validateTeamSelection(teamIds: List<UUID>): MatchCommandResult.InvalidRequest? = when {
