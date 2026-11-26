@@ -6,7 +6,10 @@ import {execFileSync} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 
-const {origin,evidence,ca,launcher,playwright,helper,jar,password,newPassword} = JSON.parse(readFileSync(0,'utf8'));
+const {origin,evidence,ca,launcher,playwright,helper,jar,password,newPassword,pg,legacyOperation} = JSON.parse(readFileSync(0,'utf8'));
+assert.match(pg,/^obs270-pg-/);
+const sql = text => execFileSync('docker',['exec','-i',pg,'psql','-XqAt','-v','ON_ERROR_STOP=1','-U','obs270','-d','obs270'],
+  {input:text,encoding:'utf8'}).trim();
 assert.match(origin, /^https:\/\/localhost:\d+$/);
 const cookies = new Map();
 const proof = [];
@@ -43,13 +46,13 @@ async function call(path,{method='GET',body,token,staff=true,status=200,headers=
     }
   }
   const text = reply.raw.toString();
-  assert.equal(reply.status,status,`${method} ${path} (${body?.type ?? ''}): ${text.match(/"code":"([A-Z_]+)"/)?.[1] ?? ''}`);
+  assert.ok([status].flat().includes(reply.status),`${method} ${path} (${reply.status}; ${body?.type ?? ''}): ${text.match(/"code":"([A-Z_]+)"/)?.[1] ?? ''}`);
   return {...reply,data:reply.headers['content-type']?.includes('json') && text ? JSON.parse(text) : null};
 }
 
 const session = (await call('/api/v1/auth/session')).data;
 const login = (await call('/api/v1/auth/login',{
-  method:'POST',headers:{'X-UltiStats-Installation-Id':session.installationId},body:{login:'obs259-owner',password},
+  method:'POST',headers:{'X-UltiStats-Installation-Id':session.installationId},body:{login:'obs270-owner',password},
 })).data;
 function capture(value) {
   identity = {'X-UltiStats-Installation-Id':value.installationId,'X-UltiStats-Account-Id':value.account.id,'X-UltiStats-Session-Id':value.sessionId};
@@ -91,22 +94,69 @@ const read = async (key,target,status=200) => {
   return target==='auto' ? reply.data.snapshot : reply.data;
 };
 
-const main = await matchAt(epoch);
+const commands = '/api/v1/obs/infographics/presentations';
+const settings = '/api/v1/obs/infographics/settings';
+const control = async (matchId,binding='EXACT') => {
+  const result = (await call('/api/v1/obs/infographics/leaders/'+(binding==='AUTO'?'auto':matchId))).data;
+  return binding==='AUTO' ? result.snapshot : result;
+};
+async function showRequest(matchId,binding='EXACT',kind='STATS') {
+  const current = await control(matchId,binding);
+  assert.equal(current.matchId,matchId);
+  const {expectedInputRevision,expectedSettingsRevision,expectedGeneration} = current.presentation;
+  return {binding,expectedMatchId:matchId,expectedInputRevision,expectedSettingsRevision,expectedGeneration,operationId:randomUUID(),kind};
+}
+const sendShow = async (body,status=200) => (await call(commands,{method:'POST',body,status})).data;
+const hide = async (generation,status=204) => call(commands+'/'+generation,{method:'DELETE',status});
+const tally = () => Number(sql('SELECT COUNT(*) FROM obs_infographics_presentations'));
+assert.equal((await call(settings)).data.statsSeconds,10);
+const legacy = await sendShow(legacyOperation.request);
+assert.deepEqual(legacy,legacyOperation.receipt);
+assert.equal(tally(),1);
+
 const auto = await issue('AUTO_INFOGRAPHICS');
+const historical = await matchAt(epoch-80_000);
+sql(`UPDATE matches SET ended_at = '${timestamp(epoch-80_000,4)}' WHERE id = '${historical.id}'`);
+const oldFinished = await read(auto,'auto');
+assert.equal(oldFinished.matchId,historical.id);
+assert.equal(oldFinished.phase.kind,'HIDDEN');
+assert.ok(oldFinished.postmatch);
+assert.equal(oldFinished.statsPresentation,null);
+assert.equal(tally(),1);
+await historical.remove();
+
+const main = await matchAt(epoch);
 const exact = await issue('EXACT_INFOGRAPHICS',main.id);
 const old = await issue('EXACT_SCOREBOARD',main.id);
 assert.equal((await read(exact,main.id)).postmatch,null);
 await call(main.path+'/statistics',{staff:false,token:tokenOf(exact),status:401});
 await read(old,main.id,403);
 await call(`/api/v1/obs/previews/infographics/${main.id}`,{token:tokenOf(exact),staff:false,status:401});
+assert.equal((await control(main.id)).presentation.canShowStats,false);
+assert.equal((await sendShow(await showRequest(main.id),409)).code,'OBS_PRESENTATION_NO_STATS');
 const [[l0,l1],[r0]] = main.players;
+await main.event(0,'PULL',r0);
+await call(main.path+'/end',{method:'POST',body:{timestamp:timestamp(epoch,1)},status:409});
+assert.equal(tally(),1);
+assert.equal((await read(exact,main.id)).statsPresentation,null);
 for (const args of [
-  [0,'PULL',r0], [10,'PICKUP',l0], [70,'PASS',l0,l1], [100,'TIMEOUT_START',teams[0].id],
+  [10,'PICKUP',l0], [70,'PASS',l0,l1], [100,'TIMEOUT_START',teams[0].id],
   [130,'TIMEOUT_END',teams[0].id], [160,'BLOCK',l1,r0], [170,'PICKUP',r0], [230,'BLOCK_MARKER',r0,l0],
   [240,'PICKUP',l0], [300,'BLOCK_FIELD',l0,r0], [310,'PICKUP',r0], [370,'INTERCEPTION',r0,l0],
   [430,'INCOMPLETE_PASS',l0], [440,'PICKUP',r0], [500,'INTERCEPTION',r0,l0],
   [560,'PASS',l0,l1], [620,'GOAL',l1,l0], [630,'PULL',l0], [640,'PICKUP',r0], [700,'CALLAHAN',r0,l0],
 ]) await main.event(...args);
+// Force failure on the second finish write, after the EXACT command was inserted.
+sql("ALTER TABLE obs_infographics_presentations ADD CONSTRAINT obs270_force_auto_rollback CHECK (origin <> 'AUTO' OR binding <> 'AUTO') NOT VALID");
+try {
+  await call(main.path+'/end',{method:'POST',body:{timestamp:timestamp(epoch,790)},status:500});
+} finally {
+  sql("ALTER TABLE obs_infographics_presentations DROP CONSTRAINT obs270_force_auto_rollback");
+}
+assert.equal(tally(),1);
+assert.equal((await read(exact,main.id)).status,'IN_PROGRESS');
+assert.equal((await read(exact,main.id)).statsPresentation,null);
+const finishRequestedAt = Date.now();
 await main.finish(790);
 
 async function parity(match,key,target,times,latest) {
@@ -130,7 +180,32 @@ async function parity(match,key,target,times,latest) {
 }
 const finished = await parity(main,exact,main.id,[360000,240000],timestamp(epoch,700));
 assert.deepEqual(finished.postmatch.teams.map(team=>Object.values(team.metrics)),[[3,3,1,2,1,1],[0,4,2,0,0,0]]);
-assert.deepEqual((await read(auto,'auto')).postmatch,finished.postmatch);
+const automaticStarted = await read(auto,'auto');
+await call(main.path+'/end',{method:'POST',body:{timestamp:timestamp(epoch,790)},status:409});
+assert.deepEqual((await read(exact,main.id)).statsPresentation,finished.statsPresentation);
+assert.deepEqual(automaticStarted.postmatch,finished.postmatch);
+assert.notEqual(automaticStarted.statsPresentation.generation,finished.statsPresentation.generation);
+assert.equal(tally(),3);
+for (const current of [automaticStarted,finished]) {
+  assert.equal(current.phase.kind,'HIDDEN');
+  const active = current.statsPresentation;
+  assert.equal(active.kind,'STATS');
+  assert.equal(active.origin,'AUTO');
+  assert.equal(active.pageSeconds,10);
+  assert.ok(Date.parse(active.startedAt) >= finishRequestedAt);
+  assert.equal(Date.parse(active.expiresAt)-Date.parse(active.startedAt),10_000);
+}
+const controls = (await control(main.id,'AUTO')).presentation;
+assert.equal(controls.canShowStats,true);
+assert.deepEqual(controls.activePresentation,automaticStarted.statsPresentation);
+const intervals = {rosterPageSeconds:5,pointPageSeconds:5,leaderPageSeconds:2};
+for (const value of [0,-1,'3',null,1.5]) await call(settings,{method:'PUT',body:{...intervals,statsSeconds:value},status:400});
+const pending = await showRequest(main.id,'AUTO');
+await call(settings,{method:'PUT',body:{...intervals,statsSeconds:3}});
+assert.equal((await call(settings,{method:'PUT',body:intervals})).data.statsSeconds,3);
+assert.equal((await sendShow(pending,409)).code,'OBS_PRESENTATION_INPUT_STALE');
+assert.deepEqual((await read(auto,'auto')).statsPresentation,automaticStarted.statsPresentation);
+assert.equal(tally(),3);
 assert.deepEqual((await call(`/api/v1/obs/previews/infographics/${main.id}`)).data.postmatch,finished.postmatch);
 
 const {chromium} = await import(pathToFileURL(playwright).href);
@@ -147,6 +222,8 @@ try {
     assert.deepEqual(await labels(),expected);
   };
   await page.goto(auto.url);
+  await show(['50.0 %','60.0 %','0.0 %','40.0 %']);
+  await page.reload();
   await show(['50.0 %','60.0 %','0.0 %','40.0 %']);
   assert.equal(await page.locator('.postmatch-row').count(),6);
   assert.equal(await page.locator('#infographics').evaluate(node=>getComputedStyle(node).animationName),'postmatch-appear');
@@ -187,19 +264,49 @@ try {
     await page.screenshot({path:`${evidence}/postmatch-${viewport.width}.png`});
   }
 
-  const leaders = (await call('/api/v1/obs/infographics/leaders/auto')).data.snapshot;
-  assert.equal(leaders.matchId,main.id);
-  const {expectedInputRevision,expectedSettingsRevision,expectedGeneration,canShow} = leaders.presentation;
-  assert.equal(canShow,true);
-  const receipt = (await call('/api/v1/obs/infographics/presentations',{method:'POST',body:{
-    binding:'AUTO',expectedMatchId:main.id,expectedInputRevision,expectedSettingsRevision,expectedGeneration,operationId:randomUUID(),
-  }})).data;
-  assert.equal((await read(auto,'auto')).leaderPresentation.generation,receipt.generation);
-  await page.waitForSelector('[data-graphic-kind="leaders"]');
-  assert.equal(await page.locator('.postmatch-panel').count(),0);
+  const hidden = () => page.waitForSelector('#infographics',{state:'hidden'});
+  await hidden();
+  assert.ok(Date.now() >= Date.parse(automaticStarted.statsPresentation.expiresAt));
+  assert.deepEqual((await read(auto,'auto')).postmatch,finished.postmatch);
+  assert.equal((await read(auto,'auto')).statsPresentation,null);
+  await page.reload();
+  await hidden();
+
+  const manual = await showRequest(main.id,'AUTO');
+  const first = await sendShow(manual);
+  assert.equal(first.origin,'MANUAL');
+  assert.equal(first.pageSeconds,3);
+  assert.deepEqual(await sendShow(manual),first);
+  assert.equal((await sendShow({...manual,kind:'LEADERS'},409)).code,'OBS_PRESENTATION_OPERATION_CONFLICT');
   await show(['50.0 %','60.0 %','0.0 %','40.0 %']);
-  assert.ok(Date.now() >= Date.parse(receipt.expiresAt));
-  assert.equal((await read(auto,'auto')).leaderPresentation,null);
+  await page.reload();
+  await show(['50.0 %','60.0 %','0.0 %','40.0 %']);
+  assert.equal((await read(exact,main.id)).statsPresentation,null);
+  await hidden();
+  assert.ok(Date.now() >= Date.parse(first.expiresAt));
+  assert.equal((await read(auto,'auto')).statsPresentation,null);
+  const replacement = await sendShow(await showRequest(main.id,'AUTO'));
+  const {kind: unusedKind, ...legacyShow} = await showRequest(main.id,'AUTO','LEADERS');
+  const leader = await sendShow(legacyShow);
+  assert.equal(leader.kind,'LEADERS');
+  assert.equal((await hide(replacement.generation,409)).data.code,'OBS_PRESENTATION_GENERATION_STALE');
+  assert.equal((await read(auto,'auto')).leaderPresentation.generation,leader.generation);
+  await page.waitForSelector('[data-graphic-kind="leaders"]');
+  await hide(leader.generation);
+  await hide(leader.generation);
+  await hidden();
+  assert.deepEqual(await sendShow(manual),first);
+  assert.equal((await read(auto,'auto')).statsPresentation,null);
+
+  const current = await showRequest(main.id,'AUTO');
+  const contenders = await Promise.all([current,{...current,operationId:randomUUID()}].map(body =>
+    call(commands,{method:'POST',body,status:[200,409]})));
+  assert.deepEqual(contenders.map(r=>r.status).sort(),[200,409]);
+  const winner = contenders.find(r=>r.status===200).data;
+  assert.equal((await read(auto,'auto')).statsPresentation.generation,winner.generation);
+  await hide(winner.generation);
+  assert.equal((await read(auto,'auto')).statsPresentation,null);
+  await call(settings,{method:'PUT',body:{...intervals,statsSeconds:30}});
 
   const next = await matchAt(epoch+950000);
   await page.waitForSelector('.postmatch-panel',{state:'detached'});
@@ -212,16 +319,33 @@ try {
   await next.finish(8);
   await parity(next,auto,'auto',[1000,2000],timestamp(epoch+950000,4));
   await show(['0.0 %','33.3 %','100.0 %','66.7 %']);
+  const prior = await sendShow(await showRequest(next.id,'AUTO'));
+  const live = await matchAt(epoch+955000);
+  assert.equal((await read(auto,'auto')).matchId,live.id);
+  await live.remove();
+  const returned = await read(auto,'auto');
+  assert.equal(returned.matchId,next.id);
+  assert.equal(returned.statsPresentation,null);
+  assert.equal((await hide(prior.generation)).status,204);
   await next.remove();
-  await show(['50.0 %','60.0 %','0.0 %','40.0 %']);
+  await hidden();
 
   const one = await matchAt(epoch+960000);
   const [[oneLeft],[oneRight,oneReceiver]] = one.players;
   await one.event(0,'PULL',oneLeft);
   await one.event(2,'PICKUP',oneRight);
   await one.event(6,'GOAL',oneRight,oneReceiver);
+  const selectedDuringFinish = await matchAt(epoch+965000);
+  const exactOne = await issue('EXACT_INFOGRAPHICS',one.id);
   await one.finish(8);
-  await parity(one,auto,'auto',[0,4000],timestamp(epoch+960000,6));
+  const oneExact = await parity(one,exactOne,one.id,[0,4000],timestamp(epoch+960000,6));
+  assert.equal(oneExact.statsPresentation.origin,'AUTO');
+  assert.equal((await read(auto,'auto')).matchId,selectedDuringFinish.id);
+  assert.equal((await read(auto,'auto')).statsPresentation,null);
+  await selectedDuringFinish.remove();
+  assert.equal((await read(auto,'auto')).matchId,one.id);
+  assert.equal((await read(auto,'auto')).statsPresentation,null);
+  await sendShow(await showRequest(one.id,'AUTO'));
   await show(['—','0.0 %','100.0 %','100.0 %']);
   await one.remove();
 
@@ -238,7 +362,7 @@ try {
   await page.screenshot({path:`${evidence}/postmatch-no-possession-320.png`});
   assert.ok(await page.locator('.postmatch-row').nth(1).locator('.postmatch-fill').evaluateAll(bars=>bars.every(bar=>bar.style.width==='0%')));
   await empty.remove();
-  await show(['50.0 %','60.0 %','0.0 %','40.0 %']);
+  await hidden();
   await main.remove();
   await page.waitForSelector('#infographics',{state:'hidden'});
   assert.equal(await read(auto,'auto'),null);
@@ -249,6 +373,10 @@ try {
 
 const openapi = (await call('/v3/api-docs')).data;
 assert.ok(openapi.components.schemas.ObsInfographicsSnapshot.properties.postmatch);
+assert.ok(openapi.components.schemas.ObsInfographicsSnapshot.properties.statsPresentation);
+const {properties, required} = openapi.components.schemas.ObsPresentationRequest;
+assert.equal(properties.kind.default,'LEADERS');
+assert.ok(!required.includes('kind'));
 assert.ok(openapi.components.schemas.ObsInfographicsPostmatch.properties.statsAsOfEventAt);
 writeFileSync(`${evidence}/openapi.json`,JSON.stringify(openapi));
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -267,6 +395,6 @@ for (const path of ['obs-sources/infographics.html','obs-preview/infographics.ht
 writeFileSync(`${evidence}/artifact-bytes.json`,JSON.stringify({jarSHA256:sha(readFileSync(jar)),helperSHA256:helperHash,assets},null,2));
 writeFileSync(`${evidence}/http-browser-proof.json`,JSON.stringify({
   postmatch:proof, normalAPI:true, normalTLS:true, ownedSyntheticOnly:true, frozenHelperVerified:true,
-  checks:['six counters + scales','protection + preview','same panel bounds','reduced motion + narrow frames','leader expiry restores current FINISHED','AUTO switch + deletion'],
+  checks:['six counters + scales','protection + preview','same panel bounds','reduced motion + narrow frames','bounded AUTO and manual timing + actual reload','legacy V24 replay + no historical autoplay','normal finish atomic rollback on PG','settings capture + stale commands','generation races and hide','AUTO switch + deletion without revival'],
 },null,2));
 console.log('Canonical PostgreSQL statistics, actual HTTPS infographic renderer and frozen-helper preview verified.');

@@ -31,9 +31,13 @@ import com.github.mihanizzm.ultistats.validation.match.MatchProblemCode
 import com.github.mihanizzm.ultistats.repository.jpa.PointLineupRepository
 import com.github.mihanizzm.ultistats.repository.jpa.SpringDataTeamPlayerRepository
 import jakarta.transaction.Transactional
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import java.time.Instant
 import java.util.UUID
+
+// Synchronous lifecycle work receives this only after the validated finish has been flushed.
+data class MatchFinishApplied internal constructor(val matchId: UUID)
 
 @Service
 class MatchServiceImpl(
@@ -49,6 +53,7 @@ class MatchServiceImpl(
     private val sequencePolicy: EventSequencePolicy,
     private val announcements: MatchAnnouncementService,
     private val realtimePublisher: MatchRealtimePublisher,
+    private val applicationEvents: ApplicationEventPublisher,
     private val pointLineups: PointLineupRepository,
 ) : MatchService {
     override fun get(matchId: UUID): Match? =
@@ -207,8 +212,10 @@ class MatchServiceImpl(
         }
 
         announcements.closeAtFinish(matchId, timestamp)
-        matchRepository.save(match.copy(endedAt = timestamp, originalEndedAtSecond = timestamp.epochSecond, originalEndedAtNano = timestamp.nano))
+        // A synchronous finish subscriber selects the OBS source from the persisted lifecycle.
+        matchRepository.saveAndFlush(match.copy(endedAt = timestamp, originalEndedAtSecond = timestamp.epochSecond, originalEndedAtNano = timestamp.nano))
         val finished = readHydratedForUpdate(matchId)
+        applicationEvents.publishEvent(MatchFinishApplied(matchId))
         realtimePublisher.matchFinished(matchId)
         return MatchCommandResult.Success(finished)
     }

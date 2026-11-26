@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS obs_infographics_presentations;
+DROP TABLE IF EXISTS obs_infographics_presentation_bindings;
 DROP TABLE IF EXISTS obs_infographics_settings_history;
 DROP TABLE IF EXISTS obs_infographics_settings;
 DROP TABLE IF EXISTS obs_source_key_material;
@@ -246,15 +247,17 @@ CREATE TABLE obs_infographics_settings (
     revision BIGINT NOT NULL CHECK (revision >= 0),
     roster_page_seconds INTEGER NOT NULL CHECK (roster_page_seconds BETWEEN 2 AND 15),
     point_page_seconds INTEGER NOT NULL CHECK (point_page_seconds BETWEEN 2 AND 15),
-    leader_page_seconds INTEGER NOT NULL CHECK (leader_page_seconds BETWEEN 2 AND 15)
+    leader_page_seconds INTEGER NOT NULL CHECK (leader_page_seconds BETWEEN 2 AND 15),
+    stats_seconds INTEGER NOT NULL DEFAULT 10 CHECK (stats_seconds > 0)
 );
-INSERT INTO obs_infographics_settings VALUES (1, 0, 5, 5, 5);
+INSERT INTO obs_infographics_settings VALUES (1, 0, 5, 5, 5, 10);
 CREATE TABLE obs_infographics_settings_history (
     revision BIGINT PRIMARY KEY,
     effective_at TIMESTAMP WITH TIME ZONE NOT NULL,
     roster_page_seconds INTEGER NOT NULL CHECK (roster_page_seconds BETWEEN 2 AND 15),
     point_page_seconds INTEGER NOT NULL CHECK (point_page_seconds BETWEEN 2 AND 15),
-    leader_page_seconds INTEGER NOT NULL CHECK (leader_page_seconds BETWEEN 2 AND 15)
+    leader_page_seconds INTEGER NOT NULL CHECK (leader_page_seconds BETWEEN 2 AND 15),
+    stats_seconds INTEGER NOT NULL DEFAULT 10 CHECK (stats_seconds > 0)
 );
 
 CREATE TABLE obs_infographics_presentations (
@@ -268,8 +271,12 @@ CREATE TABLE obs_infographics_presentations (
     settings_revision BIGINT NOT NULL CHECK (settings_revision >= 0),
     started_at TIMESTAMP WITH TIME ZONE NOT NULL,
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL CHECK (expires_at > started_at),
-    page_seconds INTEGER NOT NULL CHECK (page_seconds BETWEEN 2 AND 15),
+    kind VARCHAR(16) NOT NULL DEFAULT 'LEADERS',
+    origin VARCHAR(6) NOT NULL DEFAULT 'MANUAL' CHECK (origin IN ('MANUAL', 'AUTO')),
+    page_seconds INTEGER NOT NULL CHECK (page_seconds > 0 AND (kind = 'STATS' OR page_seconds BETWEEN 2 AND 15)),
     teams_json TEXT NOT NULL,
     hidden BOOLEAN NOT NULL DEFAULT FALSE,
     UNIQUE (binding, ordinal)
 );
+
+CREATE TABLE obs_infographics_presentation_bindings (binding VARCHAR(36) PRIMARY KEY);

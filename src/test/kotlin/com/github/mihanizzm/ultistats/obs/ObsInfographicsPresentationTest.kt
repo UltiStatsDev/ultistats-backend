@@ -7,11 +7,13 @@ import com.github.mihanizzm.ultistats.model.Match
 import com.github.mihanizzm.ultistats.model.events.EventType
 import com.github.mihanizzm.ultistats.model.events.OnePlayerEvent
 import com.github.mihanizzm.ultistats.model.events.TwoPlayerEvent
+import com.github.mihanizzm.ultistats.service.result.MatchCommandResult
 import com.github.mihanizzm.ultistats.service.result.EventCommandResult
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.transaction.support.TransactionTemplate
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.*
@@ -22,6 +24,7 @@ class ObsInfographicsPresentationTest : MatchAbstractTest() {
     @Autowired private lateinit var settings: ObsInfographicsSettingsService
     @Autowired private lateinit var jdbc: JdbcTemplate
     @Autowired private lateinit var json: ObjectMapper
+    @Autowired private lateinit var tx: TransactionTemplate
 
     @BeforeEach fun resetCommands() {
         jdbc.update("DELETE FROM obs_infographics_presentations")
@@ -41,6 +44,29 @@ class ObsInfographicsPresentationTest : MatchAbstractTest() {
         val control = snapshot.presentation!!
         return ObsPresentationRequest(binding, snapshot.matchId, control.expectedInputRevision,
             control.expectedSettingsRevision, control.expectedGeneration, UUID.randomUUID())
+    }
+
+    @Test fun `committed finish publishes server-timed stats independently to exact and selected auto`() {
+        goal()
+        tx.executeWithoutResult { transaction ->
+            assertIs<MatchCommandResult.Success<*>>(matchService.endMatch(MATCH.id, Instant.parse(END_DATE)))
+            transaction.setRollbackOnly()
+        }
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM obs_infographics_presentations", Int::class.java))
+
+        val before = Instant.now().minusSeconds(1)
+        assertIs<MatchCommandResult.Success<*>>(matchService.endMatch(MATCH.id, Instant.parse(END_DATE)))
+        val exact = preview.infographics(MATCH.id)
+        val auto = assertNotNull(preview.autoInfographics().snapshot)
+        assertEquals("HIDDEN", exact.phase.kind)
+        for (snapshot in listOf(exact, auto)) {
+            val active = assertNotNull(snapshot.statsPresentation)
+            assertEquals(ObsPresentationKind.STATS, active.kind)
+            assertEquals(ObsPresentationOrigin.AUTO, active.origin)
+            assertTrue(active.startedAt >= before)
+            assertEquals(active.startedAt.plusSeconds(active.pageSeconds.toLong()), active.expiresAt)
+        }
+        assertNotEquals(exact.statsPresentation?.generation, auto.statsPresentation?.generation)
     }
 
     @Test fun `only newest durable command is effective and retry is the original receipt`() {

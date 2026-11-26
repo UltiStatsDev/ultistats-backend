@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateInfographics, rosterPage, RosterClock } from '../../main/resources/static/obs/infographics-model.mjs';
+import { validateInfographics, infographicsPage, rosterPage, RosterClock } from '../../main/resources/static/obs/infographics-model.mjs';
 import { parseSource } from '../../main/resources/static/obs/protected-source-client.mjs';
 import { parsePreview } from '../../main/resources/static/obs/staff-preview.mjs';
 const id = n => `00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
@@ -126,4 +126,22 @@ test('finite leader pages run three attack then two defense slots and restore th
   assert.throws(()=>at(0));
   value.leaderPresentation=null;
   assert.equal(at(0).phase.kind,'LINEUP');
+});
+
+test('canonical final stats air only within the latest stats show deadline', () => {
+  const value = {...fixture(),status:'FINISHED',phase:{kind:'HIDDEN',startedAt:null}};
+  value.postmatch = {statsAsOfEventAt:null,teams:value.teams.map(({teamId}) => ({
+    teamId,score:0,accuracy:null,possession:null,possessionTimeMs:0,
+    metrics:{accuratePasses:0,inaccuratePasses:0,blocks:0,interceptions:0,callahans:0,breaks:0},
+  }))};
+  const at = ms => infographicsPage(validateInfographics(value,id(1)), Date.parse(started)+ms);
+  assert.equal(at(0),null);
+  value.statsPresentation = {kind:'STATS',origin:'AUTO',generation:id(500),matchId:id(1),startedAt:started,
+    expiresAt:'2026-01-01T00:00:10Z',pageSeconds:10};
+  assert.equal(at(-1),null);
+  assert.equal(at(0).phase.kind,'POSTMATCH');
+  assert.equal(at(9999).phase.kind,'POSTMATCH');
+  assert.equal(at(10000),null);
+  value.statsPresentation.matchId=id(99);
+  assert.throws(()=>at(0));
 });

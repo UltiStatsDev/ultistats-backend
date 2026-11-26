@@ -79,9 +79,9 @@ const view = async (binding = 'EXACT') => {
 const captureInput = async (binding = 'EXACT') => {
   const value = (await call(binding === 'AUTO' ? '/api/v1/obs/infographics/leaders/auto' : leaders)).data;
   const snapshot = binding === 'AUTO' ? value.snapshot : value;
-  const {canShow,activeGeneration,...expected} = snapshot.presentation;
+  const {canShow,expectedInputRevision,expectedSettingsRevision,expectedGeneration} = snapshot.presentation;
   assert.equal(canShow,true);
-  return {binding,expectedMatchId:snapshot.matchId,operationId:randomUUID(),...expected};
+  return {binding,expectedMatchId:snapshot.matchId,operationId:randomUUID(),expectedInputRevision,expectedSettingsRevision,expectedGeneration};
 };
 const show = (body, expected=200) => call(presentations,{method:'POST',body,expected});
 const hide = (generation,expected=204) => call(`${presentations}/${generation}`,{method:'DELETE',expected});

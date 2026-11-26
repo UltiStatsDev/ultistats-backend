@@ -5,15 +5,21 @@ const invalid = () => { throw Error('Некорректные данные ин�
 export function validateInfographics(value, matchId, origin = globalThis.location?.origin ?? 'https://localhost') {
   if (!value || value.matchId !== matchId || !uuid.test(matchId) || !Number.isFinite(Date.parse(value.serverNow)) ||
       typeof value.presentationRevision !== 'string' || !['PLANNED','IN_PROGRESS','FINISHED'].includes(value.status) ||
-      !['ROSTER','LINEUP','HIDDEN','POSTMATCH'].includes(value.phase?.kind) ||
+      !['ROSTER','LINEUP','HIDDEN'].includes(value.phase?.kind) ||
       !value.settings || ['rosterPageSeconds','pointPageSeconds','leaderPageSeconds'].some(k => !Number.isInteger(value.settings[k]) || value.settings[k] < 2 || value.settings[k] > 15) ||
       !Array.isArray(value.teams) || value.teams.length !== 2 || new Set(value.teams.map(t=>t.teamId)).size !== 2) invalid();
   const kind = value.phase.kind;
-  if (kind === 'HIDDEN' || kind === 'POSTMATCH') {
+  if (kind === 'HIDDEN') {
     if (value.phase.startedAt !== null) invalid();
   } else if (value.status !== 'IN_PROGRESS' || !Number.isFinite(Date.parse(value.phase.startedAt))) invalid();
-  if (kind === 'POSTMATCH' ? value.status !== 'FINISHED' : value.postmatch != null) invalid();
-  const postmatch = kind === 'POSTMATCH' ? validatePostmatch(value.postmatch,value.teams) : null;
+  const finished = value.status === 'FINISHED';
+  if (finished ? kind !== 'HIDDEN' || value.postmatch == null : value.postmatch != null) invalid();
+  const postmatch = finished ? validatePostmatch(value.postmatch,value.teams) : null;
+  const stats = value.statsPresentation;
+  if (stats != null && (!finished || value.leaderPresentation != null || stats.kind !== 'STATS' ||
+      !['AUTO','MANUAL'].includes(stats.origin) || stats.matchId !== matchId || !uuid.test(stats.generation) ||
+      !Number.isInteger(stats.pageSeconds) || stats.pageSeconds <= 0 ||
+      Date.parse(stats.expiresAt) - Date.parse(stats.startedAt) !== stats.pageSeconds * 1000)) invalid();
   if (value.phase.lineupStartedAt != null && (!Number.isFinite(Date.parse(value.phase.lineupStartedAt)) ||
       !uuid.test(value.phase.pointId) || !Number.isSafeInteger(value.phase.lineupRevision) ||
       !['CONFIRMED','LEGACY_POINT_OPEN'].includes(value.phase.anchorKind))) invalid();
@@ -84,7 +90,11 @@ export function infographicsPage(snapshot, serverNow) {
       page -= slots;
     }
   }
-  return snapshot?.phase.kind === 'POSTMATCH' ? snapshot : rosterPage(snapshot, serverNow);
+  const stats = snapshot?.statsPresentation;
+  if (stats && serverNow >= Date.parse(stats.startedAt) && serverNow < Date.parse(stats.expiresAt)) {
+    return {...snapshot,phase:{...snapshot.phase,kind:'POSTMATCH'}};
+  }
+  return rosterPage(snapshot, serverNow);
 }
 
 // Stable phase epochs govern both polls and reconnects; each team holds its last page within a cycle.

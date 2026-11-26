@@ -23,9 +23,14 @@ async function open() {
   const show = document.querySelector('#show-leaders'), hide = document.querySelector('#hide-leaders');
   const commandStatus = document.querySelector('#command-status');
   let snapshot = null, pending = null, retry = null;
+  const leaderGeneration = () => {
+    const control = snapshot?.presentation;
+    return !control?.activePresentation || control.activePresentation.kind === 'LEADERS'
+      ? control?.activeGeneration : null;
+  };
   const buttons = () => {
     show.disabled = !!pending || (!retry && !snapshot?.presentation?.canShow);
-    hide.disabled = !!pending || !snapshot?.presentation?.activeGeneration;
+    hide.disabled = !!pending || !leaderGeneration();
     show.textContent = retry ? 'Повторить команду показа' : 'Показать лидеров матча';
   };
   function cancelCommand() {
@@ -116,7 +121,7 @@ async function open() {
       });
     });
     hide.addEventListener('click', () => {
-      const generation = snapshot?.presentation?.activeGeneration;
+      const generation = leaderGeneration();
       if (generation) void command('DELETE',generation);
     });
     form.querySelector('fieldset').disabled = false;
